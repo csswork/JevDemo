@@ -3,16 +3,7 @@ import { Runtime, type LiveState } from './runtime';
 import { MockDecider } from './jev/mockDecider';
 import { HttpDecider, probeJev, type JevMeta, type JevStatus } from './jev/httpDecider';
 import type { ActDecider } from './jev/decider';
-import {
-  baselineAct,
-  EMOTIONS,
-  fallbackAct,
-  GESTURES,
-  type ActScript,
-  type Emotion,
-} from './act/schema';
-import { DEFAULT_CEILING } from './vrm/expressions';
-import { ACT_SCHEMA_PROMPT } from './jev/actSchemaPrompt';
+import { baselineAct, fallbackAct, type ActScript } from './act/schema';
 import './App.css';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/Sendagaya_Shino.vrm`;
@@ -43,12 +34,6 @@ export default function App() {
   const [jevMeta, setJevMeta] = useState<JevMeta | null>(null);
   const [jevError, setJevError] = useState<string | null>(null);
 
-  const [slots, setSlots] = useState<string[]>([]);
-  const [slotValues, setSlotValues] = useState<Record<string, number>>({});
-  const [bodyMotion, setBodyMotion] = useState(0.25);
-  const [ceiling, setCeilingState] = useState<Record<string, number>>({ ...DEFAULT_CEILING } as Record<string, number>);
-  const [gestures, setGestures] = useState(false);
-  const [micro, setMicro] = useState(true);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -64,7 +49,6 @@ export default function App() {
       .then(() => {
         if (disposed) return;
         setLoading(false);
-        setSlots(rt.expressionSlots);
         deciderRef.current.decide('你好', { history: [] }).then((act) => {
           setLastAct(act);
           rt.play(act);
@@ -90,9 +74,6 @@ export default function App() {
   useEffect(() => {
     if (runtimeRef.current) runtimeRef.current.ttsEnabled = tts;
   }, [tts]);
-  useEffect(() => runtimeRef.current?.setBodyMotion(bodyMotion), [bodyMotion]);
-  useEffect(() => runtimeRef.current?.setGesturesEnabled(gestures), [gestures]);
-  useEffect(() => runtimeRef.current?.setMicroExpressions(micro), [micro]);
 
   // 探测服务端代理有没有配好。key 在代理那一侧，前端只知道"能不能用"。
   useEffect(() => {
@@ -186,15 +167,7 @@ export default function App() {
     }
   }, [input, busy, turns, jev.progressive]);
 
-  const setSlot = (name: string, v: number) => {
-    setSlotValues((s) => ({ ...s, [name]: v }));
-    runtimeRef.current?.overrideExpression(name, v === 0 ? null : v);
-  };
 
-  const resetSlots = () => {
-    setSlotValues({});
-    runtimeRef.current?.clearExpressionOverrides();
-  };
 
   return (
     <div className="app">
@@ -258,11 +231,7 @@ export default function App() {
             <Track label="gaze" value={live.gaze} />
             <Track label="mouth" value={live.speaking ? 'speaking' : 'idle'} active={live.speaking} />
             <Track label="posture" value={live.posture} />
-            <Track
-              label="gesture"
-              value={gestures ? live.gestures.join(' + ') || '—' : 'off'}
-              active={gestures && live.gestures.length > 0}
-            />
+            <Track label="gesture" value={live.gestures.join(' + ') || 'off'} active={live.gestures.length > 0} />
             <div className="fps">{live.fps} fps</div>
           </div>
         )}
@@ -280,7 +249,7 @@ export default function App() {
               {t.text}
             </div>
           ))}
-          {busy && <div className="turn character thinking">决策中…</div>}
+          {busy && <div className="turn character thinking">思考中…</div>}
         </div>
 
         <div className="composer">
@@ -301,140 +270,36 @@ export default function App() {
           </button>
         </div>
 
-        <details className="section" open>
-          <summary>情绪试演</summary>
-          <div className="hint">走完整表情层：交叉淡入、换表情时补眨眼、叠加微表情</div>
-          <div className="chips">
-            {EMOTIONS.map((e) => (
-              <button key={e} onClick={() => runtimeRef.current?.testEmotion(e as Emotion)}>
-                {e}
-              </button>
-            ))}
-            <button onClick={() => runtimeRef.current?.character?.expression.wink('left')}>
-              wink
-            </button>
-          </div>
-          <div className="hint" style={{ paddingTop: 4 }}>
-            标定上限：Jev 给的是语义强度，这里换算成该模型实际能用的 blendshape 权重。
-            这个模型 happy 超过 0.6 就会闭眼。
-          </div>
-          <div className="sliders">
-            {EMOTIONS.filter((e) => e !== 'neutral').map((e) => (
-              <label key={e} className="on">
-                <span className="n">{e}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={ceiling[e] ?? 1}
-                  onChange={(ev) => {
-                    const v = Number(ev.target.value);
-                    setCeilingState((c) => ({ ...c, [e]: v }));
-                    runtimeRef.current?.setCeiling(e as Emotion, v);
-                  }}
-                />
-                <span className="w">{(ceiling[e] ?? 1).toFixed(2)}</span>
-              </label>
-            ))}
-          </div>
-        </details>
-
-        <details className="section" open>
-          <summary>
-            表情槽 <span className="count">{slots.length}</span>
-            <button
-              className="mini"
-              onClick={(e) => {
-                e.preventDefault();
-                resetSlots();
+        {/*
+          这里刻意没有任何表演参数的控件。
+          情绪、强度、视线、姿态全部由 Jev 判断，前端不提供竞争性的手动通道 ——
+          留一个滑块就意味着"到底谁说了算"没有唯一答案。
+          调参走 window.__jev（仅 dev），见 README。
+          下面两项不是表演参数：语音合成是输出方式，Jev 开关是没配 key 时的回落。
+        */}
+        <div className="options">
+          <label>
+            <input type="checkbox" checked={tts} onChange={(e) => setTts(e.target.checked)} />
+            语音合成（系统内置）
+          </label>
+          <label title={jev.endpoint ?? jev.backend ?? '在 .env.local 里配置后重启 dev server'}>
+            <input
+              type="checkbox"
+              checked={useJev}
+              disabled={!jev.configured}
+              onChange={(e) => {
+                setUseJev(e.target.checked);
+                setJevMeta(null);
               }}
-            >
-              复位
-            </button>
-          </summary>
-          <div className="hint">
-            模型上真实存在的 blendshape。拨动即钉死该槽，归零则交还给自动系统。
-          </div>
-          <div className="sliders">
-            {slots.map((name) => (
-              <label key={name} className={slotValues[name] ? 'on' : ''}>
-                <span className="n">{name}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.02}
-                  value={slotValues[name] ?? 0}
-                  onChange={(e) => setSlot(name, Number(e.target.value))}
-                />
-                <span className="w">{(slotValues[name] ?? 0).toFixed(2)}</span>
-              </label>
-            ))}
-          </div>
-        </details>
-
-        <details className="section">
-          <summary>运行选项</summary>
-          <div className="options">
-            <label>
-              <input type="checkbox" checked={micro} onChange={(e) => setMicro(e.target.checked)} />
-              微表情
-            </label>
-            <label>
-              <input type="checkbox" checked={tts} onChange={(e) => setTts(e.target.checked)} />
-              语音合成（系统内置）
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={gestures}
-                onChange={(e) => setGestures(e.target.checked)}
-              />
-              手势（半身景别下默认关）
-            </label>
-            <label title={jev.endpoint ?? jev.backend ?? '在 .env.local 里配置后重启 dev server'}>
-              <input
-                type="checkbox"
-                checked={useJev}
-                disabled={!jev.configured}
-                onChange={(e) => {
-                  setUseJev(e.target.checked);
-                  setJevMeta(null);
-                }}
-              />
-              接入 Jev
-              {!jev.configured
-                ? '（未配置 .env.local）'
-                : jev.mode === 'jev'
-                  ? `（${jev.backend} · 台词来自 ${
-                      jev.speechSource === 'deepseek' ? jev.speechModel : '规则模板'
-                    }）`
-                  : '（自有服务）'}
-            </label>
-            <label className="slider-row">
-              <span>肢体动作</span>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={bodyMotion}
-                onChange={(e) => setBodyMotion(Number(e.target.value))}
-              />
-              <span className="w">{bodyMotion.toFixed(2)}</span>
-            </label>
-          </div>
-          {gestures && (
-            <div className="chips">
-              {GESTURES.map((g) => (
-                <button key={g} onClick={() => runtimeRef.current?.testGesture(g)}>
-                  {g}
-                </button>
-              ))}
-            </div>
-          )}
-        </details>
+            />
+            接入 Jev
+            {!jev.configured
+              ? '（未配置 .env.local）'
+              : jev.mode === 'jev'
+                ? `（${jev.backend}）`
+                : '（自有服务）'}
+          </label>
+        </div>
 
         {jevError && (
           <details className="section" open>
@@ -456,8 +321,7 @@ export default function App() {
               {jevMeta.costUsd && <span className="count">${jevMeta.costUsd}</span>}
             </summary>
             <div className="hint">
-              choice 回的是整个概率分布，不只是 top-1 —— 混合表情直接由它驱动。
-              confidence 低时表演幅度会自动收着来。
+              只读。choice 回的是整个概率分布，不只是 top-1 —— 混合表情直接由它驱动。
             </div>
             <div className="sliders">
               {jevMeta.emotion && (
@@ -519,10 +383,6 @@ export default function App() {
           <pre>{lastAct ? JSON.stringify(lastAct, null, 2) : '—'}</pre>
         </details>
 
-        <details className="section">
-          <summary>Act IR 契约（自建服务实现参考）</summary>
-          <pre className="schema">{ACT_SCHEMA_PROMPT}</pre>
-        </details>
       </aside>
     </div>
   );
