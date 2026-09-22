@@ -1,0 +1,11 @@
+Sendagaya_Shino.vrm
+-------------------
+VRoid Studio 历代示例模型「千駄ヶ谷 詩乃 / Sendagaya Shino」。
+著作权人 pixiv Inc. 已按 CC0 1.0 放弃全部权利，可自由使用、修改、再分发。
+
+CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+模型说明: https://vroid.pixiv.help/hc/en-us/articles/360013482714-Sendagaya-Shino
+取得来源: https://github.com/madjin/vrm-samples (vroid/beta/Sendagaya_Shino.vrm)
+
+注意：这是 VRM 0.x 格式。代码里对 VRM 0.x / 1.0 的骨骼轴向差异做了自动处理
+（见 src/vrm/gestures.ts 的 axisFlip），换 VRM 1.0 模型不需要改动。
