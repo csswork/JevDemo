@@ -9,7 +9,14 @@ import { GESTURES, type ActScript, type Emotion, type GazeTarget, type GestureId
 import { estimateDuration, makeLinearMapper, parseAnchors, type Anchor } from './anchors';
 
 export type TimelineEvent =
-  | { time: number; kind: 'expression'; preset: Emotion; weight: number; fade: number }
+  /**
+   * 同一时刻的多个表情拍合并成一条，携带整个混合。
+   *
+   * 这是 Act IR 里"情绪是分布不是单值"的落点：Jev 的 choice 回来的是概率分布，
+   * composeAct 把它摊成多个 at 相同的 beat。如果渲染层对每一拍单独调 setExclusive，
+   * 后一拍会把前一拍清零，分布就退化成 top-1 —— 混合表情等于白做。
+   */
+  | { time: number; kind: 'expression'; mix: Array<[Emotion, number]>; fade: number }
   | { time: number; kind: 'gesture'; clip: GestureId; weight: number; speed: number }
   | { time: number; kind: 'gaze'; target: GazeTarget; hold?: number }
   | { time: number; kind: 'posture'; posture: PostureId }
@@ -44,14 +51,18 @@ export function compileAct(act: ActScript, opts: { duration?: number } = {}): Co
     { time: duration, kind: 'speech_end' },
   ];
 
+  // 按解析后的时刻分组：同一时刻的若干拍是**一个**混合表情，不是先后覆盖
+  const byTime = new Map<number, { mix: Array<[Emotion, number]>; fade: number }>();
   for (const b of act.tracks.expression) {
-    events.push({
-      time: resolve(b.at),
-      kind: 'expression',
-      preset: b.preset,
-      weight: b.weight,
-      fade: b.fade ?? 0.25,
-    });
+    const t = resolve(b.at);
+    const slot = byTime.get(t) ?? { mix: [], fade: b.fade ?? 0.25 };
+    slot.mix.push([b.preset, b.weight]);
+    // 同组取最短的淡入时长，避免一个慢拍拖住整组
+    slot.fade = Math.min(slot.fade, b.fade ?? 0.25);
+    byTime.set(t, slot);
+  }
+  for (const [time, { mix, fade }] of byTime) {
+    events.push({ time, kind: 'expression', mix, fade });
   }
   for (const b of act.tracks.gesture) {
     events.push({
@@ -114,6 +125,36 @@ export class TimelinePlayer {
 
   get isPlaying() {
     return this.playing;
+  }
+
+  /**
+   * 播放途中换掉表演轨道，保留已经走过的时间。
+   *
+   * 渐进式管线的第二段：输入层返回后角色已经在用基线表演说话了，判断层的结果
+   * 晚到几百毫秒。这时不能重新开始 —— 台词和 TTS 都在走 —— 只能把**还没触发**
+   * 的节拍换掉，已经过去的那些一次性补齐（返回给调用方立即应用）。
+   *
+   * 前提：新旧脚本的台词和时长必须一致，否则锚点解析出的时间对不上。
+   * 调用方负责保证（Runtime.upgrade 里做了校验）。
+   *
+   * speech_start / speech_end 不参与替换：语音已经在播，它的时间由第一次 play 拥有。
+   */
+  upgrade(compiled: CompiledAct): TimelineEvent[] {
+    if (!this.playing) return [];
+
+    const speechEnd = this.events.find((e) => e.kind === 'speech_end');
+    const next: TimelineEvent[] = compiled.events.filter(
+      (e) => e.kind !== 'speech_start' && e.kind !== 'speech_end',
+    );
+    if (speechEnd) next.push(speechEnd);
+    next.sort((a, b) => a.time - b.time);
+
+    this.events = next;
+    const due: TimelineEvent[] = [];
+    let i = 0;
+    while (i < next.length && next[i].time <= this.elapsed) due.push(next[i++]);
+    this.cursor = i;
+    return due;
   }
 
   /** 每帧调用，返回本帧到期的事件。 */

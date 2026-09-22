@@ -84,6 +84,33 @@ export interface ActScript {
   };
 }
 
+/**
+ * 基线表演。
+ *
+ * 渐进式管线的第一段：输入层一返回台词就用它开口，不等判断层。
+ * 判断层的结果后到之后再升级还没触发的节拍（见 timeline.ts 的 upgrade）。
+ *
+ * 所以它要满足两个条件：中性到任何情绪的过渡都不突兀；本身别太死板 ——
+ * 配上 idle 层的呼吸和微表情，判断层挂掉时也能当兜底用。
+ */
+export function baselineAct(speech: string): ActScript {
+  const arr = [...speech];
+  const mid = Math.max(1, Math.round(arr.length * 0.6));
+  return {
+    speech: arr.slice(0, mid).join('') + '<b:settle>' + arr.slice(mid).join(''),
+    emotion: { valence: 0.1, arousal: 0.3 },
+    tracks: {
+      posture: 'idle_neutral',
+      expression: [
+        { at: 0, preset: 'neutral', weight: 1, fade: 0.25 },
+        { at: { anchor: 'settle' }, preset: 'relaxed', weight: 0.35, fade: 0.4 },
+      ],
+      gesture: [],
+      gaze: [{ at: 0, target: 'camera' }],
+    },
+  };
+}
+
 /** 兜底脚本：任何一环出错都不应该让角色卡死。 */
 export function fallbackAct(speech: string): ActScript {
   return {

@@ -111,9 +111,16 @@ interface JevPayload {
 /** JevStation 包一层 data，Vercel / TypeSafe 直接放顶层 */
 type JevResponse = JevPayload & { data?: JevPayload };
 
+/**
+ * 错误形状有两种，都得认：
+ *   TypeSafe 兼容层（Vercel 文档写的）  { message, error_type }
+ *   网关边缘（账户/计费类拦截）          { error: { message, type } }
+ * 后者在文档里没有，实测 403 走的就是它。
+ */
 interface JevError {
   message?: string;
   error_type?: string;
+  error?: { message?: string; type?: string };
 }
 
 // ---- 问题集：5 个，卡在 1 credit 的上限内 ----
@@ -181,13 +188,21 @@ function buildQuestions(): Record<string, Question> {
 /**
  * 置信度 → 表演幅度。
  *
- * 用文档建议的三档法，但落点是"敢不敢演"而不是"要不要人工介入"：
- * 模型自己都不确定的时候，演错一个强表情比演淡了难看得多，所以收着来。
+ * 这里踩过一次反向的坑，值得写清楚。
+ *
+ * 文档说 confidence 就是从概率分布的形状导出的：集中=高，分散=低。
+ * 所以**低 confidence 不等于"Jev 不确定"，而等于"情绪本身就是混的"**。
+ * 实测「哈，行吧。反正我也习惯了」→ sad 0.38 + relaxed 0.31 + angry 0.17，
+ * confidence 只有 0.26 —— 这不是判断不准，这就是苦笑的正确答案。
+ *
+ * 最初按文档的三档法压到 0.45，结果情绪最丰富的句子演得最淡：
+ * 分布已经用来做混合了，再拿同一个信号去衰减幅度，等于对复杂情绪双重惩罚。
+ *
+ * 现在只保留很轻的对冲（0.75~1.0）。留一点是因为分布也可能在**对立**情绪之间
+ * 摊平（happy 0.5 / angry 0.5），那种脸全给满会很怪；但不该把三路苦笑压没。
  */
 function confidenceGain(confidence: number): number {
-  if (confidence >= 0.6) return 1;
-  if (confidence >= 0.35) return 0.7;
-  return 0.45;
+  return 0.75 + 0.25 * Math.max(0, Math.min(1, confidence));
 }
 
 const isChoice = (a: unknown): a is ChoiceAnswer =>
@@ -330,6 +345,15 @@ export function composeAct(
 
 export interface JevOptions {
   apiKey: string;
+  /**
+   * 超时（毫秒）。默认 6000。
+   *
+   * 不是为了省钱，是因为**过期的判断没有价值**：一句台词只播 3~6 秒，
+   * 渲染层的 upgrade 只能改还没触发的节拍，判断回来时台词已经说完就什么都改不了。
+   * 实测走 Vercel AI Gateway 的延迟方差很大（p50 约 3.8s，见过 19.5s），
+   * 所以宁可干净地放弃、退回基线表演，也不要挂着一个注定没用的请求。
+   */
+  timeoutMs?: number;
   /** 省略则按 key 前缀自动判断 */
   backend?: JevBackend;
   /** 省略则用后端默认地址 */
@@ -338,16 +362,39 @@ export interface JevOptions {
   model?: string;
 }
 
-/** 429/529 按文档要求做指数退避重试。 */
-async function postWithRetry(url: string, init: RequestInit, tries = 3): Promise<Response> {
+/**
+ * 429/529 按文档要求做指数退避重试，整体受 deadline 约束。
+ * 重试不能把总时长拖过超时 —— 那样等于把"及时放弃"的意义抵消掉。
+ */
+async function postWithRetry(
+  url: string,
+  init: RequestInit,
+  deadline: number,
+  tries = 3,
+): Promise<Response> {
   let last: Response | null = null;
   for (let i = 0; i < tries; i++) {
-    const r = await fetch(url, init);
-    if (r.status !== 429 && r.status !== 529) return r;
-    last = r;
-    await new Promise((res) => setTimeout(res, 400 * 2 ** i + Math.random() * 200));
+    const left = deadline - Date.now();
+    if (left <= 0) break;
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), left);
+    try {
+      const r = await fetch(url, { ...init, signal: ctrl.signal });
+      if (r.status !== 429 && r.status !== 529) return r;
+      last = r;
+    } catch (e) {
+      if ((e as { name?: string })?.name === 'AbortError') {
+        throw new Error(`Jev 超时（${Math.round((Date.now() - (deadline - left)) / 100) / 10}s 未返回）`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+    await new Promise((res) => setTimeout(res, Math.min(400 * 2 ** i, deadline - Date.now())));
   }
-  return last!;
+  if (!last) throw new Error('Jev 超时');
+  return last;
 }
 
 /**
@@ -381,23 +428,36 @@ export async function judgePerformance(
   // Vercel / TypeSafe 需要 model 来路由；JevStation 在部署层面钉死，发了会被忽略
   if (model) body.model = model;
 
-  const res = await postWithRetry(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${opts.apiKey}`,
-      'Content-Type': 'application/json',
+  const deadline = Date.now() + (opts.timeoutMs ?? 6000);
+  const res = await postWithRetry(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${opts.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    deadline,
+  );
 
-  const json = (await res.json().catch(() => null)) as (JevResponse & JevError) | null;
+  // 先拿文本再尝试解析：网关边缘的错误未必是 JSON，直接 res.json() 会把线索吃掉
+  const raw = await res.text().catch(() => '');
+  let json: (JevResponse & JevError) | null = null;
+  try {
+    json = raw ? (JSON.parse(raw) as JevResponse & JevError) : null;
+  } catch {
+    json = null;
+  }
 
   if (!res.ok) {
-    // Vercel 的错误形状是 { message, error_type }，JevStation 是纯文本
-    const detail = json?.message ?? '';
+    // Vercel 文档的错误形状是 { message, error_type }，但边缘层可能返回别的东西，
+    // 所以解析不出来就把原文透出去 —— 猜错误原因比看原文慢得多
+    const detail = json?.error?.message ?? json?.message ?? raw.slice(0, 400);
     const hint =
       res.status === 401 || res.status === 403
-        ? `（当前按 ${backend} 后端在调 ${url}，key 前缀和后端对不上时就会这样）`
+        ? `｜当前按 ${backend} 后端在调 ${url}`
         : '';
     throw new Error(
       `Jev 返回 ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ''}${hint}`,

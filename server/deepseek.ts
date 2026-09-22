@@ -30,7 +30,14 @@ export interface DeepSeekOptions {
 }
 
 interface ChatResponse {
-  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+  choices?: Array<{
+    message?: {
+      content?: string;
+      /** 推理模型把思考过程放这里，content 可能为空 */
+      reasoning_content?: string;
+    };
+    finish_reason?: string;
+  }>;
   usage?: { prompt_tokens: number; completion_tokens: number };
   error?: { message?: string };
 }
@@ -107,8 +114,24 @@ export async function writeSpeech(
     );
   }
 
-  const text = json?.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error('DeepSeek 没有返回台词');
+  const choice = json?.choices?.[0];
+  const text = choice?.message?.content?.trim();
+
+  if (!text) {
+    // 空 content 有好几种原因，猜不如报清楚：
+    // finish_reason=length 是被 max_tokens 截断；有 reasoning_content 而没 content
+    // 说明模型把预算全花在思考上了；两者都没有则是真的空响应。
+    const reasoning = choice?.message?.reasoning_content?.trim();
+    const detail = [
+      choice?.finish_reason ? `finish_reason=${choice.finish_reason}` : null,
+      reasoning ? `有 reasoning_content(${reasoning.length} 字)但 content 为空` : null,
+      json?.usage ? `completion_tokens=${json.usage.completion_tokens}` : null,
+      !choice ? `响应里没有 choices：${JSON.stringify(json).slice(0, 200)}` : null,
+    ]
+      .filter(Boolean)
+      .join('，');
+    throw new Error(`DeepSeek 没有返回台词${detail ? `（${detail}）` : ''}`);
+  }
 
   // 模型偶尔会自己套一层引号，剥掉以免进了 TTS 和 Jev 的 state
   return text.replace(/^["'「『]|["'」』]$/g, '').trim();

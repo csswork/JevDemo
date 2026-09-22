@@ -1,3 +1,4 @@
+import { VRMUtils } from '@pixiv/three-vrm';
 import { createStage } from './vrm/stage';
 import { Character } from './vrm/character';
 import { TimelinePlayer, compileAct, type CompiledAct } from './act/timeline';
@@ -36,6 +37,12 @@ export class Runtime {
   private stateTimer = 0;
 
   ttsEnabled = false;
+  /**
+   * dispose() 可能在 mount() 的 await 返回之前就被调用（React StrictMode 会挂两次，
+   * 而模型加载要好几秒）。那种情况下 mount 剩下的部分必须全部跳过 ——
+   * 否则会给一个已经废弃的实例启动 rAF 循环，它永远不停。
+   */
+  private disposed = false;
   onState: ((s: LiveState) => void) | null = null;
   onSpeechText: ((text: string) => void) | null = null;
 
@@ -48,6 +55,11 @@ export class Runtime {
     this.character = character;
 
     const vrm = await character.load(modelUrl, onProgress);
+    if (this.disposed) {
+      VRMUtils.deepDispose(vrm.scene);
+      stage.dispose();
+      return vrm;
+    }
     stage.scene.add(vrm.scene);
 
     // 调参用：控制台里可以直接 __jev.character / __jev.stage 拨数值
@@ -56,6 +68,7 @@ export class Runtime {
     }
 
     if (ttsAvailable()) this.voice = await pickChineseVoice();
+    if (this.disposed) return vrm;
 
     this.lastTime = performance.now();
     const loop = () => {
@@ -99,6 +112,28 @@ export class Runtime {
     }
 
     return compiled;
+  }
+
+  /**
+   * 渐进升级：把判断层晚到的表演接到正在播的台词上。
+   *
+   * 角色已经在用基线表演说话了，这里只换还没触发的节拍，已经过去的一次性补齐。
+   * 台词和时长必须和 play() 时一致，否则锚点解析出的时间对不上 —— 不一致就直接放弃，
+   * 宁可保持基线表演，也不能让口型和台词错位。
+   */
+  upgrade(act: ActScript): boolean {
+    const base = this.compiled;
+    const character = this.character;
+    if (!base || !character || !this.player.isPlaying) return false;
+
+    const compiled = compileAct(act, { duration: base.duration });
+    if (compiled.text !== base.text) return false;
+
+    for (const ev of this.player.upgrade(compiled)) {
+      character.apply(ev);
+    }
+    character.setArousal(act.emotion.arousal);
+    return true;
   }
 
   /** 单独试放一个手势，用于调 clip 参数。 */
@@ -184,6 +219,7 @@ export class Runtime {
   }
 
   dispose() {
+    this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.speech?.cancel();
     this.character?.dispose();

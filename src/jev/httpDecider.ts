@@ -3,6 +3,8 @@ import type { ActDecider, DecideContext } from './decider';
 
 /** 服务端代理的默认地址。key 在代理那一侧，这里不持有任何凭据。 */
 export const JEV_PROXY = '/api/act';
+export const JEV_SPEECH_API = '/api/speech';
+export const JEV_JUDGE_API = '/api/judge';
 
 export interface JevStatus {
   configured: boolean;
@@ -14,6 +16,8 @@ export interface JevStatus {
   /** 输入层实际用的是什么 */
   speechSource?: 'deepseek' | 'draft';
   speechModel?: string;
+  /** 能否拆成"先出台词、再出表演"两段 */
+  progressive?: boolean;
   endpoint?: string;
 }
 
@@ -58,6 +62,8 @@ export class HttpDecider implements ActDecider {
   private draftSource: ActDecider | null;
   /** 最近一次 Jev 的原始判断，供调试面板读取 */
   lastMeta: JevMeta | null = null;
+  /** 判断层降级时的原因（台词照常，只是表演退回基线） */
+  lastError: string | null = null;
 
   constructor(opts: { endpoint?: string; draftSource?: ActDecider | null } = {}) {
     this.endpoint = opts.endpoint ?? JEV_PROXY;
@@ -76,15 +82,54 @@ export class HttpDecider implements ActDecider {
     });
 
     if (!res.ok) {
-      const detail = await res
-        .json()
-        .then((j: { error?: string }) => j.error)
-        .catch(() => null);
-      throw new Error(detail ?? `${res.status} ${res.statusText}`);
+      throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
     }
 
-    const json = (await res.json()) as { _jev?: JevMeta };
+    const json = (await res.json()) as { _jev?: JevMeta; _jevError?: string };
     this.lastMeta = json._jev ?? null;
+    this.lastError = json._jevError ?? null;
     return sanitizeAct(json, '（Jev 没有返回台词）');
+  }
+
+  /**
+   * 渐进式管线第一段：只要台词。
+   *
+   * 拿到就能开口 —— 判断层要等 Jev，而 Jev 判断的对象正是这句话，两者天然串行。
+   * 既然不能并发，就让说话别等判断。
+   */
+  async speak(input: string, ctx: DecideContext): Promise<string> {
+    const draft = this.draftSource
+      ? (await this.draftSource.decide(input, ctx)).speech.replace(/<b:[a-z0-9_]+>/gi, '')
+      : undefined;
+
+    const res = await fetch(JEV_SPEECH_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ input, history: ctx.history, draft }),
+    });
+    if (!res.ok) throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
+    return ((await res.json()) as { speech: string }).speech;
+  }
+
+  /** 渐进式管线第二段：判断这句话怎么演。失败不抛错，退回基线表演。 */
+  async judge(input: string, ctx: DecideContext, speech: string): Promise<ActScript> {
+    const res = await fetch(JEV_JUDGE_API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ input, history: ctx.history, speech }),
+    });
+    if (!res.ok) throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
+
+    const json = (await res.json()) as { _jev?: JevMeta; _jevError?: string };
+    this.lastMeta = json._jev ?? null;
+    this.lastError = json._jevError ?? null;
+    return sanitizeAct(json, speech);
+  }
+
+  private async errorOf(res: Response): Promise<string | null> {
+    return res
+      .json()
+      .then((j: { error?: string }) => j.error ?? null)
+      .catch(() => null);
   }
 }

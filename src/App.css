@@ -498,3 +498,16 @@ input[type='range']::-webkit-slider-thumb {
 .sliders label.on .bar i {
   background: var(--accent);
 }
+
+.degraded {
+  position: absolute;
+  top: 54px;
+  left: 20px;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #5a4423;
+  background: rgba(38, 28, 14, 0.8);
+  color: #d9a441;
+  cursor: help;
+}

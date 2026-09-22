@@ -3,7 +3,14 @@ import { Runtime, type LiveState } from './runtime';
 import { MockDecider } from './jev/mockDecider';
 import { HttpDecider, probeJev, type JevMeta, type JevStatus } from './jev/httpDecider';
 import type { ActDecider } from './jev/decider';
-import { EMOTIONS, fallbackAct, GESTURES, type ActScript, type Emotion } from './act/schema';
+import {
+  baselineAct,
+  EMOTIONS,
+  fallbackAct,
+  GESTURES,
+  type ActScript,
+  type Emotion,
+} from './act/schema';
 import { DEFAULT_CEILING } from './vrm/expressions';
 import { ACT_SCHEMA_PROMPT } from './jev/actSchemaPrompt';
 import './App.css';
@@ -34,6 +41,7 @@ export default function App() {
   const [useJev, setUseJev] = useState(false);
   const [jev, setJev] = useState<JevStatus>({ configured: false, mode: 'unconfigured' });
   const [jevMeta, setJevMeta] = useState<JevMeta | null>(null);
+  const [jevError, setJevError] = useState<string | null>(null);
 
   const [slots, setSlots] = useState<string[]>([]);
   const [slotValues, setSlotValues] = useState<Record<string, number>>({});
@@ -123,14 +131,48 @@ export default function App() {
     setInput('');
     setBusy(true);
     setJevMeta(null);
+    setJevError(null);
     const history = turns.slice(-6);
+    const ctx = { history };
     setTurns((t) => [...t, { role: 'user', text }]);
 
+    const decider = deciderRef.current;
+
+    // 渐进式：台词一到就开口，判断层的结果后到再升级还没触发的节拍。
+    // 感知延迟因此只剩输入层那一段 —— Jev 是在角色已经开口之后才回来的。
+    if (decider instanceof HttpDecider && jev.progressive) {
+      try {
+        const speech = await decider.speak(text, ctx);
+        const compiled = rt.play(baselineAct(speech));
+        setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
+        setBusy(false);
+
+        // 不 await：让它在角色说话的同时跑
+        void decider
+          .judge(text, ctx, speech)
+          .then((act) => {
+            rt.upgrade(act);
+            setJevMeta(decider.lastMeta);
+            setJevError(decider.lastError);
+          })
+          .catch((e: unknown) => {
+            setJevError(e instanceof Error ? e.message : String(e));
+          });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const compiled = rt.play(fallbackAct(`输入层出错了：${msg}`));
+        setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
+        setBusy(false);
+      }
+      return;
+    }
+
+    // 一次性：passthrough 模式和纯 Mock 走这条
     try {
-      const decider = deciderRef.current;
-      const act = await decider.decide(text, { history });
+      const act = await decider.decide(text, ctx);
       setLastAct(act);
       setJevMeta(decider instanceof HttpDecider ? decider.lastMeta : null);
+      setJevError(decider instanceof HttpDecider ? decider.lastError : null);
       const compiled = rt.play(act);
       setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
     } catch (e) {
@@ -142,7 +184,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [input, busy, turns]);
+  }, [input, busy, turns, jev.progressive]);
 
   const setSlot = (name: string, v: number) => {
     setSlotValues((s) => ({ ...s, [name]: v }));
@@ -195,6 +237,12 @@ export default function App() {
         </div>
 
         {subtitle && !loading && <div className="subtitle">{subtitle}</div>}
+
+        {jevError && (
+          <div className="degraded" title={jevError}>
+            判断层降级 · 表演退回基线，台词不受影响
+          </div>
+        )}
 
         {live && (
           <div className="tracks">
@@ -387,6 +435,13 @@ export default function App() {
             </div>
           )}
         </details>
+
+        {jevError && (
+          <details className="section" open>
+            <summary>判断层降级原因</summary>
+            <pre className="schema">{jevError}</pre>
+          </details>
+        )}
 
         {jevMeta && (
           <details className="section" open>

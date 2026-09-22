@@ -169,14 +169,27 @@ export class ExpressionLayer {
     }
   }
 
-  /** 一次给多个情绪设权重，用于混合表情。 */
+  /**
+   * 一次给多个情绪设权重，用于混合表情。给定的按权重叠加，没给的淡出。
+   *
+   * Jev 的 choice 回的是概率分布，composeAct 归一成"主导情绪=1、次要按相对概率"，
+   * 到这里合成一张脸。happy 0.53 + surprised 0.30 读起来像"惊喜"，
+   * 而单独的 happy 1.0 只是"笑"。
+   */
   setBlend(mix: Partial<Record<Emotion, number>>, fade = 0.25) {
     const wanted = new Set<string>();
-    for (const [emo, w] of Object.entries(mix) as Array<[Emotion, number]>) {
+    const entries = Object.entries(mix) as Array<[Emotion, number]>;
+    for (const [emo, w] of entries) {
       const key = this.resolved.get(emo);
       if (key) wanted.add(key);
       this.set(emo, w, fade);
     }
+    // dominant 决定微表情从哪个相邻情绪取材，取权重最大的那个才对
+    const top = entries.reduce<[Emotion, number] | null>(
+      (best, e) => (!best || e[1] > best[1] ? e : best),
+      null,
+    );
+    if (top && top[1] > 0.15) this.dominant = top[0];
     for (const key of this.base.keys()) {
       if (!wanted.has(key)) {
         this.base.set(key, 0);

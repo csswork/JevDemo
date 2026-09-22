@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import type { Connect, Plugin } from 'vite';
 import { loadEnv } from 'vite';
-import { sanitizeAct, type ActScript } from '../src/act/schema';
+import { baselineAct, sanitizeAct, type ActScript } from '../src/act/schema';
 import { detectBackend, judgePerformance, type JevBackend, type JevMeta } from './jev';
 import { writeSpeech } from './deepseek';
 
@@ -33,6 +33,7 @@ interface JevConfig {
   jevBackend?: JevBackend;
   jevUrl?: string;
   jevModel?: string;
+  jevTimeoutMs: number;
   /** 输入层：台词从哪来 */
   speechSource: 'deepseek' | 'draft';
   deepseekKey?: string;
@@ -72,6 +73,7 @@ function readConfig(env: Record<string, string>, root: string): JevConfig {
     jevBackend: backend,
     jevUrl: (env.JEV_BASE_URL || env.JEVSTATION_URL || '').trim() || undefined,
     jevModel: (env.JEV_MODEL || '').trim() || undefined,
+    jevTimeoutMs: Number(env.JEV_TIMEOUT_MS || '') || 6000,
     // 配了 DeepSeek 就用它写台词，否则回落到前端的规则模板
     speechSource: (env.JEV_SPEECH || '').trim() === 'draft' || !deepseekKey ? 'draft' : 'deepseek',
     deepseekKey: deepseekKey || undefined,
@@ -96,6 +98,9 @@ function readBody(req: Connect.IncomingMessage): Promise<string> {
     req.on('error', rej);
   });
 }
+
+/** 由 configureServer 注入，方便上面两个函数打日志 */
+let server_log: (msg: string) => void = () => {};
 
 interface DecideRequest {
   input: string;
@@ -122,12 +127,13 @@ async function viaPassthrough(cfg: JevConfig, payload: DecideRequest): Promise<A
   return sanitizeAct(json.act ?? json, '（Jev 没有返回台词）');
 }
 
-async function viaJev(
-  cfg: JevConfig,
-  payload: DecideRequest,
-): Promise<ActScript & { _jev?: JevMeta; _speechSource?: string }> {
-  // 输入层先出台词，判断层再决定怎么演。两步是串行的：
-  // Jev 的 state 里要带上这句话，否则判断不出该用什么表情。
+/**
+ * 第一段：只出台词。
+ *
+ * 拆出来是为了让前端拿到台词就能开口 —— 判断层要等 Jev，而 Jev 判断的对象
+ * 正是这句话，两者天然串行，没法并发。既然不能并发，就让说话别等判断。
+ */
+async function runSpeech(cfg: JevConfig, payload: DecideRequest): Promise<string> {
   const speech =
     cfg.speechSource === 'deepseek' && cfg.deepseekKey
       ? await writeSpeech(
@@ -145,17 +151,47 @@ async function viaJev(
   if (!speech) {
     throw new Error('没有台词可演：输入层没配 DEEPSEEK_API_KEY，前端也没带 draft。');
   }
+  return speech;
+}
 
-  const { act, meta } = await judgePerformance(
-    {
-      apiKey: cfg.jevKey!,
-      backend: cfg.jevBackend,
-      baseUrl: cfg.jevUrl,
-      model: cfg.jevModel,
-    },
-    { userInput: payload.input, speech, history: payload.history },
-  );
-  return { ...sanitizeAct(act, speech), _jev: meta, _speechSource: cfg.speechSource };
+/**
+ * 第二段：判断这句话该怎么演。
+ *
+ * 判断层是**增强**而不是硬依赖：Jev 挂了、余额没了、网络不通，角色也得把话说完。
+ * 所以这里不抛错，失败时退回基线表演并把原因带出去，由前端决定要不要提示。
+ */
+async function runJudge(
+  cfg: JevConfig,
+  payload: DecideRequest & { speech: string },
+): Promise<ActScript & { _jev?: JevMeta; _jevError?: string }> {
+  const { speech } = payload;
+  try {
+    const { act, meta } = await judgePerformance(
+      {
+        apiKey: cfg.jevKey!,
+        backend: cfg.jevBackend,
+        baseUrl: cfg.jevUrl,
+        model: cfg.jevModel,
+        timeoutMs: cfg.jevTimeoutMs,
+      },
+      { userInput: payload.input, speech, history: payload.history },
+    );
+    return { ...sanitizeAct(act, speech), _jev: meta };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    server_log(msg);
+    return { ...sanitizeAct(baselineAct(speech), speech), _jevError: msg };
+  }
+}
+
+/** 一次性拿完整脚本。passthrough 模式和不支持渐进的调用方走这条。 */
+async function viaJev(
+  cfg: JevConfig,
+  payload: DecideRequest,
+): Promise<ActScript & { _jev?: JevMeta; _jevError?: string; _speechSource?: string }> {
+  const speech = await runSpeech(cfg, payload);
+  const judged = await runJudge(cfg, { ...payload, speech });
+  return { ...judged, _speechSource: cfg.speechSource };
 }
 
 export function jevProxy(): Plugin {
@@ -170,6 +206,55 @@ export function jevProxy(): Plugin {
       cfg = readConfig(env, resolved.root);
     },
     configureServer(server) {
+      server_log = (msg) => server.config.logger.error(`[jev] ${msg}`);
+
+      const json = (res: import('node:http').ServerResponse, status: number, body: unknown) => {
+        res.statusCode = status;
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify(body));
+      };
+
+      const readJson = async (req: Connect.IncomingMessage) =>
+        JSON.parse(await readBody(req)) as DecideRequest & { speech?: string };
+
+      // --- 渐进式管线的两段 ---
+      // 前端先打 /api/speech，拿到台词立刻开口 + 基线表演；
+      // 再打 /api/judge，Jev 的判断回来后升级还没触发的节拍。
+      server.middlewares.use('/api/speech', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        void (async () => {
+          if (cfg.mode !== 'jev') return json(res, 400, { error: '当前模式不支持渐进式管线' });
+          try {
+            const payload = await readJson(req);
+            if (!payload?.input) return json(res, 400, { error: '缺少 input 字段' });
+            const speech = await runSpeech(cfg, payload);
+            json(res, 200, { speech, source: cfg.speechSource });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            server_log(msg);
+            json(res, 502, { error: msg });
+          }
+        })();
+      });
+
+      server.middlewares.use('/api/judge', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        void (async () => {
+          if (cfg.mode !== 'jev') return json(res, 400, { error: '当前模式不支持渐进式管线' });
+          try {
+            const payload = await readJson(req);
+            if (!payload?.input || !payload?.speech) {
+              return json(res, 400, { error: '缺少 input 或 speech 字段' });
+            }
+            json(res, 200, await runJudge(cfg, { ...payload, speech: payload.speech }));
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            server_log(msg);
+            json(res, 502, { error: msg });
+          }
+        })();
+      });
+
       server.middlewares.use('/api/act', (req, res, next) => {
         if (req.method === 'GET') {
           res.setHeader('content-type', 'application/json');
@@ -183,6 +268,8 @@ export function jevProxy(): Plugin {
               speechModel:
                 cfg.mode === 'jev' && cfg.speechSource === 'deepseek' ? cfg.deepseekModel : undefined,
               backend: cfg.mode === 'jev' ? cfg.jevBackend : undefined,
+              // passthrough 由对方服务一次性出完整脚本，没法拆两段
+              progressive: cfg.mode === 'jev',
               endpoint: cfg.mode === 'passthrough' ? cfg.endpoint : undefined,
             }),
           );

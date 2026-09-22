@@ -104,7 +104,9 @@ export class Character {
         this.idle.setPosture(ev.posture);
         break;
       case 'expression':
-        this.expression.setExclusive(ev.preset, ev.weight, ev.fade);
+        // 整组一次性设定：给定的情绪按权重叠加，没给的淡出。
+        // 逐个 setExclusive 会让同时刻的后一拍清掉前一拍，分布退化成 top-1。
+        this.expression.setBlend(Object.fromEntries(ev.mix), ev.fade);
         break;
       case 'gesture':
         if (this.gesturesEnabled) this.gesture.play(ev.clip, ev.weight, ev.speed);

@@ -3,14 +3,20 @@
 文本驱动的角色表演管线 demo（一期）。
 
 ```
-        输入层            判断层
-文本 → DeepSeek ──→ Jev ──→ Act IR (JSON) ──→ Adapter ──→ three-vrm
-        说什么          怎么演        ↑
-                             唯一的契约在这里
+        输入层                          判断层
+文本 → DeepSeek ──→ 台词 ──→ 立刻开口（基线表演）
+        说什么         └──→ Jev ──→ 升级还没触发的节拍
+                             怎么演
 ```
 
+两层天然串行 —— Jev 判断的对象就是 DeepSeek 写出来的那句话，没有它无从判断。
+既然不能并发，就让**说话别等判断**：台词一到就开口并套用基线表演，Jev 的结果
+晚几百毫秒回来，再替换掉还没触发的节拍。实测感知延迟从 1.97s 降到 1.28s，
+省掉的正好是判断层那一段。
+
 二期把输入层换成 gpt-live-1 的实时语音，**右边全不动** ——
-Act IR 的时间锚点本来就是为"决策时还不知道音频时长"设计的。
+Act IR 的时间锚点本来就是为"决策时还不知道音频时长"设计的，
+渐进升级需要的也正是这套锚点。
 
 ## 跑起来
 
@@ -75,14 +81,27 @@ Jev 输出的不是动画，是一份**表演脚本**。四条轨道各自独立
 编辑 `.env.local`（已 gitignore），**改完重启 dev server**：
 
 ```bash
-# 判断层：JevStation —— 决定"怎么演"
-JEVSTATION_API_KEY=sk_...        # 在 JevStation 的 Settings 里创建
-JEVSTATION_URL=...               # 可选，自部署时改
-
-# 输入层：DeepSeek —— 决定"说什么"
-DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_MODEL=deepseek-flash    # 可选。要质量换 deepseek-v4-pro，代价是慢
+# 判断层：Jev —— 决定"怎么演"。后端按 key 前缀自动识别
+JEV_KEY=vck_...                  # 或 sk_...
+DEEPSEEK_API_KEY=sk-...          # 输入层：决定"说什么"
 ```
+
+完整可选项见 `.env.example`。
+
+Jev 有三种接法，端点、鉴权、响应形状都不一样，`server/jev.ts` 按 key 前缀自动分流：
+
+| 前缀 | 后端 | 端点 | 差异 |
+|---|---|---|---|
+| `vck_` | Vercel AI Gateway | `ai-gateway.vercel.sh/typesafe/v1/systemone` | **必须**带 `model: "typesafe-ai/jev"`；answers 在顶层；计费在 `provider_metadata.gateway.cost`（美元） |
+| `sk_` | JevStation | `jevstation.com/api/v1/systemone` | `model` 被忽略；answers 包在 `data` 里；另带 credits 余额 |
+| 其它 | TypeSafe 直连 | `api.typesafe.ai/v1/systemone` | 候补名单；形状同 Vercel |
+
+自动识别不对时用 `JEV_BACKEND` / `JEV_BASE_URL` / `JEV_MODEL` 覆盖。
+
+**Vercel AI Gateway 的坑**：免费额度需要先在账户里绑定信用卡才会解锁，否则所有请求
+返回 403 `customer_verification_required`。这个错误走的是网关边缘的
+`{"error":{"message","type"}}` 形状，和 Vercel 文档里写的扁平 `{message, error_type}`
+不是一回事，所以 `jev.ts` 两种都认，解析不出来就把原文透出来。
 
 两层各自独立：只配 Jev 就用规则模板出台词，只配 DeepSeek 则表演回落到规则模板，
 两个都不配整条链路照样跑（纯 `MockDecider`）。
@@ -112,7 +131,7 @@ Act IR 不从这里来。
 | `choice` 的 criteria 是闭集 | 和 `act/schema.ts` 的词表天然对齐，不可能出现"发明了一个不存在的手势名" |
 | `choice` 回**整个概率分布** | 直接喂 `ExpressionLayer.setBlend` —— 混合表情白拿。`happy 0.52 + surprised 0.29` 比单一 `happy 1.0` 像人得多 |
 | `score` 回级别之间的连续值 | 正好当 blendshape 权重用 |
-| `confidence` | 决定"敢不敢演"：模型自己都不确定时收着演，比演错一个强表情好看 |
+| `confidence` | 轻度对冲表演幅度（0.75~1.0），**不能重压**，理由见下 |
 | `noul` 是 0–1 概率 | 「中途会不会移开视线」→ 概率越高，移开得越久 |
 
 问题集刻意卡在 **5 个**（emotion / intensity / gaze / posture / looks_away）——
@@ -125,6 +144,25 @@ gaze 的进出时机由代码按字符位置插锚点。
 
 Jev 拿到的 `state` 同时带用户输入和角色要说的话 —— 表演是**回应**，
 只看台词判断不出"她是在附和还是在反驳"。
+
+#### confidence 不能拿来重压幅度
+
+踩过一次反向的坑。文档说 confidence 就是从概率分布的形状导出的：集中=高，分散=低。
+所以**低 confidence 不等于"Jev 不确定"，而等于"情绪本身就是混的"**。实测：
+
+| 台词 | 分布 | confidence |
+|---|---|---|
+| 「诶？你居然记得这个」 | surprised 1.00 | 0.99 |
+| 「这个功能有三种实现方式」 | neutral 0.96 | 0.95 |
+| 「……算了，我也说不清楚」 | sad 0.62 + neutral 0.30 | 0.54 |
+| 「哈，行吧。反正我也习惯了」 | sad 0.38 + relaxed 0.31 + angry 0.17 | **0.26** |
+
+最后一条是苦笑，三路混合，语义上完全正确 —— 苦笑就是难过 + 强装轻松 + 一点不甘。
+但最初按文档的三档法把低 confidence 压到 0.45 倍，结果情绪最丰富的句子演得最淡：
+分布已经用来做混合了，再拿同一个信号去衰减幅度，等于对复杂情绪双重惩罚。
+
+现在只保留 0.75~1.0 的轻度对冲。留一点是因为分布也可能在**对立**情绪之间摊平
+（happy 0.5 / angry 0.5），那种脸全给满会很怪。
 
 ### 自建服务
 
@@ -151,6 +189,53 @@ key 都等于公开**，开 DevTools 就能看到。所以这里的变量一律�
 
 不管走哪条路，代理返回前都会过一遍 `sanitizeAct()`：越界值就近夹紧、非法枚举丢弃。
 决策层再怎么抽风，角色也不会卡死。
+
+## 渐进式管线
+
+三个端点，前两个是渐进式的两段：
+
+| 端点 | 干什么 | 失败时 |
+|---|---|---|
+| `POST /api/speech` | 只出台词（输入层） | 抛错，角色说不出话 |
+| `POST /api/judge` | 判断这句话怎么演 | **不抛错**，退回基线表演 |
+| `POST /api/act` | 一次性拿完整脚本 | passthrough 模式和不支持渐进的调用方走这条 |
+
+前端拿到台词立刻 `runtime.play(baselineAct(speech))` 开口，同时不 await 地发出
+`/api/judge`；结果回来后 `runtime.upgrade(act)`。
+
+`TimelinePlayer.upgrade()` 保留已经走过的时间，把**还没触发**的节拍整体换掉，
+已经过去的一次性补齐立即应用。前提是台词和时长一致（`Runtime.upgrade` 里校验，
+不一致就放弃升级）—— 否则口型会和台词错位。
+
+判断层是增强而不是硬依赖：Jev 挂了、余额没了、超时，角色照样把话说完，
+只是表演停在基线。UI 左上角会亮一条降级提示，原因在右侧面板里。
+
+### 判断层要设超时（实测很重要）
+
+走 Vercel AI Gateway 的延迟方差很大。实测同一条请求连打 6 次：
+
+```
+1.03s   19.46s   1.03s   3.81s   2.09s   14.04s
+```
+
+多数落在 0.7~1s，但见过 19.5s。Jev 官方宣称比 LLM 快两个数量级，所以这几乎肯定是
+网关的排队/冷启动开销，不是模型本身。
+
+这里的要害不是慢，是**过期的判断没有价值**：一句台词只播 3~6 秒，`upgrade()` 只能改
+还没触发的节拍，判断回来时台词已经说完就什么都改不了，那次调用纯属浪费。
+所以 `JEV_TIMEOUT_MS` 默认 6000，超了就干净放弃、退回基线，
+重试也受同一个 deadline 约束（否则退避会把"及时放弃"的意义抵消掉）。
+
+### 同一时刻的表情拍会合并
+
+这是踩过一次的坑，值得单独说。`composeAct` 把 Jev 的概率分布摊成多个 `at` 相同的
+expression beat，本意是"这是一张混合的脸"。但渲染层如果对每一拍单独调
+`setExclusive`，后一拍会把前一拍清零，分布直接退化成 top-1 —— **混合表情等于白做，
+而且从返回的 JSON 上完全看不出来**（JSON 里两拍都在）。
+
+所以 `compileAct` 按解析后的时刻分组，同一时刻的若干拍合成一条带 `mix` 的事件，
+渲染层一次 `setBlend`。验证要看 `expressionManager.getValue()` 的真实权重，
+光看 Act IR 的 JSON 会漏掉这类问题。
 
 ## 渲染分层
 
