@@ -4,6 +4,7 @@ import { MockDecider } from './jev/mockDecider';
 import { HttpDecider, probeJev, type JevMeta, type JevStatus } from './jev/httpDecider';
 import type { ActDecider } from './jev/decider';
 import { baselineAct, fallbackAct, type ActScript } from './act/schema';
+import { isTestCommand, parseTestCommand } from './jev/testCommand';
 import './App.css';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/Sendagaya_Shino.vrm`;
@@ -116,6 +117,28 @@ export default function App() {
     const history = turns.slice(-6);
     const ctx = { history };
     setTurns((t) => [...t, { role: 'user', text }]);
+
+    // 测试指令：跳过 DeepSeek 和真实 Jev，用合成答案走同一份 composeAct。
+    // 不花钱、不等网络、结果可复现。
+    if (isTestCommand(text)) {
+      const cmd = parseTestCommand(text);
+      if (cmd) {
+        setLastAct(cmd.act);
+        setJevMeta(cmd.meta);
+        const compiled = rt.play(cmd.act);
+        setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
+      } else {
+        setTurns((t) => [
+          ...t,
+          {
+            role: 'character',
+            text: '测试指令没看懂。用法：测试: 开心 90%　或　测试: 难过 40% 放松 30% | 自定义台词',
+          },
+        ]);
+      }
+      setBusy(false);
+      return;
+    }
 
     const decider = deciderRef.current;
 
@@ -255,7 +278,7 @@ export default function App() {
         <div className="composer">
           <textarea
             value={input}
-            placeholder="说点什么…（Enter 发送，Shift+Enter 换行）"
+            placeholder="说点什么…　调试用「测试: 开心 90%」跳过模型直接看表情"
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
