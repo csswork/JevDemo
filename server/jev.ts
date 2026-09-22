@@ -1,10 +1,10 @@
-import type { ActScript } from '../src/act/schema';
-import { buildQuestions, composeAct, type JevMeta, type JevPayload } from '../src/act/fromJev';
+import type { ActScript } from '../src/act/schema.ts';
+import { buildQuestions, composeAct, type JevMeta, type JevPayload } from '../src/act/fromJev.ts';
 
 /** JevStation 包一层 data，Vercel / TypeSafe 直接放顶层 */
 type JevResponse = JevPayload & { data?: JevPayload };
 
-export type { JevMeta } from '../src/act/fromJev';
+export type { JevMeta } from '../src/act/fromJev.ts';
 
 /**
  * Jev 适配层 —— 判断层。

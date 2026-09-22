@@ -1,4 +1,4 @@
-import type { ActScript, Emotion, GazeTarget, PostureId } from './schema';
+import type { ActScript, Emotion, GazeTarget, PostureId } from './schema.ts';
 
 /**
  * Jev 协议层：问题集的定义，以及"类型化答案 → Act IR"的合成。

@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import type { Connect, Plugin } from 'vite';
 import { loadEnv } from 'vite';
-import { baselineAct, sanitizeAct, type ActScript } from '../src/act/schema';
-import { detectBackend, judgePerformance, type JevBackend, type JevMeta } from './jev';
-import { writeSpeech } from './deepseek';
+import { baselineAct, sanitizeAct, type ActScript } from '../src/act/schema.ts';
+import { detectBackend, judgePerformance, type JevBackend, type JevMeta } from './jev.ts';
+import { writeSpeech } from './deepseek.ts';
 
 /**
  * Jev 决策层的服务端代理。
