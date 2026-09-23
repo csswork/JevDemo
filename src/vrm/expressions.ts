@@ -205,6 +205,12 @@ export class ExpressionLayer {
     this.flicks.push({ key, peak: peak * (this.ceiling[emo] ?? 1), duration, t: 0 });
   }
 
+  /** 某个情绪当前实际生效的权重（语义层面，已含 ceiling） */
+  weightOf(emo: Emotion): number {
+    const key = this.resolved.get(emo);
+    return key ? (this.current.get(key) ?? 0) : 0;
+  }
+
   setCeiling(emo: Emotion, value: number) {
     this.ceiling[emo] = Math.max(0, Math.min(1, value));
   }

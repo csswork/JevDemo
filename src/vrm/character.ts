@@ -8,6 +8,7 @@ import { GestureLayer, vrmMetaVersion } from './gestures';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer } from './expressions';
 import { LipSyncLayer } from './lipsync';
+import { ReachLayer } from './reach';
 
 /**
  * 角色控制器 —— Act IR 的消费端。
@@ -26,6 +27,7 @@ export class Character {
   readonly gaze: GazeLayer;
   readonly expression = new ExpressionLayer();
   readonly lipsync = new LipSyncLayer();
+  readonly reach = new ReachLayer();
 
   private acc = new PoseAccumulator();
   /** 调试开关：关掉后只跑 vrm.update，用于隔离"是我的层还是引擎本身"的问题 */
@@ -71,6 +73,7 @@ export class Character {
 
     this.expression.bind(vrm);
     this.lipsync.bind(vrm);
+    this.reach.bind(vrm, metaVersion);
 
     const hips = vrm.humanoid.getNormalizedBoneNode('hips');
     if (hips) this.hipsRest.copy(hips.position);
@@ -144,6 +147,14 @@ export class Character {
       this.gesture.update(dt, this.acc);
       this.gaze.update(dt, vrm, this.acc);
       this.acc.flush(vrm);
+      // IK 必须在 FK 写进骨骼之后跑：它要读 FK 姿势作为混合的起点，
+      // 也要读已经带上点头/歪头的头部位置作为目标的挂点
+      this.reach.apply(this.gesture.activeReach());
+    }
+
+    // 动作的表情节奏只放大 Jev 已经选中的情绪，不引入新情绪
+    for (const [emo, peak, dur] of this.gesture.takeAccents()) {
+      if (this.expression.weightOf(emo) > 0.15) this.expression.flick(emo, peak, dur);
     }
 
     this.expression.update(dt, vrm);

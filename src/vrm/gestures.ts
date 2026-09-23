@@ -1,6 +1,8 @@
 import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { GestureId } from '../act/schema';
 import { PoseAccumulator, deg, smoothstep } from './pose';
+import type { ActiveReach, ReachSpec } from './reach';
+import type { Emotion } from '../act/schema';
 
 /**
  * 程序化手势库。
@@ -32,6 +34,14 @@ export interface GestureClip {
   fadeIn: number;
   fadeOut: number;
   tracks: BoneTrack[];
+  /** 手到脸的 IK 目标。有它时手臂由 IK 求解，tracks 只管头、胸、肩 */
+  reach?: ReachSpec;
+  /**
+   * 表情节奏：[时刻, 情绪, 峰值, 时长]。
+   * 只**放大 Jev 已经选中的情绪**（该情绪当前权重 > 0.15 才触发），
+   * 不会引入新情绪 —— 情绪是什么仍然由 Jev 决定，动作只负责给它加上节奏。
+   */
+  accents?: Array<[number, Emotion, number, number]>;
 }
 
 const clip = (
@@ -67,59 +77,71 @@ export const GESTURE_CLIPS: Record<GestureId, GestureClip> = {
   //   4. 掌心到位不等于手势对：手贴脸颊的掌心误差只有 0.005，手指却往上张开
   //      挡住了眼睛。又单独搜了一轮手腕，约束指尖不许高过眼睛。
 
-  /** 掩嘴笑：右手虚掩嘴前，脸还露着；配合胸腔的轻微抖动 */
-  cover_mouth_laugh: clip(2.8, [
-    {
-      bone: 'rightUpperArm',
-      keys: [
-        [0, 0, 0, 0],
-        [0.5, 0, 85, -60],
-        [2.2, 0, 85, -60],
-        [2.8, 0, 0, 0],
-      ],
+  /**
+   * 掩嘴笑 —— 第一个改成 IK 驱动的动作。
+   *
+   * 手臂没有任何关节角度，只描述"掌心去哪、手怎么朝向"，由 ReachLayer 每帧求解。
+   * tracks 只管头、胸、肩这些 IK 不碰的部分。
+   *
+   * 节奏上刻意错开：头先歪（0.0s 起），手随后到（0.05s 起、0.62s 到位），
+   * 放手比抬手更慢（撤回 0.7s）。胸腔的抖动、手的颤动、表情的脉冲三者同频，
+   * 笑起来才是一个整体而不是三个各自在动的零件。
+   */
+  cover_mouth_laugh: {
+    duration: 2.7,
+    fadeIn: 0.2,
+    fadeOut: 0.5,
+    tracks: [
+      {
+        bone: 'head',
+        keys: [
+          [0, 0, 0, 0],
+          [0.35, 6, -5, 9],
+          [2.0, 6, -5, 9],
+          [2.6, 0, 0, 0],
+        ],
+      },
+      {
+        bone: 'rightShoulder',
+        keys: [
+          [0, 0, 0, 0],
+          [0.4, 0, 0, -4],
+          [1.95, 0, 0, -4],
+          [2.6, 0, 0, 0],
+        ],
+      },
+      // 笑的时候胸腔会抖，和下面的手部颤动、表情脉冲同频（约 2.8Hz）
+      {
+        bone: 'chest',
+        keys: [
+          [0, 0, 0, 0],
+          [0.55, 2.2, 0, 0],
+          [0.73, 0.4, 0, 0],
+          [0.91, 2.2, 0, 0],
+          [1.09, 0.4, 0, 0],
+          [1.27, 1.8, 0, 0],
+          [1.45, 0.5, 0, 0],
+          [1.63, 1.2, 0, 0],
+          [2.6, 0, 0, 0],
+        ],
+      },
+    ],
+    reach: {
+      palmOffset: [-0.005, -0.015, 0.13],
+      fingerDir: [0.45, 0.88, 0.05],
+      palmNormal: [0, 0, -1],
+      pole: [-0.25, -0.35, 0.1],
+      arc: 0.1,
+      times: [0.05, 0.62, 1.95, 2.65],
+      curl: [18, 22, 14],
+      bob: { amp: 0.004, hz: 2.8 },
     },
-    {
-      bone: 'rightLowerArm',
-      keys: [
-        [0, 0, 0, 0],
-        [0.5, 0, 130, -35],
-        [2.2, 0, 130, -35],
-        [2.8, 0, 0, 0],
-      ],
-    },
-    {
-      bone: 'rightHand',
-      keys: [
-        [0, 0, 0, 0],
-        [0.5, -16, 0, -18],
-        [2.2, -16, 0, -18],
-        [2.8, 0, 0, 0],
-      ],
-    },
-    {
-      bone: 'head',
-      keys: [
-        [0, 0, 0, 0],
-        [0.55, 6, -4, 8],
-        [2.2, 6, -4, 8],
-        [2.8, 0, 0, 0],
-      ],
-    },
-    // 笑的时候胸腔会抖。幅度只有 2 度，但去掉之后就只是"把手放在嘴边"
-    {
-      bone: 'chest',
-      keys: [
-        [0, 0, 0, 0],
-        [0.7, 2.2, 0, 0],
-        [0.88, 0.4, 0, 0],
-        [1.06, 2.2, 0, 0],
-        [1.24, 0.4, 0, 0],
-        [1.42, 1.8, 0, 0],
-        [1.6, 0.6, 0, 0],
-        [2.8, 0, 0, 0],
-      ],
-    },
-  ]),
+    accents: [
+      [0.55, 'happy', 0.12, 0.25],
+      [0.91, 'happy', 0.12, 0.25],
+      [1.27, 'happy', 0.09, 0.25],
+    ],
+  },
 
   /** 捂嘴惊讶：同样到嘴前，但进得快、按得实，头微微后仰 */
   cover_mouth_gasp: clip(2.3, [
@@ -861,6 +883,8 @@ interface ActiveGesture {
   time: number;
   weight: number;
   speed: number;
+  /** 这次触发的 IK 状态（接近起点等），每次 play 重建 */
+  reachState: ActiveReach['state'];
 }
 
 /**
@@ -890,9 +914,10 @@ export class GestureLayer {
       existing.time = 0;
       existing.weight = weight;
       existing.speed = speed;
+      existing.reachState = {};
       return;
     }
-    this.active.push({ clip: c, id, time: 0, weight, speed });
+    this.active.push({ clip: c, id, time: 0, weight, speed, reachState: {} });
   }
 
   clear() {
@@ -904,10 +929,26 @@ export class GestureLayer {
     const c = GESTURE_CLIPS[id];
     if (!c) return;
     this.active.length = 0;
-    // 取 fadeIn 之后、fadeOut 之前的中点，那里是姿势最完整的一帧
-    const t = (c.fadeIn + (c.duration - c.fadeOut)) / 2;
-    this.active.push({ clip: c, id, time: t, weight: 1, speed: 1 });
+    // 取姿势最完整的一帧：有 IK 的取保持段中点，否则取 fadeIn 与 fadeOut 之间的中点
+    const t = c.reach
+      ? (c.reach.times[1] + c.reach.times[2]) / 2
+      : (c.fadeIn + (c.duration - c.fadeOut)) / 2;
+    this.active.push({ clip: c, id, time: t, weight: 1, speed: 1, reachState: {} });
     this.frozen = true;
+  }
+
+  /** 当前需要 IK 求解的手势（同一时刻只取一个，右手只有一只） */
+  activeReach(): ActiveReach | null {
+    const a = this.active.find((g) => g.clip.reach);
+    return a ? { spec: a.clip.reach!, time: a.time, state: a.reachState } : null;
+  }
+
+  /** 本帧新越过的表情节奏点，由 Character 转交给表情层 */
+  private pendingAccents: Array<[Emotion, number, number]> = [];
+  takeAccents() {
+    const out = this.pendingAccents;
+    this.pendingAccents = [];
+    return out;
   }
 
   get activeIds(): GestureId[] {
@@ -917,7 +958,11 @@ export class GestureLayer {
   update(dt: number, acc: PoseAccumulator) {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const a = this.active[i];
+      const prev = a.time;
       if (!this.frozen) a.time += dt * a.speed;
+      for (const [t, emo, peak, dur] of a.clip.accents ?? []) {
+        if (prev < t && a.time >= t) this.pendingAccents.push([emo, peak, dur]);
+      }
       if (a.time >= a.clip.duration) {
         this.active.splice(i, 1);
         continue;
