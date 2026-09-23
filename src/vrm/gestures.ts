@@ -127,13 +127,15 @@ export const GESTURE_CLIPS: Record<GestureId, GestureClip> = {
       },
     ],
     reach: {
-      palmOffset: [-0.005, -0.015, 0.13],
-      fingerDir: [0.45, 0.88, 0.05],
+      // 掌心在嘴唇前，手指斜向上指向对侧脸颊 —— 指尖朝正上方会直冲鼻梁。
+      // 接触约束只用来兜底，姿势本身就应该避开鼻子
+      palmOffset: [-0.012, -0.028, 0.125],
+      fingerDir: [0.72, 0.68, 0.06],
       palmNormal: [0, 0, -1],
       pole: [-0.25, -0.35, 0.1],
       arc: 0.1,
       times: [0.05, 0.62, 1.95, 2.65],
-      curl: [18, 22, 14],
+      curl: [26, 32, 22],
       bob: { amp: 0.004, hz: 2.8 },
     },
     accents: [
@@ -924,17 +926,30 @@ export class GestureLayer {
     this.active.length = 0;
   }
 
-  /** 预览：跳到 clip 的保持段并冻结，方便逐个肉眼验收。 */
-  preview(id: GestureId) {
-    const c = GESTURE_CLIPS[id];
-    if (!c) return;
-    this.active.length = 0;
-    // 取姿势最完整的一帧：有 IK 的取保持段中点，否则取 fadeIn 与 fadeOut 之间的中点
-    const t = c.reach
-      ? (c.reach.times[1] + c.reach.times[2]) / 2
-      : (c.fadeIn + (c.duration - c.fadeOut)) / 2;
-    this.active.push({ clip: c, id, time: t, weight: 1, speed: 1, reachState: {} });
-    this.frozen = true;
+  /**
+   * 预览用：把正在播的手势跳到指定时刻。手势已经播完的话，按原 id 重新挂上。
+   * 往回拖进接近段时沿用这次触发记录的起点，轨迹和正常播放完全一致。
+   */
+  seek(id: GestureId, t: number) {
+    let a = this.active.find((g) => g.id === id);
+    if (!a) {
+      const c = GESTURE_CLIPS[id];
+      if (!c) return;
+      a = { clip: c, id, time: 0, weight: 1, speed: 1, reachState: {} };
+      this.active.push(a);
+    }
+    a.time = Math.max(0, Math.min(a.clip.duration - 1e-3, t));
+  }
+
+  setSpeed(speed: number) {
+    for (const a of this.active) a.speed = speed;
+  }
+
+  /** 预览面板读取：当前手势的时间、时长，以及 IK 的阶段分界 */
+  info(): { id: GestureId; time: number; duration: number; phases?: number[] } | null {
+    const a = this.active[0];
+    if (!a) return null;
+    return { id: a.id, time: a.time, duration: a.clip.duration, phases: a.clip.reach?.times };
   }
 
   /** 当前需要 IK 求解的手势（同一时刻只取一个，右手只有一只） */
@@ -960,8 +975,10 @@ export class GestureLayer {
       const a = this.active[i];
       const prev = a.time;
       if (!this.frozen) a.time += dt * a.speed;
-      for (const [t, emo, peak, dur] of a.clip.accents ?? []) {
-        if (prev < t && a.time >= t) this.pendingAccents.push([emo, peak, dur]);
+      if (!this.frozen) {
+        for (const [t, emo, peak, dur] of a.clip.accents ?? []) {
+          if (prev < t && a.time >= t) this.pendingAccents.push([emo, peak, dur]);
+        }
       }
       if (a.time >= a.clip.duration) {
         this.active.splice(i, 1);

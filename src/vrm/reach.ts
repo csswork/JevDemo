@@ -49,8 +49,8 @@ export interface ReachSpec {
 export interface ActiveReach {
   spec: ReachSpec;
   time: number;
-  /** 每次触发一个新对象，用来存这次触发的起点 */
-  state: { w0?: THREE.Vector3 };
+  /** 每次触发一个新对象，用来存这次触发的起点和滤波状态 */
+  state: { w0?: THREE.Vector3; curl?: number[] };
 }
 
 const FINGERS = ['Index', 'Middle', 'Ring', 'Little'] as const;
@@ -99,6 +99,9 @@ class FaceDepthMap {
 
   /** 把一个三角形（头部局部坐标）光栅化进深度图，只保留每格最大的 z */
   raster(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) {
+    // 只收头部前半侧。否则前脸三角形缺失的格子会落进后脑勺的值（-0.1），
+    // 那一格就等于"没有脸"，手指可以直接穿过去
+    if (a.z + b.z + c.z < 0) return;
     const minX = Math.max(0, Math.floor((Math.min(a.x, b.x, c.x) - this.x0) / this.cell));
     const maxX = Math.min(this.nx - 1, Math.ceil((Math.max(a.x, b.x, c.x) - this.x0) / this.cell));
     const minY = Math.max(0, Math.floor((Math.min(a.y, b.y, c.y) - this.y0) / this.cell));
@@ -119,6 +122,35 @@ class FaceDepthMap {
         const z = w1 * a.z + w2 * b.z + w3 * c.z;
         const k = iy * this.nx + ix;
         if (z > this.depth[k]) this.depth[k] = z;
+      }
+    }
+  }
+
+  /**
+   * 补洞：三角形之间偶尔会漏格，空格子取八邻域里的最大值。
+   * 只补被已有格子包围的洞，不向外扩张脸的轮廓。
+   */
+  fillHoles(passes = 2) {
+    const { nx, ny } = this;
+    for (let p = 0; p < passes; p++) {
+      const src = this.depth.slice();
+      for (let iy = 1; iy < ny - 1; iy++) {
+        for (let ix = 1; ix < nx - 1; ix++) {
+          const k = iy * nx + ix;
+          if (Number.isFinite(src[k])) continue;
+          let best = -Infinity;
+          let filled = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const v = src[(iy + dy) * nx + ix + dx];
+              if (Number.isFinite(v)) {
+                filled++;
+                if (v > best) best = v;
+              }
+            }
+          }
+          if (filled >= 5) this.depth[k] = best;
+        }
       }
     }
   }
@@ -186,10 +218,14 @@ export class ReachLayer {
   /**
    * 在静止姿态下，把"主要绑定在头骨上的三角形"栅格化成深度图。
    * 用绑定关系而不是网格名字来挑三角形 —— 换个模型网格名不一样也能用。
+   * 下巴在颈骨上、眼球在眼球骨骼上，所以这几根骨骼的权重合计过半就算。
    */
   private buildFaceDepth(vrm: VRM) {
     this.face = new FaceDepthMap();
     const rawHead = vrm.humanoid.getRawBoneNode('head');
+    const rawNeck = vrm.humanoid.getRawBoneNode('neck');
+    // 眼球是单独的网格、蒙皮在眼球骨骼上。不算进来的话两眼位置是空洞
+    const rawEyes = [vrm.humanoid.getRawBoneNode('leftEye'), vrm.humanoid.getRawBoneNode('rightEye')];
     const normHead = vrm.humanoid.getNormalizedBoneNode('head');
     if (!rawHead || !normHead) return;
     const headPos = normHead.getWorldPosition(new THREE.Vector3());
@@ -211,6 +247,9 @@ export class ReachLayer {
       const mesh = obj as THREE.SkinnedMesh;
       if (!mesh.isSkinnedMesh || !mesh.skeleton) return;
       const headIdx = mesh.skeleton.bones.indexOf(rawHead as THREE.Bone);
+      // 下巴和下颌的蒙皮主要在颈骨上（实测权重 0.78），不算进来下巴就是空的
+      const neckIdx = rawNeck ? mesh.skeleton.bones.indexOf(rawNeck as THREE.Bone) : -1;
+      const eyeIdx = rawEyes.map((e) => (e ? mesh.skeleton.bones.indexOf(e as THREE.Bone) : -1));
       if (headIdx < 0) return;
       const g = mesh.geometry;
       const si = g.getAttribute('skinIndex');
@@ -219,7 +258,10 @@ export class ReachLayer {
 
       const onHead = (v: number) => {
         let w = 0;
-        for (let k = 0; k < 4; k++) if (si.getComponent(v, k) === headIdx) w += sw.getComponent(v, k);
+        for (let k = 0; k < 4; k++) {
+          const bi = si.getComponent(v, k);
+          if (bi === headIdx || bi === neckIdx || eyeIdx.includes(bi)) w += sw.getComponent(v, k);
+        }
         return w > 0.5;
       };
       const index = g.getIndex();
@@ -232,6 +274,7 @@ export class ReachLayer {
         this.face.raster(local(mesh, i0, va), local(mesh, i1, vb), local(mesh, i2, vc));
       }
     });
+    this.face.fillHoles();
     this.debug.faceTriangles = this.face.triangles;
   }
 
@@ -239,7 +282,7 @@ export class ReachLayer {
    * 在 FK 姿势已经写进骨骼之后调用（Character.update 里 acc.flush 之后）。
    * 没有活动的 reach 时什么都不做。
    */
-  apply(reach: ActiveReach | null) {
+  apply(reach: ActiveReach | null, dt = 1 / 60, snap = false) {
     const vrm = this.vrm;
     this.debug.weight = 0;
     this.debug.pushed = 0;
@@ -378,13 +421,29 @@ export class ReachLayer {
       upper.updateMatrixWorld(true);
     };
 
+    // ---- 手指：每根单独弯曲 ----
+    const chains = this.fingerChains(vrm);
+    const curlQ = new THREE.Quaternion();
+    const zAxis = new THREE.Vector3(0, 0, 1);
+    /** 给某根手指（0..3 = 食指..小指）设弯曲比例，s=1 是 spec 的完整弯曲，负值是略微反翘 */
+    const applyCurl = (finger: number, scale: number) => {
+      for (const fb of fingerBones) {
+        if (fb.finger !== finger) continue;
+        const rad =
+          THREE.MathUtils.degToRad(spec.curl[fb.seg] * fb.spread * weight * orient * scale) *
+          this.axisFlip;
+        fb.bone.quaternion.copy(fk.fingers[fb.index]).multiply(curlQ.setFromAxisAngle(zAxis, rad));
+      }
+      hand.updateMatrixWorld(true);
+    };
+
     /**
-     * 最深的手指穿透量（米）。检查每根手指的三个关节，再外推一个指尖 ——
+     * 一条骨骼链的最深穿透（米）。检查每个关节，再外推一个指尖 ——
      * VRM 没有指尖骨骼，远节指骨只到最后一个关节，指尖要再往外延一点。
      */
-    const penetration = () => {
+    const p = new THREE.Vector3();
+    const chainPenetration = (chain: THREE.Object3D[]) => {
       let worst = 0;
-      const p = new THREE.Vector3();
       const check = (world: THREE.Vector3) => {
         p.copy(world).sub(headPos).applyQuaternion(toHead);
         const z = this.face.surface(p.x, p.y);
@@ -393,21 +452,58 @@ export class ReachLayer {
         if (p.z < z - 0.05) return;
         worst = Math.max(worst, z + this.contactMargin - p.z);
       };
-      for (const chain of this.fingerChains(vrm)) {
-        const pts = chain.map((n) => n.getWorldPosition(new THREE.Vector3()));
-        pts.forEach(check);
-        if (pts.length >= 2) {
-          const n = pts.length;
-          check(pts[n - 1].clone().lerp(pts[n - 2], -0.8));
-        }
-      }
+      const pts = chain.map((n) => n.getWorldPosition(new THREE.Vector3()));
+      pts.forEach(check);
+      if (pts.length >= 2) check(pts[pts.length - 1].clone().lerp(pts[pts.length - 2], -0.8));
       return worst;
+    };
+    const penetration = () => Math.max(0, ...chains.map((c) => chainPenetration(c.bones)));
+
+    /**
+     * 手指自适应（抓握 IK 的做法）：每根手指单独二分出"不穿模的最大弯曲"，
+     * 指尖刚好贴在脸表面。弯曲越大指尖越靠近掌心 —— 也就是越靠近脸 ——
+     * 所以穿透量随弯曲单调，二分是成立的。
+     *
+     * 二分只给出"允许的弯曲"，实际施加的值要经过时间滤波。不滤波的话，
+     * 手指刚碰到脸的那一帧允许值会骤降，实测指尖一帧跳 18mm（正常弯曲每帧 2~3mm）；
+     * 笑时手的颤动反复跨过接触边界，保持段里也有 5mm 的小跳。
+     * 滤波上下不对称：松开（避开穿模）快，60ms；弯回去慢，250ms。
+     * snap（拖时间轴时）直接用允许值，保证每一帧都是确定的结果。
+     */
+    const curlState = state.curl ?? (state.curl = []);
+    const adaptFingers = (commit: boolean) => {
+      chains.forEach((c) => {
+        if (c.finger < 0) return; // 拇指不参与弯曲
+        let allowed = 1;
+        applyCurl(c.finger, 1);
+        if (chainPenetration(c.bones) > 1e-4) {
+          let lo = -0.4;
+          let hi = 1;
+          for (let i = 0; i < 8; i++) {
+            const mid = (lo + hi) / 2;
+            applyCurl(c.finger, mid);
+            if (chainPenetration(c.bones) <= 1e-4) lo = mid;
+            else hi = mid;
+          }
+          allowed = lo;
+        }
+        const prev = curlState[c.finger];
+        let applied = allowed;
+        if (!snap && prev !== undefined) {
+          const tau = allowed < prev ? 0.06 : 0.25;
+          applied = prev + (allowed - prev) * (1 - Math.exp(-dt / tau));
+        }
+        if (commit) curlState[c.finger] = applied;
+        applyCurl(c.finger, applied);
+      });
     };
 
     // ---- 求解 + 接触约束 ----
-    // 陷进脸就沿脸的法线把掌心目标往外推，再整套重解。三轮足够收敛：
-    // 手是刚体地往外平移，穿透量基本线性下降。
+    // 先让手指自己让开；只有手指伸直了还穿（通常是指根或拇指），才把整只手往外推。
+    // 第一版只有"整只手外推"这一招：只是指尖戳到了鼻子，却把手掌也推离嘴唇 26mm，
+    // 手悬空在脸前面，不像捂嘴。
     solve(palmTarget);
+    adaptFingers(false);
     let pushed = 0;
     for (let iter = 0; iter < 3; iter++) {
       const pen = penetration();
@@ -415,34 +511,43 @@ export class ReachLayer {
       palmTarget.addScaledVector(faceForward, pen);
       pushed += pen;
       solve(palmTarget);
+      adaptFingers(false);
     }
+    // 最终姿势再跑一遍，这次把滤波状态写回去（中间几轮只是试探）
+    adaptFingers(true);
     this.debug.pushed = pushed;
     this.debug.penetration = penetration();
     this.debug.palmTarget.copy(palmTarget);
   }
 
   private fingerBones(vrm: VRM) {
-    const out: Array<{ bone: THREE.Object3D; seg: number; spread: number }> = [];
+    const out: Array<{
+      bone: THREE.Object3D;
+      finger: number;
+      seg: number;
+      spread: number;
+      index: number;
+    }> = [];
     FINGERS.forEach((f, fi) => {
       SEGMENTS.forEach((sg, si) => {
         const bone = vrm.humanoid.getNormalizedBoneNode(`right${f}${sg}` as VRMHumanBoneName);
         // 小指比食指弯得多一点，更像放松的手
-        if (bone) out.push({ bone, seg: si, spread: 1 + fi * 0.12 });
+        if (bone) out.push({ bone, finger: fi, seg: si, spread: 1 + fi * 0.12, index: out.length });
       });
     });
     return out;
   }
 
-  /** 每根手指（含拇指）从根到末节的骨骼链，用于穿透检测 */
+  /** 每根手指的骨骼链，用于穿透检测。finger = -1 是拇指（不参与弯曲自适应） */
   private fingerChains(vrm: VRM) {
-    const chains: THREE.Object3D[][] = [];
-    for (const f of ['Thumb', ...FINGERS]) {
+    const chains: Array<{ finger: number; bones: THREE.Object3D[] }> = [];
+    ['Thumb', ...FINGERS].forEach((f, i) => {
       const segs = f === 'Thumb' ? ['Metacarpal', 'Proximal', 'Distal'] : SEGMENTS;
-      const chain = segs
+      const bones = segs
         .map((sg) => vrm.humanoid.getNormalizedBoneNode(`right${f}${sg}` as VRMHumanBoneName))
         .filter((n): n is THREE.Object3D => !!n);
-      if (chain.length) chains.push(chain);
-    }
+      if (bones.length) chains.push({ finger: i - 1, bones });
+    });
     return chains;
   }
 }

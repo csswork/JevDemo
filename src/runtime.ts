@@ -144,15 +144,59 @@ export class Runtime {
     g.play(id as never, 1, 1);
   }
 
-  /** 预览：跳到保持段并定住，用于肉眼验收姿势。 */
-  previewGesture(id: string) {
-    this.character?.gesture.preview(id as never);
+  // ---- 测试预览播放器（仅 dev 面板用）----
+  private preview: { id: string; speed: number; loop: boolean } | null = null;
+
+  /** 从当前姿势开始播放，可以慢放。 */
+  playPreview(id: string, speed: number, loop: boolean) {
+    const g = this.character?.gesture;
+    if (!g) return;
+    this.preview = { id, speed, loop };
+    g.frozen = false;
+    g.clear();
+    g.play(id as never, 1, speed);
+  }
+
+  setPreviewSpeed(speed: number) {
+    if (this.preview) this.preview.speed = speed;
+    this.character?.gesture.setSpeed(speed);
+  }
+
+  setPreviewLoop(loop: boolean) {
+    if (this.preview) this.preview.loop = loop;
+  }
+
+  setPreviewPaused(paused: boolean) {
+    const g = this.character?.gesture;
+    if (!g || !this.preview) return;
+    // 已经播完了再按播放：从头开始
+    if (!paused && !g.info()) {
+      this.playPreview(this.preview.id, this.preview.speed, this.preview.loop);
+      return;
+    }
+    g.frozen = paused;
+  }
+
+  /** 拖时间轴：暂停并跳到指定时刻 */
+  seekPreview(t: number) {
+    const g = this.character?.gesture;
+    if (!g || !this.preview) return;
+    g.frozen = true;
+    g.seek(this.preview.id as never, t);
+    g.setSpeed(this.preview.speed);
+  }
+
+  previewState() {
+    const g = this.character?.gesture;
+    const info = g?.info() ?? null;
+    return { id: this.preview?.id ?? null, info, paused: !!g?.frozen };
   }
 
   /** 解除冻结，让当前手势正常播完。 */
   releaseGesture() {
     const g = this.character?.gesture;
     if (!g) return;
+    this.preview = null;
     g.frozen = false;
     g.clear();
   }
@@ -203,6 +247,9 @@ export class Runtime {
 
     for (const ev of this.player.update(dt)) {
       character.apply(ev);
+    }
+    if (this.preview?.loop && !character.gesture.frozen && !character.gesture.info()) {
+      character.gesture.play(this.preview.id as never, 1, this.preview.speed);
     }
     character.layersEnabled = this.layersEnabled;
     if (this.player.isPlaying) this.elapsed += dt;

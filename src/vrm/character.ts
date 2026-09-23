@@ -149,7 +149,8 @@ export class Character {
       this.acc.flush(vrm);
       // IK 必须在 FK 写进骨骼之后跑：它要读 FK 姿势作为混合的起点，
       // 也要读已经带上点头/歪头的头部位置作为目标的挂点
-      this.reach.apply(this.gesture.activeReach());
+      // 预览里拖时间轴时手势是冻结的，这时要精确值而不是滤波后的值
+      this.reach.apply(this.gesture.activeReach(), dt, this.gesture.frozen);
     }
 
     // 动作的表情节奏只放大 Jev 已经选中的情绪，不引入新情绪

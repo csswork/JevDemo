@@ -556,3 +556,38 @@ input[type='range']::-webkit-slider-thumb {
   padding-top: 6px;
   border-top: 1px dashed var(--line);
 }
+
+/* ---------- 预览播放器 ---------- */
+.player { padding: 0 20px 6px; }
+.player .hint { padding: 6px 0 4px; }
+.player-bar { display: flex; align-items: center; gap: 10px; }
+.player-bar .mini { margin-left: 0; min-width: 44px; }
+.speeds { display: flex; gap: 3px; }
+.speeds button {
+  padding: 2px 7px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+.speeds button.on { border-color: var(--accent); color: var(--accent); }
+.player-bar .hold { margin-left: auto; }
+.timeline { margin-top: 10px; }
+.track-wrap { position: relative; padding-top: 4px; }
+.track-wrap input[type='range'] { width: 100%; position: relative; z-index: 1; background: transparent; }
+.phase-bands { position: absolute; left: 0; right: 0; top: 11px; height: 5px; pointer-events: none; }
+.phase-bands i { position: absolute; top: 0; height: 100%; border-radius: 2px; }
+.phase-bands .in { background: rgba(125, 211, 192, 0.35); }
+.phase-bands .hold { background: rgba(125, 211, 192, 0.12); }
+.phase-bands .out { background: rgba(217, 164, 65, 0.35); }
+.timeline-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: #6d7789;
+}

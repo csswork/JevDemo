@@ -37,8 +37,15 @@ export default function App() {
   const [jevMeta, setJevMeta] = useState<JevMeta | null>(null);
   const [jevError, setJevError] = useState<string | null>(null);
   // 测试预览（仅 dev）
-  const [previewHold, setPreviewHold] = useState(true);
   const [previewing, setPreviewing] = useState<string | null>(null);
+  const [previewSpeed, setPreviewSpeed] = useState(0.25);
+  const [previewLoop, setPreviewLoop] = useState(true);
+  const [previewClock, setPreviewClock] = useState<{
+    time: number;
+    duration: number;
+    phases?: number[];
+    paused: boolean;
+  } | null>(null);
 
 
   useEffect(() => {
@@ -115,10 +122,27 @@ export default function App() {
     const ch = rt?.character;
     if (!rt || !ch) return;
     ch.expression.setBlend(pair, 0.2);
-    if (previewHold) rt.previewGesture(id);
-    else rt.testGesture(id);
+    rt.playPreview(id, previewSpeed, previewLoop);
     setPreviewing(id);
   };
+
+  // 预览播放器的时间轴：动画在 React 之外跑，这里 20Hz 拉一次状态就够了
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const timer = setInterval(() => {
+      const st = runtimeRef.current?.previewState();
+      if (!st?.id) {
+        setPreviewClock(null);
+        return;
+      }
+      setPreviewClock((prev) =>
+        st.info
+          ? { time: st.info.time, duration: st.info.duration, phases: st.info.phases, paused: st.paused }
+          : prev && { ...prev, time: prev.duration, paused: true },
+      );
+    }, 50);
+    return () => clearInterval(timer);
+  }, []);
 
   const previewEmotion = (emo: Emotion) => {
     const ch = runtimeRef.current?.character;
@@ -129,6 +153,7 @@ export default function App() {
 
   const resetPreview = () => {
     const rt = runtimeRef.current;
+    setPreviewClock(null);
     rt?.releaseGesture();
     rt?.character?.expression.setBlend({ neutral: 1 }, 0.3);
     setPreviewing(null);
@@ -455,18 +480,7 @@ export default function App() {
             </div>
 
             <div className="preview-row">
-              <span className="preview-k">手势</span>
-              <label className="hold">
-                <input
-                  type="checkbox"
-                  checked={previewHold}
-                  onChange={(e) => {
-                    setPreviewHold(e.target.checked);
-                    if (!e.target.checked) runtimeRef.current?.releaseGesture();
-                  }}
-                />
-                定住
-              </label>
+              <span className="preview-k">手势 · 从当前姿势开始播</span>
             </div>
             <div className="chips">
               {HAND_GESTURES.map((g) => (
@@ -479,6 +493,72 @@ export default function App() {
                   {g.label}
                 </button>
               ))}
+            </div>
+
+            <div className="player">
+              <div className="player-bar">
+                <button
+                  className="mini"
+                  disabled={!previewing || !previewClock}
+                  onClick={() =>
+                    runtimeRef.current?.setPreviewPaused(!(previewClock?.paused ?? true))
+                  }
+                >
+                  {previewClock && !previewClock.paused ? '暂停' : '播放'}
+                </button>
+                <div className="speeds">
+                  {[0.1, 0.25, 0.5, 1].map((v) => (
+                    <button
+                      key={v}
+                      className={previewSpeed === v ? 'on' : ''}
+                      onClick={() => {
+                        setPreviewSpeed(v);
+                        runtimeRef.current?.setPreviewSpeed(v);
+                      }}
+                    >
+                      {v}×
+                    </button>
+                  ))}
+                </div>
+                <label className="hold">
+                  <input
+                    type="checkbox"
+                    checked={previewLoop}
+                    onChange={(e) => {
+                      setPreviewLoop(e.target.checked);
+                      runtimeRef.current?.setPreviewLoop(e.target.checked);
+                    }}
+                  />
+                  循环
+                </label>
+              </div>
+
+              {previewClock && (
+                <div className="timeline">
+                  <div className="track-wrap">
+                    {previewClock.phases && (
+                      <PhaseBands phases={previewClock.phases} duration={previewClock.duration} />
+                    )}
+                    <input
+                      type="range"
+                      min={0}
+                      max={previewClock.duration}
+                      step={1 / 120}
+                      value={Math.min(previewClock.time, previewClock.duration)}
+                      onChange={(e) => runtimeRef.current?.seekPreview(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="timeline-meta">
+                    <span>
+                      {previewClock.time.toFixed(2)}s / {previewClock.duration.toFixed(2)}s
+                    </span>
+                    <span>{phaseName(previewClock.time, previewClock.phases)}</span>
+                  </div>
+                </div>
+              )}
+              <div className="hint">
+                拖动时间轴会暂停在那一帧；慢速 + 循环适合反复看过渡段。
+              </div>
             </div>
 
             <div className="preview-row">
@@ -506,6 +586,29 @@ export default function App() {
       </aside>
     </div>
   );
+}
+
+/** IK 手势的四个时刻 → 接近 / 保持 / 撤回 三段，画在时间轴底下 */
+function PhaseBands({ phases, duration }: { phases: number[]; duration: number }) {
+  const [t0, t1, t2, t3] = phases;
+  const pct = (t: number) => `${(t / duration) * 100}%`;
+  return (
+    <div className="phase-bands">
+      <i className="in" style={{ left: pct(t0), width: pct(t1 - t0) }} />
+      <i className="hold" style={{ left: pct(t1), width: pct(t2 - t1) }} />
+      <i className="out" style={{ left: pct(t2), width: pct(t3 - t2) }} />
+    </div>
+  );
+}
+
+function phaseName(t: number, phases?: number[]) {
+  if (!phases) return '';
+  const [t0, t1, t2, t3] = phases;
+  if (t < t0) return '准备';
+  if (t < t1) return '接近';
+  if (t <= t2) return '保持';
+  if (t < t3) return '撤回';
+  return '回到待机';
 }
 
 function Track({ label, value, active }: { label: string; value: string; active?: boolean }) {
