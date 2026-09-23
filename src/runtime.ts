@@ -136,9 +136,25 @@ export class Runtime {
     return true;
   }
 
-  /** 单独试放一个手势，用于调 clip 参数。 */
+  /** 单独试放一个手势（正常速度播完）。 */
   testGesture(id: string) {
-    this.character?.gesture.play(id as never, 1, 1);
+    const g = this.character?.gesture;
+    if (!g) return;
+    g.frozen = false;
+    g.play(id as never, 1, 1);
+  }
+
+  /** 预览：跳到保持段并定住，用于肉眼验收姿势。 */
+  previewGesture(id: string) {
+    this.character?.gesture.preview(id as never);
+  }
+
+  /** 解除冻结，让当前手势正常播完。 */
+  releaseGesture() {
+    const g = this.character?.gesture;
+    if (!g) return;
+    g.frozen = false;
+    g.clear();
   }
 
   /** 直接让表情层演一个情绪，走完整通路（含换表情时的眨眼和微表情）。 */

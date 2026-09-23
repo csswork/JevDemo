@@ -1,4 +1,5 @@
 import type { ActScript, Emotion, GazeTarget, PostureId } from './schema.ts';
+import { pickGesture } from './gestureRules.ts';
 
 /**
  * Jev 协议层：问题集的定义，以及"类型化答案 → Act IR"的合成。
@@ -150,6 +151,8 @@ export interface JevMeta {
   gaze?: { choice: string; confidence: number };
   posture?: { choice: string; confidence: number };
   looksAway?: number;
+  /** 从上面几项推导出的手部动作（不是 Jev 直接回答的） */
+  gesture?: { id: string; label: string; score: number };
   /** JevStation 计 credit */
   credits?: { charged: number; remaining: number };
   /** Vercel AI Gateway 计美元 */
@@ -190,10 +193,12 @@ export function composeAct(
 
   // --- 强度：score 落在级别之间，直接当权重用 ---
   let intensity = 0.65;
+  let intensityRaw = 0.5;
   const inten = answers.intensity;
   if (isScore(inten)) {
     meta.intensity = { score: inten.score, confidence: inten.confidence };
     intensity = Math.max(0, Math.min(1, inten.score / (INTENSITY_LEVELS.length - 1)));
+    intensityRaw = intensity;
     // 最低给 0.3，否则"几乎看不出来"会变成完全没表情
     intensity = 0.3 + intensity * 0.7;
   }
@@ -263,6 +268,21 @@ export function composeAct(
     gaze.push({ at: { anchor: 'settle' }, target: 'camera' });
   }
 
+  // --- 手部动作：从情绪分布推导，不额外问 Jev ---
+  const probs = isChoice(emo) ? emo.probabilities : {};
+  const pick = pickGesture(probs, intensityRaw, looksAway);
+  const gestureTrack: ActScript['tracks']['gesture'] = [];
+  if (pick) {
+    meta.gesture = { id: pick.gesture.id, label: pick.gesture.label, score: +pick.score.toFixed(3) };
+    gestureTrack.push({
+      // start 类稍微晚一点点出手：情绪先上脸，手再跟上，才像是被触发的
+      at: pick.gesture.at === 'start' ? 0.15 : { anchor: 'mid' },
+      clip: pick.gesture.id,
+      weight: 1,
+      speed: 1,
+    });
+  }
+
   return {
     act: {
       speech: marked,
@@ -275,7 +295,7 @@ export function composeAct(
               : 0,
         arousal: intensity,
       },
-      tracks: { posture, expression, gesture: [], gaze },
+      tracks: { posture, expression, gesture: gestureTrack, gaze },
     },
     meta,
   };

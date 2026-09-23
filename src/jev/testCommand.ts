@@ -1,5 +1,5 @@
 import { composeAct, type Answers, type JevMeta } from '../act/fromJev';
-import { EMOTIONS, type ActScript, type Emotion } from '../act/schema';
+import { EMOTIONS, GESTURES, type ActScript, type Emotion, type GestureId } from '../act/schema';
 
 /**
  * 测试指令。
@@ -49,6 +49,35 @@ const ALIASES: Record<string, Emotion> = {
 
 const DEFAULT_SPEECH = '这是一句用来看表情的测试台词，长度大概够演完三个节拍。';
 
+/** 手势的中文别名。测试指令里可以直接写「掩嘴笑」。 */
+const GESTURE_ALIASES: Record<string, GestureId> = {
+  掩嘴笑: 'cover_mouth_laugh',
+  捂嘴笑: 'cover_mouth_laugh',
+  捂嘴: 'cover_mouth_gasp',
+  捂嘴惊讶: 'cover_mouth_gasp',
+  倒吸气: 'cover_mouth_gasp',
+  手贴脸: 'hand_to_cheek',
+  脸颊: 'hand_to_cheek',
+  害羞: 'hand_to_cheek',
+  托腮: 'hand_to_chin',
+  摸下巴: 'hand_to_chin',
+  思考: 'hand_to_chin',
+  摸后颈: 'rub_neck',
+  挠头: 'rub_neck',
+  尴尬: 'rub_neck',
+  抚胸: 'hand_on_chest',
+  松口气: 'hand_on_chest',
+  扶额: 'palm_forehead',
+  撑额头: 'palm_forehead',
+  无奈: 'palm_forehead',
+};
+
+function toGesture(word: string): GestureId | null {
+  const w = word.trim();
+  if ((GESTURES as readonly string[]).includes(w)) return w as GestureId;
+  return GESTURE_ALIASES[w] ?? null;
+}
+
 function toEmotion(word: string): Emotion | null {
   const w = word.trim().toLowerCase();
   if ((EMOTIONS as readonly string[]).includes(w)) return w as Emotion;
@@ -76,6 +105,17 @@ export function parseTestCommand(input: string): TestCommand | null {
   const [specPart, speechPart] = body.split(/[|｜]/, 2);
   const speech = speechPart?.trim() || DEFAULT_SPEECH;
 
+  // 先把手势名摘出来 —— 它不带百分比，剩下的才交给情绪解析
+  let gesture: GestureId | null = null;
+  const words = specPart.match(/[一-龥A-Za-z_]+/g) ?? [];
+  for (const w of words) {
+    const g = toGesture(w);
+    if (g) {
+      gesture = g;
+      break;
+    }
+  }
+
   // 「开心 90%」「happy 90%」「难过40%」都要能认
   const pairs: Array<[Emotion, number]> = [];
   const re = /([一-龥A-Za-z]+)\s*(\d{1,3})\s*%?/g;
@@ -84,7 +124,9 @@ export function parseTestCommand(input: string): TestCommand | null {
     const pct = Number(m[2]) / 100;
     if (emo && pct > 0) pairs.push([emo, Math.min(1, pct)]);
   }
-  if (pairs.length === 0) return null;
+  // 只写手势名也算合法：「测试: 掩嘴笑」
+  if (pairs.length === 0 && !gesture) return null;
+  if (pairs.length === 0) pairs.push(['neutral', 0.6]);
 
   // --- 构造一份合成的 Jev 答案 ---
   const probabilities: Record<string, number> = Object.fromEntries(
@@ -129,7 +171,13 @@ export function parseTestCommand(input: string): TestCommand | null {
   };
 
   const { act, meta } = composeAct(speech, answers);
-  const spec = pairs.map(([e, p]) => `${e} ${Math.round(p * 100)}%`).join(' + ');
+  if (gesture) {
+    act.tracks.gesture = [{ at: 0.35, clip: gesture, weight: 1, speed: 1 }];
+  }
+  const spec = [
+    ...pairs.map(([e, p]) => `${e} ${Math.round(p * 100)}%`),
+    ...(gesture ? [gesture] : []),
+  ].join(' + ');
   return {
     act,
     meta: { ...meta, backend: undefined },

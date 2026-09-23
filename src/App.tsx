@@ -5,6 +5,8 @@ import { HttpDecider, probeJev, type JevMeta, type JevStatus } from './jev/httpD
 import type { ActDecider } from './jev/decider';
 import { baselineAct, fallbackAct, type ActScript } from './act/schema';
 import { isTestCommand, parseTestCommand } from './jev/testCommand';
+import { HAND_GESTURES } from './act/gestureRules';
+import { EMOTIONS, type Emotion } from './act/schema';
 import './App.css';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/Sendagaya_Shino.vrm`;
@@ -34,6 +36,9 @@ export default function App() {
   const [jev, setJev] = useState<JevStatus>({ configured: false, mode: 'unconfigured' });
   const [jevMeta, setJevMeta] = useState<JevMeta | null>(null);
   const [jevError, setJevError] = useState<string | null>(null);
+  // 测试预览（仅 dev）
+  const [previewHold, setPreviewHold] = useState(true);
+  const [previewing, setPreviewing] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -104,6 +109,30 @@ export default function App() {
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns]);
+
+  const previewGesture = (id: string, pair: Partial<Record<Emotion, number>>) => {
+    const rt = runtimeRef.current;
+    const ch = rt?.character;
+    if (!rt || !ch) return;
+    ch.expression.setBlend(pair, 0.2);
+    if (previewHold) rt.previewGesture(id);
+    else rt.testGesture(id);
+    setPreviewing(id);
+  };
+
+  const previewEmotion = (emo: Emotion) => {
+    const ch = runtimeRef.current?.character;
+    if (!ch) return;
+    ch.expression.setBlend({ [emo]: 0.9 }, 0.2);
+    setPreviewing(emo);
+  };
+
+  const resetPreview = () => {
+    const rt = runtimeRef.current;
+    rt?.releaseGesture();
+    rt?.character?.expression.setBlend({ neutral: 1 }, 0.3);
+    setPreviewing(null);
+  };
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -397,6 +426,74 @@ export default function App() {
                   <span className="w">{jevMeta.looksAway.toFixed(2)}</span>
                 </label>
               )}
+              <label className={jevMeta.gesture ? 'on derived' : 'derived'}>
+                <span className="n">→ 动作</span>
+                <span className="v-wide">{jevMeta.gesture ? jevMeta.gesture.label : '不做动作'}</span>
+                <span className="w">{jevMeta.gesture ? jevMeta.gesture.score.toFixed(2) : ''}</span>
+              </label>
+            </div>
+          </details>
+        )}
+
+        {import.meta.env.DEV && (
+          <details className="section preview" open>
+            <summary>
+              测试预览 <span className="count">dev</span>
+              <button
+                className="mini"
+                onClick={(e) => {
+                  e.preventDefault();
+                  resetPreview();
+                }}
+              >
+                复位
+              </button>
+            </summary>
+            <div className="hint">
+              只在开发环境出现，不进生产构建。手势会自动配上它通常伴随的情绪
+              （配对表在 act/gestureRules.ts，Jev 驱动时用的是同一张）。
+            </div>
+
+            <div className="preview-row">
+              <span className="preview-k">手势</span>
+              <label className="hold">
+                <input
+                  type="checkbox"
+                  checked={previewHold}
+                  onChange={(e) => {
+                    setPreviewHold(e.target.checked);
+                    if (!e.target.checked) runtimeRef.current?.releaseGesture();
+                  }}
+                />
+                定住
+              </label>
+            </div>
+            <div className="chips">
+              {HAND_GESTURES.map((g) => (
+                <button
+                  key={g.id}
+                  className={previewing === g.id ? 'on' : ''}
+                  title={g.id}
+                  onClick={() => previewGesture(g.id, g.pair)}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="preview-row">
+              <span className="preview-k">表情</span>
+            </div>
+            <div className="chips">
+              {EMOTIONS.map((e) => (
+                <button
+                  key={e}
+                  className={previewing === e ? 'on' : ''}
+                  onClick={() => previewEmotion(e)}
+                >
+                  {e}
+                </button>
+              ))}
             </div>
           </details>
         )}

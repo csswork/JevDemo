@@ -14,8 +14,24 @@
 export const EMOTIONS = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised'] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
-/** 手势 clip 词表。新增动作 = 在 vrm/gestures.ts 里加一条，然后加到这里。 */
+/**
+ * 手势 clip 词表。新增动作 = 在 vrm/gestures.ts 里加一条，然后加到这里。
+ *
+ * 分两组：
+ *   手到脸（hand-to-face）—— 半身景别下**唯一看得见**的一类，和表情耦合，
+ *                            由 Jev 的情绪判断推导出来，是当前默认启用的。
+ *   身体动作            —— 全身景别才有意义，胸像里手垂在画面外，默认不触发。
+ */
 export const GESTURES = [
+  // 手到脸
+  'cover_mouth_laugh',
+  'cover_mouth_gasp',
+  'hand_to_cheek',
+  'hand_to_chin',
+  'rub_neck',
+  'hand_on_chest',
+  'palm_forehead',
+  // 身体
   'wave',
   'wave_small',
   'nod',

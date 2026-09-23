@@ -31,11 +31,13 @@ export class Character {
   /** 调试开关：关掉后只跑 vrm.update，用于隔离"是我的层还是引擎本身"的问题 */
   layersEnabled = true;
   /**
-   * 手势总开关。一期聚焦半身表情，默认关闭 ——
-   * Act IR 里的 gesture 轨道照常产出和展示，只是不落到骨骼上，
-   * 这样架构保持完整，打开开关就能恢复。
+   * 手势总开关。
+   *
+   * 默认开：手到脸那一组（掩嘴笑、扶额、托腮…）本来就是为半身景别写的，
+   * 是表情的延伸而不是独立的肢体表演。垂在身侧的那组在这个景别里看不见，
+   * 由 Jev 答案的推导规则决定不去触发它们。
    */
-  gesturesEnabled = false;
+  gesturesEnabled = true;
   private hipsRest = new THREE.Vector3();
 
   constructor(cameraPos: THREE.Vector3) {

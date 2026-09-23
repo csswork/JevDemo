@@ -29,6 +29,8 @@ export interface JevMeta {
   gaze?: { choice: string; confidence: number };
   posture?: { choice: string; confidence: number };
   looksAway?: number;
+  /** 从上面几项推导出的手部动作 */
+  gesture?: { id: string; label: string; score: number };
   /** JevStation 计 credit */
   credits?: { charged: number; remaining: number };
   /** Vercel AI Gateway 计美元 */

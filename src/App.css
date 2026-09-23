@@ -511,3 +511,48 @@ input[type='range']::-webkit-slider-thumb {
   color: #d9a441;
   cursor: help;
 }
+
+/* ---------- 测试预览（仅 dev）---------- */
+
+.section.preview {
+  background: linear-gradient(180deg, rgba(125, 211, 192, 0.04), transparent 70%);
+}
+
+.preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 20px 6px;
+}
+
+.preview-k {
+  font-size: 11px;
+  color: #6d7789;
+  letter-spacing: 0.04em;
+}
+
+.preview-row .hold {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.chips button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(125, 211, 192, 0.08);
+}
+
+.preview .chips {
+  padding-bottom: 12px;
+}
+
+/* 推导出来的那一行和 Jev 直接回答的区分开 */
+.sliders label.derived {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+}
