@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import type { Connect, Plugin } from 'vite';
 import { loadEnv } from 'vite';
 import { baselineAct, sanitizeAct, type ActScript } from '../src/act/schema.ts';
-import { detectBackend, judgePerformance, type JevBackend, type JevMeta } from './jev.ts';
+import { detectBackend, judgePerformance, judgeReaction, type JevBackend, type JevMeta } from './jev.ts';
 import { writeSpeech } from './deepseek.ts';
 
 /**
@@ -34,6 +34,11 @@ interface JevConfig {
   jevUrl?: string;
   jevModel?: string;
   jevTimeoutMs: number;
+  /**
+   * 倾听反应：用户话音刚落时先让 Jev 判断角色的第一反应，和输入层并行。
+   * 每轮多 1 次评估（1 credit），换来"先有表情再开口"。JEV_REACTION=off 关掉。
+   */
+  reaction: boolean;
   /** 输入层：台词从哪来 */
   speechSource: 'deepseek' | 'draft';
   deepseekKey?: string;
@@ -74,6 +79,7 @@ function readConfig(env: Record<string, string>, root: string): JevConfig {
     jevUrl: (env.JEV_BASE_URL || env.JEVSTATION_URL || '').trim() || undefined,
     jevModel: (env.JEV_MODEL || '').trim() || undefined,
     jevTimeoutMs: Number(env.JEV_TIMEOUT_MS || '') || 6000,
+    reaction: !/^(off|false|0|no)$/i.test((env.JEV_REACTION || '').trim()),
     // 配了 DeepSeek 就用它写台词，否则回落到前端的规则模板
     speechSource: (env.JEV_SPEECH || '').trim() === 'draft' || !deepseekKey ? 'draft' : 'deepseek',
     deepseekKey: deepseekKey || undefined,
@@ -184,6 +190,31 @@ async function runJudge(
   }
 }
 
+/**
+ * 倾听反应。和 runSpeech 并行，只看用户输入。
+ * 失败就返回 null —— 这只是锦上添花，没有它角色照样说话（用基线表情开口）。
+ */
+async function runReaction(
+  cfg: JevConfig,
+  payload: DecideRequest,
+): Promise<{ mix: Array<[string, number]>; meta: JevMeta } | null> {
+  try {
+    return await judgeReaction(
+      {
+        apiKey: cfg.jevKey!,
+        backend: cfg.jevBackend,
+        baseUrl: cfg.jevUrl,
+        model: cfg.jevModel,
+        timeoutMs: cfg.jevTimeoutMs,
+      },
+      { userInput: payload.input, history: payload.history },
+    );
+  } catch (e) {
+    server_log(`倾听反应：${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+}
+
 /** 一次性拿完整脚本。passthrough 模式和不支持渐进的调用方走这条。 */
 async function viaJev(
   cfg: JevConfig,
@@ -237,6 +268,23 @@ export function jevProxy(): Plugin {
         })();
       });
 
+      server.middlewares.use('/api/react', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        void (async () => {
+          if (cfg.mode !== 'jev' || !cfg.reaction) return json(res, 400, { error: '倾听反应没有开启' });
+          try {
+            const payload = await readJson(req);
+            if (!payload?.input) return json(res, 400, { error: '缺少 input 字段' });
+            const r = await runReaction(cfg, payload);
+            json(res, 200, r ?? { mix: null });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            server_log(msg);
+            json(res, 502, { error: msg });
+          }
+        })();
+      });
+
       server.middlewares.use('/api/judge', (req, res, next) => {
         if (req.method !== 'POST') return next();
         void (async () => {
@@ -270,6 +318,7 @@ export function jevProxy(): Plugin {
               backend: cfg.mode === 'jev' ? cfg.jevBackend : undefined,
               // passthrough 由对方服务一次性出完整脚本，没法拆两段
               progressive: cfg.mode === 'jev',
+              reaction: cfg.mode === 'jev' && cfg.reaction,
               endpoint: cfg.mode === 'passthrough' ? cfg.endpoint : undefined,
             }),
           );

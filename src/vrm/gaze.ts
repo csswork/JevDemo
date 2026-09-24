@@ -53,6 +53,39 @@ export class GazeLayer {
     this.axisFlip = metaVersion === '0' ? -1 : 1;
   }
 
+  /**
+   * 想事情时的视线：先把视线移开（多半往上或侧面），停一会儿，偶尔瞟回来一下再移开。
+   * 对话研究里的经典观察：人在组织语言时会回避对方的视线，这是在"想"，不是在"躲"。
+   * 这个模式本身不是情绪，所以不等 Jev —— 那时台词都还没出来。
+   */
+  setThinking(on: boolean) {
+    if (on === this.thinking) return;
+    this.thinking = on;
+    this.thinkTimer = on ? 0.35 + Math.random() * 0.3 : 0;
+    this.thinkAway = false;
+    if (!on && this.mode !== 'camera') this.look('camera');
+  }
+
+  private thinking = false;
+  private thinkTimer = 0;
+  private thinkAway = false;
+
+  private updateThinking(dt: number) {
+    if (!this.thinking) return;
+    this.thinkTimer -= dt;
+    if (this.thinkTimer > 0) return;
+    if (this.thinkAway) {
+      // 瞟回来看一眼
+      this.look('camera');
+      this.thinkTimer = 0.5 + Math.random() * 0.5;
+    } else {
+      const r = Math.random();
+      this.look(r < 0.4 ? 'up' : r < 0.65 ? 'away_left' : r < 0.9 ? 'away_right' : 'down');
+      this.thinkTimer = 1.2 + Math.random() * 1.3;
+    }
+    this.thinkAway = !this.thinkAway;
+  }
+
   look(target: GazeTarget, hold?: number) {
     this.mode = target;
     this.desired.copy(this.cameraPos).add(OFFSETS[target] ?? OFFSETS.camera);
@@ -69,6 +102,7 @@ export class GazeLayer {
     if (this.t >= this.holdUntil && this.mode !== 'camera') {
       this.look('camera');
     }
+    this.updateThinking(dt);
 
     // 微扫视：每 0.4~1.6s 换一个极小的偏移目标
     this.nextSaccade -= dt;

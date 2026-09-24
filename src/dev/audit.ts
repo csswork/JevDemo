@@ -3,6 +3,7 @@ import type { VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { Runtime } from '../runtime';
 import type { Emotion, GestureId } from '../act/schema';
 import { GESTURE_CLIPS } from '../vrm/gestures';
+import { parseTestCommand } from '../jev/testCommand';
 
 /**
  * 手势审计（仅 dev）。控制台里 `__audit('cover_mouth_laugh', { happy: 0.9 })`。
@@ -336,7 +337,124 @@ export function installAudit(rt: Runtime) {
     return { ...h, eyeDist: `${Math.round(eyeMin * 1000)}mm ${eyeWho}`, occ: occ.join(' ') };
   };
 
+  /**
+   * 表情时间线：用测试指令的语法（不花钱）跑一句台词，逐帧推进，每隔 every 秒采样一次：
+   * 对话状态、语义情绪、实际的部位形状、视线。
+   * 带「反应」前缀时按 App 里的节奏模拟：思考 0.9s → 第一反应 → 再过 1.3s 开口。
+   */
+  const trace = (cmd: string, opts: { every?: number; tail?: number } = {}) => {
+    const c = ch();
+    const parsed = parseTestCommand(cmd.startsWith('测试') ? cmd : `测试: ${cmd}`);
+    if (!parsed) return 'parse failed';
+    const every = opts.every ?? 0.1;
+    const rows: string[] = [];
+    // 从干净的状态开始，结果才可比（否则带着上一次的心情惯性）
+    rt.releaseGesture();
+    c.expression.reset();
+    let t = 0;
+    let next = 0;
+    const sample = (tag: string) => {
+      const emo = c.expression
+        .snapshot()
+        .map(([k, v]) => `${k}${v.toFixed(2)}`)
+        .join(' ');
+      const parts = c.expression
+        .partSnapshot()
+        .slice(0, 4)
+        .map(([k, v]) => `${k.replace('part:', '')}${v.toFixed(2)}`)
+        .join(' ');
+      rows.push(`${t.toFixed(2)} ${tag.padEnd(9)} ${c.gaze.currentTarget.padEnd(10)} | ${emo || '-'} | ${parts}`);
+    };
+    const run = (secs: number, tag: () => string) => {
+      const end = t + secs;
+      while (t < end - 1e-6) {
+        rt.step(1 / 60);
+        t += 1 / 60;
+        if (t >= next) {
+          sample(tag());
+          next += every;
+        }
+      }
+    };
+    const state = () => c.conversationState;
+    if (parsed.reaction) {
+      rt.think();
+      run(0.9, state);
+      rt.react(parsed.reaction);
+      run(1.3, state);
+    }
+    const compiled = rt.play(parsed.act);
+    const cues = compiled.events.filter((e) => e.kind === 'cue' || e.kind === 'expression');
+    run(compiled.duration + (opts.tail ?? 3), state);
+    return [
+      `台词：${compiled.text}（${compiled.duration.toFixed(2)}s）`,
+      `事件：${cues.map((e) => `${e.time.toFixed(2)}${e.kind === 'cue' ? e.cue : 'expr'}`).join(' ')}`,
+      ...rows,
+    ].join('\n');
+  };
+
+  /** 同一条测试指令，在指定时刻各截一张脸部特写，拼成一张图盖在页面上 */
+  const filmstrip = (cmd: string, times: number[], cols = 4) => {
+    const parsed = parseTestCommand(cmd.startsWith('测试') ? cmd : `测试: ${cmd}`);
+    if (!parsed) return 'parse failed';
+    const stage = rt.stage!;
+    const cvs = stage.renderer.domElement;
+    const head = node('head');
+    rt.releaseGesture();
+    ch().expression.reset();
+    const tw = 400, th = 360;
+    const sheet = document.createElement('canvas');
+    sheet.width = cols * tw;
+    sheet.height = Math.ceil(times.length / cols) * th;
+    const g = sheet.getContext('2d')!;
+    let t = 0;
+    let k = 0;
+    const lead = parsed.reaction ? 2.2 : 0;
+    const shoot = () => {
+      const p = head.getWorldPosition(new THREE.Vector3());
+      closeup([p.x, p.y + 0.045, p.z + 0.08], 9);
+      const cw = (cvs.height * tw) / th;
+      g.drawImage(cvs, (cvs.width - cw) / 2, 0, cw, cvs.height, (k % cols) * tw, Math.floor(k / cols) * th, tw, th);
+      g.fillStyle = '#ff0';
+      g.font = 'bold 28px sans-serif';
+      g.fillText(`${(t - lead).toFixed(1)}s`, (k % cols) * tw + 8, Math.floor(k / cols) * th + 32);
+      k++;
+    };
+    const until = (goal: number) => {
+      while (t < goal - 1e-6) {
+        rt.step(1 / 60);
+        t += 1 / 60;
+      }
+    };
+    const shots = times.map((x) => x + lead).sort((a, b) => a - b);
+    // 按时间顺序推进，途中到了哪个节点就做哪件事（思考 / 第一反应 / 开口 / 截图）
+    const plan: Array<[number, () => void]> = shots.map((x) => [x, shoot] as [number, () => void]);
+    if (parsed.reaction) {
+      plan.push([0, () => rt.think()], [0.9, () => rt.react(parsed.reaction!)]);
+    }
+    plan.push([lead, () => rt.play(parsed.act)]);
+    // 同一时刻：先思考 / 反应 / 开口，再截图
+    plan.sort((a, b) => a[0] - b[0] || (a[1] === shoot ? 1 : 0) - (b[1] === shoot ? 1 : 0));
+    for (const [at, fn] of plan) {
+      until(at);
+      fn();
+    }
+    closeup(null);
+    let img = document.getElementById('__sheet') as HTMLImageElement | null;
+    if (!img) {
+      img = document.createElement('img');
+      img.id = '__sheet';
+      img.onclick = () => img!.remove();
+      document.body.appendChild(img);
+    }
+    Object.assign(img.style, { position: 'fixed', left: '0', top: '0', width: '100vw', zIndex: '99999', background: '#000' });
+    img.src = sheet.toDataURL('image/jpeg', 0.9);
+    return `${k} shots（点图片关闭）`;
+  };
+
   const w = window as unknown as Record<string, unknown>;
+  w.__trace = trace;
+  w.__filmstrip = filmstrip;
   w.__look = look;
   // 活的 spec 对象：控制台里直接改字段，下一次 __hold / __audit 就生效（刷新页面还原）
   w.__spec = (id: GestureId) => GESTURE_CLIPS[id].reach;

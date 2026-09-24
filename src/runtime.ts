@@ -96,6 +96,7 @@ export class Runtime {
 
     this.compiled = compiled;
     this.elapsed = 0;
+    this.judged = false;
     this.player.start(compiled);
     character?.setArousal(act.emotion.arousal);
     character?.gesture.clear();
@@ -131,12 +132,53 @@ export class Runtime {
     const compiled = compileAct(act, { duration: base.duration });
     if (compiled.text !== base.text) return false;
 
+    // 补齐已经过去的节拍时，只补"状态"（表情、视线、姿态），不补"瞬间"：
+    // 过去的节奏信号（问句睁眼、句界眨眼）现在补上会在同一帧里一齐爆出来；
+    // 手势晚了太久再做也不对劲（笑点已经过去了）
     for (const ev of this.player.upgrade(compiled)) {
+      if (ev.kind === 'cue') continue;
+      if (ev.kind === 'gesture' && this.elapsed - ev.time > 0.8) continue;
       character.apply(ev);
     }
     character.setArousal(act.emotion.arousal);
+    this.judged = true;
     return true;
   }
+
+  // ---- 对话状态 ----
+  // 这几个只改神态（视线、眼神、抿嘴），不设定情绪 —— 情绪只来自 Jev。
+
+  /** 用户在打字：看着对方、眼睛稍微睁开。说话 / 思考时不打断 */
+  setListening(on: boolean) {
+    const ch = this.character;
+    if (!ch) return;
+    const s = ch.conversationState;
+    if (s === 'speaking' || s === 'thinking') return;
+    ch.setConversation(on ? 'listening' : 'idle');
+  }
+
+  /** 用户发出消息，等台词期间：视线移开去"想"，抿嘴，眨一下眼表示听到了 */
+  think() {
+    const ch = this.character;
+    if (!ch) return;
+    // 新的一轮开始了，上一轮的"已判断"作废，这一轮的倾听反应才能上脸
+    this.judged = false;
+    ch.setConversation('thinking');
+    ch.expression.cue('boundary');
+  }
+
+  /**
+   * Jev 给的倾听反应到了。还没开口就先上脸；已经开口、整句的判断还没回来，
+   * 也用它替掉基线的中性脸。整句判断回来之后就不再接受（那时反应已经过时了）。
+   */
+  react(mix: Array<[Emotion, number]>) {
+    const ch = this.character;
+    if (!ch || this.judged) return;
+    ch.expression.setBlend(Object.fromEntries(mix), 0.3);
+  }
+
+  /** 整句判断是否已经到了（到了之后倾听反应作废） */
+  private judged = false;
 
   /** 单独试放一个手势（正常速度播完）。 */
   testGesture(id: string) {
@@ -237,6 +279,24 @@ export class Runtime {
     this.character?.expression.setCeiling(emo, value);
   }
 
+  /**
+   * 推进一帧（时间轴 + 角色），不渲染。rAF 循环每帧调一次；
+   * 审计工具（src/dev/audit.ts）也用它同步逐帧推进 —— 预览窗格隐藏时 rAF 会被节流。
+   */
+  step(dt: number) {
+    const character = this.character;
+    if (!character) return;
+    for (const ev of this.player.update(dt)) {
+      character.apply(ev);
+    }
+    if (this.preview?.loop && !character.gesture.frozen && !character.gesture.info()) {
+      character.gesture.play(this.preview.id as never, 1, this.preview.speed);
+    }
+    character.layersEnabled = this.layersEnabled;
+    if (this.player.isPlaying) this.elapsed += dt;
+    character.update(dt);
+  }
+
   private tick() {
     const stage = this.stage;
     const character = this.character;
@@ -247,16 +307,7 @@ export class Runtime {
     const dt = Math.min((now - this.lastTime) / 1000, 0.05);
     this.lastTime = now;
 
-    for (const ev of this.player.update(dt)) {
-      character.apply(ev);
-    }
-    if (this.preview?.loop && !character.gesture.frozen && !character.gesture.info()) {
-      character.gesture.play(this.preview.id as never, 1, this.preview.speed);
-    }
-    character.layersEnabled = this.layersEnabled;
-    if (this.player.isPlaying) this.elapsed += dt;
-
-    character.update(dt);
+    this.step(dt);
     stage.render();
 
     this.fpsAccum += dt;

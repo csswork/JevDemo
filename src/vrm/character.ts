@@ -6,7 +6,7 @@ import { PoseAccumulator } from './pose';
 import { IdleLayer } from './idle';
 import { GestureLayer, vrmMetaVersion } from './gestures';
 import { GazeLayer } from './gaze';
-import { ExpressionLayer } from './expressions';
+import { ExpressionLayer, type ConversationState } from './expressions';
 import { LipSyncLayer } from './lipsync';
 import { ReachLayer } from './reach';
 
@@ -41,6 +41,7 @@ export class Character {
    */
   gesturesEnabled = true;
   private hipsRest = new THREE.Vector3();
+  private conversation: ConversationState = 'idle';
 
   constructor(cameraPos: THREE.Vector3) {
     this.gaze = new GazeLayer(cameraPos);
@@ -119,14 +120,35 @@ export class Character {
       case 'gaze':
         this.gaze.look(ev.target, ev.hold);
         break;
+      case 'cue':
+        this.expression.cue(ev.cue);
+        break;
       case 'speech_start':
+        this.setConversation('speaking');
         this.expression.setSpeaking(true);
         break;
       case 'speech_end':
         this.expression.setSpeaking(false);
         this.lipsync.stop();
+        // 说完不立刻回到面无表情，余韵见 ExpressionLayer.release
+        this.expression.release();
+        this.setConversation('idle');
         break;
     }
+  }
+
+  /**
+   * 对话状态：倾听（用户在打字）→ 思考（等台词）→ 说话 → 回到待机。
+   * 只影响神态（视线回避、抿嘴、眼神），不设定任何情绪。
+   */
+  setConversation(state: ConversationState) {
+    this.conversation = state;
+    this.expression.setState(state);
+    this.gaze.setThinking(state === 'thinking');
+  }
+
+  get conversationState() {
+    return this.conversation;
   }
 
   setArousal(a: number) {
@@ -158,6 +180,7 @@ export class Character {
       if (this.expression.weightOf(emo) > 0.15) this.expression.flick(emo, peak, dur);
     }
 
+    this.expression.setMouthActivity(this.lipsync.openness);
     this.expression.update(dt, vrm);
     this.lipsync.setMouthRoom(1 - 0.6 * this.expression.mouthOcclusion());
     this.lipsync.update(dt, vrm);

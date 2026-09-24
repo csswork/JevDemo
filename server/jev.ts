@@ -1,5 +1,13 @@
 import type { ActScript } from '../src/act/schema.ts';
-import { buildQuestions, composeAct, type JevMeta, type JevPayload } from '../src/act/fromJev.ts';
+import {
+  buildQuestions,
+  buildReactionQuestions,
+  composeAct,
+  composeReaction,
+  type Answers,
+  type JevMeta,
+  type JevPayload,
+} from '../src/act/fromJev.ts';
 
 /** JevStation 包一层 data，Vercel / TypeSafe 直接放顶层 */
 type JevResponse = JevPayload & { data?: JevPayload };
@@ -31,7 +39,9 @@ export type { JevMeta } from '../src/act/fromJev.ts';
  *     与其演错一个强表情，不如收着演
  *
  * 成本：文档说一次评估 1 credit，问题数超过 5 个或 state 超过 8000 字符变 3 credit。
- * 所以下面刻意**卡在 5 个问题**。
+ * 所以每次评估刻意**卡在 5 个问题以内**。每轮对话最多两次评估：
+ *   倾听反应（2 问，和输入层并行）+ 整句表演（≤5 问，按段出题），见 fromJev.ts。
+ * 倾听反应可以用 JEV_REACTION=off 关掉，关掉后每轮 1 次评估。
  */
 
 export type JevBackend = 'vercel' | 'jevstation' | 'typesafe';
@@ -138,33 +148,19 @@ async function postWithRetry(
 }
 
 /**
- * 让 Jev 判断"这句台词该怎么演"。
- *
- * state 同时带上用户输入和角色要说的话 —— 表演是**回应**，
- * 只看台词判断不出"她是在附和还是在反驳"。
+ * 发一次 Jev 评估：state + 问题 → 答案。两种判断（倾听反应、整句表演）共用。
  */
-export async function judgePerformance(
+async function evaluate(
   opts: JevOptions,
-  params: {
-    userInput: string;
-    speech: string;
-    history?: Array<{ role: 'user' | 'character'; text: string }>;
-  },
-): Promise<{ act: ActScript; meta: JevMeta }> {
+  state: Record<string, unknown>,
+  questions: Record<string, unknown>,
+): Promise<{ answers: Answers; payload: JevPayload; backend: JevBackend }> {
   const backend = opts.backend ?? detectBackend(opts.apiKey);
   const spec = BACKENDS[backend];
   const url = `${(opts.baseUrl || spec.base).replace(/\/+$/, '')}${spec.path}`;
 
   const model = opts.model ?? spec.model;
-  const body: Record<string, unknown> = {
-    state: {
-      对话场景: '一个虚拟角色正在和用户面对面说话，需要判断角色说这句话时的表演',
-      最近几轮: (params.history ?? []).slice(-4).map((t) => `${t.role}: ${t.text}`),
-      用户刚说: params.userInput,
-      角色要说: params.speech,
-    },
-    questions: buildQuestions(),
-  };
+  const body: Record<string, unknown> = { state, questions };
   // Vercel / TypeSafe 需要 model 来路由；JevStation 在部署层面钉死，发了会被忽略
   if (model) body.model = model;
 
@@ -207,13 +203,75 @@ export async function judgePerformance(
   // JevStation 包一层 data，Vercel / TypeSafe 直接在顶层
   const payload: JevPayload | undefined = spec.wrapped ? json?.data : (json ?? undefined);
   const answers = payload?.answers;
-  if (!answers) {
+  if (!payload || !answers) {
     throw new Error(`Jev 响应里没有 answers（后端 ${backend}）`);
   }
+  return { answers, payload, backend };
+}
 
+const SCENE = '一个虚拟角色正在和用户面对面说话';
+
+/**
+ * 让 Jev 判断"这句台词该怎么演"。
+ *
+ * state 同时带上用户输入和角色要说的话 —— 表演是**回应**，
+ * 只看台词判断不出"她是在附和还是在反驳"。
+ * 问题按台词切成的段数出（见 buildQuestions），每段一个情绪，总数不超过 5 个。
+ */
+export async function judgePerformance(
+  opts: JevOptions,
+  params: {
+    userInput: string;
+    speech: string;
+    history?: Array<{ role: 'user' | 'character'; text: string }>;
+  },
+): Promise<{ act: ActScript; meta: JevMeta }> {
+  const { answers, payload, backend } = await evaluate(
+    opts,
+    {
+      对话场景: `${SCENE}，需要判断角色说这句话时的表演`,
+      最近几轮: (params.history ?? []).slice(-4).map((t) => `${t.role}: ${t.text}`),
+      用户刚说: params.userInput,
+      角色要说: params.speech,
+    },
+    buildQuestions(params.speech),
+  );
   return composeAct(params.speech, answers, {
     backend,
-    credits: payload?.credits,
-    costUsd: payload?.provider_metadata?.gateway?.cost,
+    credits: payload.credits,
+    costUsd: payload.provider_metadata?.gateway?.cost,
   });
+}
+
+/**
+ * 倾听时的第一反应：只看用户说了什么，和输入层（写台词）并行发出。
+ * 见 fromJev.ts 的 buildReactionQuestions。
+ */
+export async function judgeReaction(
+  opts: JevOptions,
+  params: {
+    userInput: string;
+    history?: Array<{ role: 'user' | 'character'; text: string }>;
+  },
+): Promise<{ mix: Array<[string, number]>; meta: JevMeta }> {
+  const { answers, payload, backend } = await evaluate(
+    opts,
+    {
+      对话场景: `${SCENE}，用户刚说完一句话，角色还没开口`,
+      最近几轮: (params.history ?? []).slice(-4).map((t) => `${t.role}: ${t.text}`),
+      用户刚说: params.userInput,
+    },
+    buildReactionQuestions(),
+  );
+  const r = composeReaction(answers);
+  if (!r) throw new Error('Jev 没有回答倾听反应');
+  return {
+    mix: r.mix,
+    meta: {
+      backend,
+      reaction: r.meta,
+      credits: payload.credits,
+      costUsd: payload.provider_metadata?.gateway?.cost,
+    },
+  };
 }

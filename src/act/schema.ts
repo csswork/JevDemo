@@ -51,6 +51,14 @@ export type GestureId = (typeof GESTURES)[number];
 export const POSTURES = ['idle_neutral', 'idle_cheerful', 'idle_low', 'idle_alert'] as const;
 export type PostureId = (typeof POSTURES)[number];
 
+/**
+ * 对话节奏信号：问句末尾睁眼、感叹时一闪、句界眨眼、笑声的起伏。
+ * **不带情绪**，由时间轴按台词的标点派生（timeline.ts），不需要 Jev 判断 ——
+ * 情绪是什么由 Jev 决定，这些只是"说话的人脸上本来就有的节奏"。
+ */
+export const CUES = ['question', 'emphasis', 'boundary', 'laugh'] as const;
+export type Cue = (typeof CUES)[number];
+
 /** 视线目标。camera = 看着用户。 */
 export const GAZE_TARGETS = ['camera', 'away_left', 'away_right', 'down', 'up'] as const;
 export type GazeTarget = (typeof GAZE_TARGETS)[number];
@@ -109,18 +117,31 @@ export interface ActScript {
  * 所以它要满足两个条件：中性到任何情绪的过渡都不突兀；本身别太死板 ——
  * 配上 idle 层的呼吸和微表情，判断层挂掉时也能当兜底用。
  */
-export function baselineAct(speech: string): ActScript {
+export function baselineAct(speech: string, seed?: Array<[Emotion, number]> | null): ActScript {
   const arr = [...speech];
   const mid = Math.max(1, Math.round(arr.length * 0.6));
+  // 有倾听反应（Jev 对用户那句话的第一反应）就带着它开口，句子后半段收一点；
+  // 这样整句的判断晚到时，开头几个字也不是一张空白的脸
+  const expression: ExpressionBeat[] = seed?.length
+    ? [
+        ...seed.map(([preset, weight]) => ({ at: 0, preset, weight, fade: 0.3 })),
+        ...seed.map(([preset, weight]) => ({
+          at: { anchor: 'settle' },
+          preset,
+          weight: weight * 0.7,
+          fade: 0.5,
+        })),
+      ]
+    : [
+        { at: 0, preset: 'neutral', weight: 1, fade: 0.25 },
+        { at: { anchor: 'settle' }, preset: 'relaxed', weight: 0.35, fade: 0.4 },
+      ];
   return {
     speech: arr.slice(0, mid).join('') + '<b:settle>' + arr.slice(mid).join(''),
     emotion: { valence: 0.1, arousal: 0.3 },
     tracks: {
       posture: 'idle_neutral',
-      expression: [
-        { at: 0, preset: 'neutral', weight: 1, fade: 0.25 },
-        { at: { anchor: 'settle' }, preset: 'relaxed', weight: 0.35, fade: 0.4 },
-      ],
+      expression,
       gesture: [],
       gaze: [{ at: 0, target: 'camera' }],
     },

@@ -16,6 +16,17 @@ interface Turn {
   text: string;
 }
 
+/** 概率分布的简写："happy 0.62 + surprised 0.21"（只列 ≥ 0.15 的） */
+function topMix(probs: Record<string, number>): string {
+  return (
+    Object.entries(probs)
+      .filter(([, p]) => p >= 0.15)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, p]) => `${k} ${p.toFixed(2)}`)
+      .join(' + ') || 'neutral'
+  );
+}
+
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<Runtime | null>(null);
@@ -147,6 +158,8 @@ export default function App() {
   const previewEmotion = (emo: Emotion) => {
     const ch = runtimeRef.current?.character;
     if (!ch) return;
+    // 预览要看的是这一个情绪本身，先清掉上一个的惯性
+    ch.expression.reset();
     ch.expression.setBlend({ [emo]: 0.9 }, 0.2);
     setPreviewing(emo);
   };
@@ -155,7 +168,7 @@ export default function App() {
     const rt = runtimeRef.current;
     setPreviewClock(null);
     rt?.releaseGesture();
-    rt?.character?.expression.setBlend({ neutral: 1 }, 0.3);
+    rt?.character?.expression.reset();
     setPreviewing(null);
   };
 
@@ -176,7 +189,19 @@ export default function App() {
     // 不花钱、不等网络、结果可复现。
     if (isTestCommand(text)) {
       const cmd = parseTestCommand(text);
-      if (cmd) {
+      if (cmd?.reaction) {
+        // 模拟真实链路的节奏：思考 → 第一反应（约 0.9s 后）→ 开口（约 2.2s 后，
+        // 大致是 DeepSeek 写台词的耗时）。整句判断直接随台词到，不再模拟延迟
+        setLastAct(cmd.act);
+        setJevMeta({ ...cmd.meta, reaction: undefined });
+        rt.think();
+        const mix = cmd.reaction;
+        await new Promise((r) => setTimeout(r, 900));
+        rt.react(mix);
+        await new Promise((r) => setTimeout(r, 1300));
+        const compiled = rt.play(cmd.act);
+        setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
+      } else if (cmd) {
         setLastAct(cmd.act);
         setJevMeta(cmd.meta);
         const compiled = rt.play(cmd.act);
@@ -186,7 +211,9 @@ export default function App() {
           ...t,
           {
             role: 'character',
-            text: '测试指令没看懂。用法：测试: 开心 90%　或　测试: 难过 40% 放松 30% | 自定义台词',
+            text:
+              '测试指令没看懂。用法：测试: 开心 90%　·　测试: 难过 40% 放松 30% | 自定义台词　·　' +
+              '测试: 惊讶 80% > 开心 70%（一句话里的情绪变化）　·　测试: 反应 惊讶 70%; 开心 80%',
           },
         ]);
       }
@@ -198,19 +225,38 @@ export default function App() {
 
     // 渐进式：台词一到就开口，判断层的结果后到再升级还没触发的节拍。
     // 感知延迟因此只剩输入层那一段 —— Jev 是在角色已经开口之后才回来的。
+    //
+    // 一轮对话的节奏（像人一样）：
+    //   发出消息 → 角色"想"（视线移开、抿嘴）
+    //            ↘ 同时 Jev 判断第一反应（只看用户那句话），到了就先上脸
+    //   台词到了 → 带着第一反应开口
+    //   整句判断到了 → 每一段换成 Jev 判断的情绪（一句话里情绪可以变）
+    //   说完 → 表情慢慢淡成余韵，不是一下子回到面无表情
     if (decider instanceof HttpDecider && jev.progressive) {
+      rt.think();
+      let reaction: Array<[Emotion, number]> | null = null;
+      let reactionMeta: JevMeta | null = null;
+      const reactP = jev.reaction
+        ? decider.react(text, ctx).then((r) => {
+            if (!r) return;
+            reaction = r.mix;
+            reactionMeta = r.meta;
+            rt.react(r.mix);
+          })
+        : Promise.resolve();
       try {
         const speech = await decider.speak(text, ctx);
-        const compiled = rt.play(baselineAct(speech));
+        const compiled = rt.play(baselineAct(speech, reaction));
         setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
         setBusy(false);
 
         // 不 await：让它在角色说话的同时跑
         void decider
           .judge(text, ctx, speech)
-          .then((act) => {
+          .then(async (act) => {
             rt.upgrade(act);
-            setJevMeta(decider.lastMeta);
+            await reactP;
+            setJevMeta({ ...decider.lastMeta, reaction: reactionMeta?.reaction });
             setJevError(decider.lastError);
           })
           .catch((e: unknown) => {
@@ -242,7 +288,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [input, busy, turns, jev.progressive]);
+  }, [input, busy, turns, jev.progressive, jev.reaction]);
 
 
 
@@ -333,7 +379,11 @@ export default function App() {
           <textarea
             value={input}
             placeholder="说点什么…　调试用「测试: 开心 90%」跳过模型直接看表情"
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              // 用户在打字：角色看着对方、在听
+              runtimeRef.current?.setListening(e.target.value.trim().length > 0);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -399,12 +449,33 @@ export default function App() {
             </summary>
             <div className="hint">
               只读。choice 回的是整个概率分布，不只是 top-1 —— 混合表情直接由它驱动。
+              一句话按句切成最多 3 段，每段单独判断情绪；标「推导」的项不是 Jev 直接回答的。
             </div>
             <div className="sliders">
+              {jevMeta.reaction && (
+                <label className="on">
+                  <span className="n">第一反应</span>
+                  <span className="v-wide">
+                    {topMix(jevMeta.reaction.probabilities)}
+                  </span>
+                  <span className="w">{jevMeta.reaction.confidence.toFixed(2)}</span>
+                </label>
+              )}
+              {jevMeta.segments && jevMeta.segments.length > 1 &&
+                jevMeta.segments.map((seg, i) => (
+                  <label key={`seg${i}`} className="on">
+                    <span className="n">段 {i + 1}</span>
+                    <span className="v-wide" title={seg.text}>
+                      {topMix(seg.probabilities)} ·{' '}
+                      <span className="seg-text">{seg.text}</span>
+                    </span>
+                    <span className="w">{seg.confidence.toFixed(2)}</span>
+                  </label>
+                ))}
               {jevMeta.emotion && (
                 <>
                   <label className="on">
-                    <span className="n">emotion</span>
+                    <span className="n">{jevMeta.segments && jevMeta.segments.length > 1 ? '整句' : 'emotion'}</span>
                     <span className="v-wide">{jevMeta.emotion.choice}</span>
                     <span className="w">{jevMeta.emotion.confidence.toFixed(2)}</span>
                   </label>
@@ -436,15 +507,15 @@ export default function App() {
                 </label>
               )}
               {jevMeta.posture && (
-                <label className="on">
-                  <span className="n">posture</span>
+                <label className={jevMeta.posture.derived ? 'on derived' : 'on'}>
+                  <span className="n">{jevMeta.posture.derived ? '→ posture' : 'posture'}</span>
                   <span className="v-wide">{jevMeta.posture.choice}</span>
-                  <span className="w">{jevMeta.posture.confidence.toFixed(2)}</span>
+                  <span className="w">{jevMeta.posture.derived ? '推导' : jevMeta.posture.confidence.toFixed(2)}</span>
                 </label>
               )}
               {jevMeta.looksAway != null && (
-                <label className={jevMeta.looksAway > 0.5 ? 'on' : ''}>
-                  <span className="n">looks_away</span>
+                <label className={`${jevMeta.looksAway > 0.5 ? 'on' : ''} ${jevMeta.looksAwayDerived ? 'derived' : ''}`}>
+                  <span className="n">{jevMeta.looksAwayDerived ? '→ looks_away' : 'looks_away'}</span>
                   <span className="bar">
                     <i style={{ width: `${Math.round(jevMeta.looksAway * 100)}%` }} />
                   </span>

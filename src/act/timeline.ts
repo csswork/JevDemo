@@ -5,7 +5,7 @@
  * 不含任何 three.js 概念。换 Live2D / Unity 只需另写一个消费者。
  */
 
-import { GESTURES, type ActScript, type Emotion, type GazeTarget, type GestureId, type PostureId, type TimeRef } from './schema';
+import { GESTURES, type ActScript, type Cue, type Emotion, type GazeTarget, type GestureId, type PostureId, type TimeRef } from './schema';
 import { estimateDuration, makeLinearMapper, parseAnchors, type Anchor } from './anchors';
 
 export type TimelineEvent =
@@ -20,6 +20,7 @@ export type TimelineEvent =
   | { time: number; kind: 'gesture'; clip: GestureId; weight: number; speed: number }
   | { time: number; kind: 'gaze'; target: GazeTarget; hold?: number }
   | { time: number; kind: 'posture'; posture: PostureId }
+  | { time: number; kind: 'cue'; cue: Cue }
   | { time: number; kind: 'speech_start'; text: string }
   | { time: number; kind: 'speech_end' };
 
@@ -99,8 +100,40 @@ export function compileAct(act: ActScript, opts: { duration?: number } = {}): Co
     });
   }
 
+  events.push(...deriveCues(text, charToTime));
+
   events.sort((x, y) => x.time - y.time);
   return { text, duration, events };
+}
+
+/**
+ * 从台词里派生对话节奏信号。只看标点和笑声词，不判断情绪。
+ *   问号   → 问句最后一两个字时眼睛微微睁大（在交出话轮）
+ *   叹号   → 感叹字上一闪
+ *   句末   → 句界（真人倾向于在句子边界眨眼）
+ *   哈哈…  → 笑声的起伏
+ */
+function deriveCues(text: string, charToTime: (i: number) => number): TimelineEvent[] {
+  const out: TimelineEvent[] = [];
+  const chars = [...text];
+  chars.forEach((ch, i) => {
+    if (ch === '？' || ch === '?') out.push({ time: charToTime(Math.max(0, i - 1.5)), kind: 'cue', cue: 'question' });
+    else if (ch === '！' || ch === '!') out.push({ time: charToTime(Math.max(0, i - 1)), kind: 'cue', cue: 'emphasis' });
+    if (/[。！？!?；;…]/.test(ch) && i < chars.length - 1 && !/[。！？!?；;…]/.test(chars[i + 1] ?? '')) {
+      out.push({ time: charToTime(i + 0.5), kind: 'cue', cue: 'boundary' });
+    }
+  });
+  const laugh = /(哈哈|呵呵|嘿嘿|嘻嘻|噗)/g;
+  const joined = chars.join('');
+  for (let m = laugh.exec(joined); m !== null; m = laugh.exec(joined)) {
+    out.push({ time: charToTime([...joined.slice(0, m.index)].length), kind: 'cue', cue: 'laugh' });
+  }
+  // 同类信号挨得太近只留一个
+  out.sort((a, b) => a.time - b.time);
+  return out.filter(
+    (e, i) =>
+      !out.slice(0, i).some((p) => p.kind === 'cue' && e.kind === 'cue' && p.cue === e.cue && e.time - p.time < 0.35),
+  );
 }
 
 /** 简单的时间轴播放器：按 wall clock 推进，依次触发事件。 */

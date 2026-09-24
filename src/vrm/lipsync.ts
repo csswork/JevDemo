@@ -60,6 +60,16 @@ export class LipSyncLayer {
     return this.active;
   }
 
+  /**
+   * 嘴此刻张开的程度（0..1，按口型的最大幅度归一）。
+   * 表情层用它决定张嘴类嘴形让出多少：发音节时让出来，字与字之间、标点处回来。
+   */
+  get openness(): number {
+    let max = 0;
+    for (const w of this.weights.values()) max = Math.max(max, w);
+    return Math.min(1, max / 0.44);
+  }
+
   update(dt: number, vrm: VRM) {
     const mgr = vrm.expressionManager;
     if (!mgr) return;

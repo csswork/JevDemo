@@ -1,10 +1,12 @@
-import { sanitizeAct, type ActScript } from '../act/schema';
+import { sanitizeAct, type ActScript, type Emotion } from '../act/schema';
+import type { JevMeta } from '../act/fromJev';
 import type { ActDecider, DecideContext } from './decider';
 
 /** 服务端代理的默认地址。key 在代理那一侧，这里不持有任何凭据。 */
 export const JEV_PROXY = '/api/act';
 export const JEV_SPEECH_API = '/api/speech';
 export const JEV_JUDGE_API = '/api/judge';
+export const JEV_REACT_API = '/api/react';
 
 export interface JevStatus {
   configured: boolean;
@@ -18,24 +20,13 @@ export interface JevStatus {
   speechModel?: string;
   /** 能否拆成"先出台词、再出表演"两段 */
   progressive?: boolean;
+  /** 是否开启倾听反应（和写台词并行的那次 Jev 判断） */
+  reaction?: boolean;
   endpoint?: string;
 }
 
-/** Jev 的原始判断，仅用于调试面板展示 */
-export interface JevMeta {
-  backend?: 'vercel' | 'jevstation' | 'typesafe';
-  emotion?: { choice: string; confidence: number; probabilities: Record<string, number> };
-  intensity?: { score: number; confidence: number };
-  gaze?: { choice: string; confidence: number };
-  posture?: { choice: string; confidence: number };
-  looksAway?: number;
-  /** 从上面几项推导出的手部动作 */
-  gesture?: { id: string; label: string; score: number };
-  /** JevStation 计 credit */
-  credits?: { charged: number; remaining: number };
-  /** Vercel AI Gateway 计美元 */
-  costUsd?: string;
-}
+/** Jev 的原始判断，仅用于调试面板展示。和服务端共用一份定义 */
+export type { JevMeta } from '../act/fromJev';
 
 /** 探测代理是否已配置，用于决定 UI 上的开关能不能点。 */
 export async function probeJev(): Promise<JevStatus> {
@@ -111,6 +102,28 @@ export class HttpDecider implements ActDecider {
     });
     if (!res.ok) throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
     return ((await res.json()) as { speech: string }).speech;
+  }
+
+  /**
+   * 倾听反应：用户话音刚落时角色的第一反应。和 speak 并行发出。
+   * 失败返回 null，不影响后面的链路。
+   */
+  async react(
+    input: string,
+    ctx: DecideContext,
+  ): Promise<{ mix: Array<[Emotion, number]>; meta: JevMeta } | null> {
+    try {
+      const res = await fetch(JEV_REACT_API, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ input, history: ctx.history }),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as { mix: Array<[Emotion, number]> | null; meta?: JevMeta };
+      return json.mix ? { mix: json.mix, meta: json.meta ?? {} } : null;
+    } catch {
+      return null;
+    }
   }
 
   /** 渐进式管线第二段：判断这句话怎么演。失败不抛错，退回基线表演。 */
