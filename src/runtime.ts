@@ -65,6 +65,8 @@ export class Runtime {
     // 调参用：控制台里可以直接 __jev.character / __jev.stage 拨数值
     if (import.meta.env.DEV) {
       (window as unknown as { __jev: unknown }).__jev = this;
+      // 手势穿模 / 连贯性审计，见 src/dev/audit.ts。动态 import，生产包里不会有
+      void import('./dev/audit').then((m) => m.installAudit(this));
     }
 
     if (ttsAvailable()) this.voice = await pickChineseVoice();

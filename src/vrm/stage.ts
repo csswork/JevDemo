@@ -45,13 +45,19 @@ export function createStage(canvas: HTMLCanvasElement) {
     camera.updateProjectionMatrix();
   }
 
+  /**
+   * 调试用的替身相机（dev 审计工具截特写时用）。单独一台而不是去挪主相机：
+   * 视线层看的是主相机的位置，挪主相机角色会跟着转头。
+   */
+  const view: { camera: THREE.PerspectiveCamera | null } = { camera: null };
+
   function render() {
-    renderer.render(scene, camera);
+    renderer.render(scene, view.camera ?? camera);
   }
 
   function dispose() {
     renderer.dispose();
   }
 
-  return { renderer, scene, camera, lookTarget, resize, render, dispose };
+  return { renderer, scene, camera, view, lookTarget, resize, render, dispose };
 }
