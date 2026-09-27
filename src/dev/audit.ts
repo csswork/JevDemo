@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { Runtime } from '../runtime';
-import type { Emotion, GestureId } from '../act/schema';
+import type { ActScript, Emotion, GestureId } from '../act/schema';
 import { GESTURE_CLIPS } from '../vrm/gestures';
 import { parseTestCommand } from '../jev/testCommand';
 
@@ -393,9 +393,13 @@ export function installAudit(rt: Runtime) {
     ].join('\n');
   };
 
-  /** 同一条测试指令，在指定时刻各截一张脸部特写，拼成一张图盖在页面上 */
-  const filmstrip = (cmd: string, times: number[], cols = 4) => {
-    const parsed = parseTestCommand(cmd.startsWith('测试') ? cmd : `测试: ${cmd}`);
+  /**
+   * 同一条测试指令，在指定时刻各截一张脸部特写，拼成一张图盖在页面上。
+   * 也可以直接传一份 Act（比如真实对话后的 __jev.act），不花钱重放同一段表演
+   */
+  const filmstrip = (cmd: string | ActScript, times: number[], cols = 4) => {
+    const parsed =
+      typeof cmd === 'string' ? parseTestCommand(cmd.startsWith('测试') ? cmd : `测试: ${cmd}`) : { act: cmd, reaction: null };
     if (!parsed) return 'parse failed';
     const stage = rt.stage!;
     const cvs = stage.renderer.domElement;

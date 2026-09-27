@@ -252,6 +252,18 @@ function similarity(a: Record<string, number>, b: Record<string, number>): numbe
   return dot / ((Math.hypot(...va) || 1) * (Math.hypot(...vb) || 1));
 }
 
+/** 两段是不是同一拍：整体分布像，而且上脸的情绪（混合里非 neutral 的项）也一样 */
+function sameBeat(a: Blend, b: Blend, pa: Record<string, number>, pb: Record<string, number>): boolean {
+  if (similarity(pa, pb) <= 0.92) return false;
+  const feel = (x: Blend) => Object.fromEntries(x.filter(([k]) => k !== 'neutral'));
+  const fa = feel(a);
+  const fb = feel(b);
+  const na = Object.keys(fa).length;
+  const nb = Object.keys(fb).length;
+  if (!na || !nb) return na === nb;
+  return similarity(fa, fb) > 0.92;
+}
+
 /** score → 表演强度。最低给 0.3，否则"几乎看不出来"会变成完全没表情 */
 function intensityOf(score: number): { raw: number; scaled: number } {
   const raw = Math.max(0, Math.min(1, score / (INTENSITY_LEVELS.length - 1)));
@@ -387,10 +399,12 @@ export function composeAct(
   //
   // 相邻两段情绪差不多（余弦 > 0.92）时不重发：重发会让表情"再冲一次峰值"，
   // 同一个情绪说两句话，脸不该一抽一抽的。渲染层的峰值回落会自然接住。
+  // 比较时 neutral 要单独看：neutral 0.87 和 neutral 0.69 + relaxed 0.17 整体余弦 0.97，
+  // 可后一段带着前一段没有的笑意 —— 真正上脸的只有非 neutral 的那部分。
   // 第一段快（0.22s）—— 开口那一下是反应；之后换情绪 0.32s，回到平静 0.5s。
   const expression: ActScript['tracks']['expression'] = [];
   perSeg.forEach((p, i) => {
-    if (i > 0 && similarity(p.probs, perSeg[i - 1].probs) > 0.92) return;
+    if (i > 0 && sameBeat(p.blend, perSeg[i - 1].blend, p.probs, perSeg[i - 1].probs)) return;
     const scale = i === 0 ? 1 : 0.95;
     const changed = i > 0 && p.dominant !== perSeg[i - 1].dominant;
     // 回到平静比换一种情绪更慢：情绪的消退本来就比出现慢

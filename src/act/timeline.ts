@@ -152,12 +152,15 @@ export class TimelinePlayer {
   private cursor = 0;
   private elapsed = 0;
   private playing = false;
+  /** 每种事件已经触发了几个（按时间顺序）。校时（retime）靠它认出哪些已经演过了 */
+  private fired = new Map<TimelineEvent['kind'], number>();
 
   start(compiled: CompiledAct) {
     this.events = compiled.events;
     this.cursor = 0;
     this.elapsed = 0;
     this.playing = true;
+    this.fired.clear();
   }
 
   stop() {
@@ -182,16 +185,26 @@ export class TimelinePlayer {
    *
    * speech_start 不参与替换：语音已经在播。speech_end 默认也不换（时长由第一次 play 拥有），
    * 只有 retime —— 真实语音的时长比估算的更准 —— 时才换成新的。
+   *
+   * retime：同一份脚本、只是时间变了。已经触发过的节拍不能再返回 —— 否则每排上一段音频，
+   * 过去的表情就重放一遍，每次都重新冲一次峰值（实测一句话里开头的表情被重放了 4 次，
+   * 脸一抽一抽的）。同一份脚本编译出的同类事件顺序不变，所以按"每种已触发几个"认。
+   * 内容升级（Jev 的判断到了）则相反：过去的状态要按新内容补齐一次。
    */
-  upgrade(compiled: CompiledAct, opts: { replaceEnd?: boolean } = {}): TimelineEvent[] {
+  upgrade(compiled: CompiledAct, opts: { retime?: boolean } = {}): TimelineEvent[] {
     if (!this.playing) return [];
 
-    const speechEnd = opts.replaceEnd
+    const speechEnd = opts.retime
       ? compiled.events.find((e) => e.kind === 'speech_end')
       : this.events.find((e) => e.kind === 'speech_end');
-    const next: TimelineEvent[] = compiled.events.filter(
-      (e) => e.kind !== 'speech_start' && e.kind !== 'speech_end',
-    );
+    const seen = new Map<TimelineEvent['kind'], number>();
+    const next: TimelineEvent[] = compiled.events.filter((e) => {
+      if (e.kind === 'speech_start' || e.kind === 'speech_end') return false;
+      if (!opts.retime) return true;
+      const n = seen.get(e.kind) ?? 0;
+      seen.set(e.kind, n + 1);
+      return n >= (this.fired.get(e.kind) ?? 0);
+    });
     if (speechEnd) next.push(speechEnd);
     // 还没触发的 speech_start 要留着。真实语音的第一段一排上就会校时，那时第一帧都还没跑，
     // 丢掉它角色就永远进不了"说话"状态（实测整句都停在"倾听"）
@@ -203,7 +216,13 @@ export class TimelinePlayer {
     let i = 0;
     while (i < next.length && next[i].time <= this.elapsed) due.push(next[i++]);
     this.cursor = i;
+    if (!opts.retime) this.fired.clear();
+    this.count(due);
     return due;
+  }
+
+  private count(events: TimelineEvent[]) {
+    for (const e of events) this.fired.set(e.kind, (this.fired.get(e.kind) ?? 0) + 1);
   }
 
   /** 每帧调用，返回本帧到期的事件。 */
@@ -223,6 +242,7 @@ export class TimelinePlayer {
       due.push(this.events[this.cursor++]);
     }
     if (this.cursor >= this.events.length) this.playing = false;
+    this.count(due);
     return due;
   }
 }

@@ -20,8 +20,8 @@ import { damp, smoothstep } from './pose';
  *   5. 对话信号 —— 句界眨眼、问句睁眼、感叹时一闪，都是不带情绪的节奏信号
  *   6. 余韵 —— 说完不会立刻回到面无表情，而是分几段慢慢淡成残留的心情
  *   7. 情绪惯性 —— 一句话里前一段在笑、后一段 Jev 判成 neutral 时，脸不会半秒内
- *      变成一片空白，而是留着一点笑意。只在当前段本身情绪很弱时起作用，
- *      新来的强情绪不会被上一个情绪污染
+ *      变成一片空白，而是留着大部分笑意、在这句话里慢慢收。只在当前段本身情绪很弱时
+ *      起作用，新来的强情绪不会被上一个情绪污染
  *   8. 微表情、眨眼、倾听 / 思考时的神态
  *
  * 模型没有分部位形状时（faceRig 返回 null），退回整脸预设，第 2~4 条随之失效，
@@ -66,6 +66,17 @@ const SHAPE_CAP: Partial<Record<Shape, number>> = {
 const EYE_SMILE_CAP_SPEAKING = 0.5;
 const PART_CAP = 1.15;
 
+/**
+ * 感知曲线（模型标定）：语义强度 w → 上脸的幅度 w^γ。
+ *
+ * 形状权重和"看起来多明显"不是线性的：在 Sendagaya_Shino 上，笑眼 0.3、闭嘴笑 0.45
+ * 半身景别下几乎看不出来。Jev 对日常聊天的判断大多是温和的（主情绪 0.4~0.6），
+ * 线性映射下"明显但克制"的笑落在阈值以下，整轮对话看着像没有表情。
+ * γ < 1 抬的是低段：0.3 → 0.46、0.5 → 0.64，0.9 → 0.93 基本不动，上限照旧由 SHAPE_CAP 卡。
+ * 只改幅度，不改是什么情绪、谁强谁弱 —— 那些仍然是 Jev 说了算。
+ */
+const PERCEPT_GAMMA = 0.65;
+
 /** 部位错峰：眉先、眼随后、嘴最后 */
 const PART_DELAY: Record<FacePart, number> = { brow: 0, eye: 0.035, mouth: 0.085 };
 /** 部位快慢：眉最快，嘴最慢 */
@@ -76,15 +87,25 @@ const RELEASE_SLOWDOWN = 1.8;
 const APEX_RELAX = 0.84;
 const APEX_TAU = 0.9;
 /**
- * 情绪惯性：心情跟着最近的情绪走，上得快（2s）、下得慢（6s）。
- * 当前段情绪很弱时，脸上最多透出 45% 的心情。
+ * 情绪惯性：心情跟着脸上最近的情绪走，上得快、下得慢。
+ * 当前段情绪很弱（Jev 判成 neutral）时，脸上透出一部分心情。
  *
- * 实测动机：「哎哟恭喜啊！……低一点是多少？」Jev 判成 happy 0.91 → neutral 0.76，
- * 没有惯性时笑容在 0.5s 内完全消失，问句是一张空白的脸说出来的。
+ * 说话时和不说话时不一样。Jev 的 neutral 是"平静、认真，没有明显情绪"，意思是这一段
+ * **没有新的情绪**，不是"把脸清空"：真人笑着说完"日本啊，挺好"，接着问"直飞还是转机？"，
+ * 笑意是慢慢收的，不会在问句开口时消失。所以一句话之内透出 75%、按 12s 慢慢散；
+ * 说完之后交给余韵（release），倾听 / 发呆时回到 45%、6s。
+ *
+ * 实测动机：
+ *   「哎哟恭喜啊！……低一点是多少？」happy 0.91 → neutral 0.76，没有惯性时笑容 0.5s 内消失
+ *   「日本啊，挺好。机票贵是贵在哪儿……」relaxed → neutral 0.87 → neutral 0.69，
+ *     原来的 45% / 上升 2s 下，9.4s 的一句话从第 2 秒起就是一张空白的脸
+ *     （第一段只有 1.7s，心情才涨到 55% 就被 neutral 接走了）
  */
-const MOOD_RISE = 2;
+const MOOD_RISE = 0.8;
 const MOOD_FALL = 6;
 const MOOD_CARRY = 0.45;
+const MOOD_FALL_SPEAKING = 12;
+const MOOD_CARRY_SPEAKING = 0.75;
 
 /** 微表情素材：主情绪 → 可能闪过的部位动作 */
 const MICRO: Record<Emotion, Array<Partial<Record<Shape, number>>>> = {
@@ -585,7 +606,7 @@ export class ExpressionLayer {
     for (const f of FEELINGS) {
       const cur = this.mood.get(f) ?? 0;
       const goal = latest[f] ?? 0;
-      const tau = goal > cur ? MOOD_RISE : MOOD_FALL;
+      const tau = goal > cur ? MOOD_RISE : this.speaking ? MOOD_FALL_SPEAKING : MOOD_FALL;
       this.mood.set(f, cur + (goal - cur) * (1 - Math.exp(-dt / tau)));
     }
   }
@@ -596,7 +617,7 @@ export class ExpressionLayer {
    */
   private applyMood(mix: Mix) {
     const own = Math.min(1, FEELINGS.reduce((s, e) => s + (mix[e] ?? 0), 0));
-    const carry = MOOD_CARRY * (1 - own);
+    const carry = (this.speaking ? MOOD_CARRY_SPEAKING : MOOD_CARRY) * (1 - own);
     if (carry <= 0) return;
     for (const f of FEELINGS) {
       const m = (this.mood.get(f) ?? 0) * carry;
@@ -629,7 +650,7 @@ export class ExpressionLayer {
 
     const shapes = new Map<Shape, number>();
     for (const emo of FEELINGS) {
-      const w = (mix[emo] ?? 0) * calm;
+      const w = Math.pow(mix[emo] ?? 0, PERCEPT_GAMMA) * calm;
       if (w <= 0) continue;
       let bias = PART_BIAS[part][emo];
       // 掩饰：有笑意时嘴上的负面情绪再压一半；有负面时眉毛上的笑意压一半

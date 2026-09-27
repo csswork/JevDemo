@@ -178,7 +178,7 @@ export class Runtime {
     const character = this.character;
     if (!this.session || !this.act || !character || !this.player.isPlaying) return;
     const compiled = compileAct(this.act, this.timing(this.compiled?.text ?? ''));
-    for (const ev of this.player.upgrade(compiled, { replaceEnd: true })) {
+    for (const ev of this.player.upgrade(compiled, { retime: true })) {
       if (ev.kind === 'cue') continue;
       if (ev.kind === 'gesture' && this.elapsed - ev.time > 0.8) continue;
       character.apply(ev);
