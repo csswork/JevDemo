@@ -5,7 +5,7 @@
  * 不含任何 three.js 概念。换 Live2D / Unity 只需另写一个消费者。
  */
 
-import { GESTURES, type ActScript, type Cue, type Emotion, type GazeTarget, type GestureId, type PostureId, type TimeRef } from './schema';
+import { MOTIONS, type ActScript, type Cue, type Emotion, type GazeTarget, type MotionId, type PostureId, type TimeRef } from './schema';
 import { estimateDuration, makeLinearMapper, parseAnchors, type Anchor } from './anchors';
 
 export type TimelineEvent =
@@ -17,7 +17,7 @@ export type TimelineEvent =
    * 后一拍会把前一拍清零，分布就退化成 top-1 —— 混合表情等于白做。
    */
   | { time: number; kind: 'expression'; mix: Array<[Emotion, number]>; fade: number }
-  | { time: number; kind: 'gesture'; clip: GestureId; weight: number; speed: number }
+  | { time: number; kind: 'motion'; clip: MotionId; speed: number }
   | { time: number; kind: 'gaze'; target: GazeTarget; hold?: number }
   | { time: number; kind: 'posture'; posture: PostureId }
   | { time: number; kind: 'cue'; cue: Cue }
@@ -75,39 +75,21 @@ export function compileAct(
   for (const [time, { mix, fade }] of byTime) {
     events.push({ time, kind: 'expression', mix, fade });
   }
-  for (const b of act.tracks.gesture) {
-    events.push({
-      time: resolve(b.at),
-      kind: 'gesture',
-      clip: b.clip,
-      weight: b.weight ?? 1,
-      speed: b.speed ?? 1,
-    });
+  for (const b of act.tracks.motion) {
+    events.push({ time: resolve(b.at), kind: 'motion', clip: b.clip, speed: b.speed ?? 1 });
   }
   for (const b of act.tracks.gaze) {
     events.push({ time: resolve(b.at), kind: 'gaze', target: b.target, hold: b.hold });
   }
 
-  // 锚点名如果正好是一个手势 id，就自动补一条手势 —— Jev 写 `<b:wave>` 即可出动作，
-  // 不必在 gesture 数组里重复声明。名字不在手势表里的锚点是**纯时间标记**，
+  // 锚点名如果正好是一个动作 id，就自动补一条动作 —— 写 `<b:greeting>` 即可出动作，
+  // 不必在 motion 数组里重复声明。名字不在动作表里的锚点是**纯时间标记**，
   // 只供 expression / gaze 的 at 引用，不产生任何动作。
-  const isGesture = (n: string): n is GestureId => (GESTURES as readonly string[]).includes(n);
-  const declared = new Set(
-    act.tracks.gesture
-      .filter((b) => typeof b.at === 'object')
-      .map((b) => (b.at as { anchor: string }).anchor),
-  );
+  const isMotion = (n: string): n is MotionId => (MOTIONS as readonly string[]).includes(n);
   for (const a of anchors) {
-    if (!isGesture(a.name)) continue;
-    if (declared.has(a.name)) continue;
-    if (act.tracks.gesture.some((b) => b.clip === a.name)) continue;
-    events.push({
-      time: charToTime(a.charIndex),
-      kind: 'gesture',
-      clip: a.name,
-      weight: 1,
-      speed: 1,
-    });
+    if (!isMotion(a.name)) continue;
+    if (act.tracks.motion.some((b) => b.clip === a.name)) continue;
+    events.push({ time: charToTime(a.charIndex), kind: 'motion', clip: a.name, speed: 1 });
   }
 
   events.push(...deriveCues(text, charToTime));

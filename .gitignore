@@ -38,3 +38,5 @@ public/models/candidates/
 dev-out/
 # 聊天记录（server/chatStore.ts）：每个模型一个 session，不进仓库
 data/
+# VRoid 官方动作包（VRMA_MotionPack）：规约禁止以可提取的形式再分发，不进仓库
+public/motions/

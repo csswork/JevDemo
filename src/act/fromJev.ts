@@ -1,5 +1,5 @@
 import type { ActScript, Emotion, GazeTarget, PostureId } from './schema.ts';
-import { pickGesture } from './gestureRules.ts';
+import { pickMotion } from './motionRules.ts';
 import { splitSegments } from './segments.ts';
 
 /**
@@ -100,7 +100,7 @@ const segKey = (i: number) => `emotion_${i + 1}`;
  *   2 段：情绪 × 2 + 强度 + 视线 + 会不会移开视线        （姿态由情绪推导）
  *   3 段：情绪 × 3 + 强度 + 视线                          （姿态、移开视线由其他答案推导）
  *
- * 推导的做法和手部动作一样（gestureRules.ts）：从 Jev 已有的答案算，不额外问。
+ * 推导的做法和动作一样（motionRules.ts）：从 Jev 已有的答案算，不额外问。
  * 每段的问题里直接带上那一段的原文，同时 state 里有整句和上下文，Jev 判断的是
  * "在这句话、这个语境里，说到这一段时"的情绪，而不是孤立地给一段文字贴标签。
  */
@@ -217,8 +217,8 @@ export interface JevMeta {
   looksAwayDerived?: boolean;
   /** 倾听时的第一反应（和输入层并行的那一次判断） */
   reaction?: EmotionMeta & { intensity: number };
-  /** 从上面几项推导出的手部动作（不是 Jev 直接回答的） */
-  gesture?: { id: string; label: string; score: number };
+  /** 从上面几项推导出的动作（不是 Jev 直接回答的） */
+  motion?: { id: string; label: string; reason: string };
   /** JevStation 计 credit */
   credits?: { charged: number; remaining: number };
   /** Vercel AI Gateway 计美元 */
@@ -428,23 +428,20 @@ export function composeAct(
     gaze.push({ at: segs.length >= 3 ? { anchor: `seg${segs.length}` } : { anchor: 'settle' }, target: 'camera' });
   }
 
-  // --- 手部动作：从情绪推导，挑最匹配的那一段出手 ---
-  let bestPick: { pick: NonNullable<ReturnType<typeof pickGesture>>; seg: number } | null = null;
+  // --- 动作：从 Jev 的答案推导（见 motionRules.ts），大多数台词没有 ---
+  // 比耶 / 转圈看情绪最强的那一段，在那一段开头出手；打招呼总在开头
+  const feel = (probs: Record<string, number>) => 1 - (probs.neutral ?? 0);
+  let peakSeg = 0;
   perSeg.forEach((p, i) => {
-    const pick = pickGesture(p.probs, intensityRaw, looksAway);
-    if (pick && (!bestPick || pick.score > bestPick.pick.score)) bestPick = { pick, seg: i };
+    if (feel(p.probs) > feel(perSeg[peakSeg].probs)) peakSeg = i;
   });
-  const gestureTrack: ActScript['tracks']['gesture'] = [];
-  if (bestPick) {
-    const { pick, seg } = bestPick as { pick: NonNullable<ReturnType<typeof pickGesture>>; seg: number };
-    meta.gesture = { id: pick.gesture.id, label: pick.gesture.label, score: +pick.score.toFixed(3) };
-    gestureTrack.push({
-      // start 类稍微晚一点点出手：情绪先上脸，手再跟上，才像是被触发的
-      at: pick.gesture.at === 'start' ? (seg === 0 ? 0.15 : segAt(seg)) : { anchor: 'mid' },
-      clip: pick.gesture.id,
-      weight: 1,
-      speed: 1,
-    });
+  const motionTrack: ActScript['tracks']['motion'] = [];
+  const pick = pickMotion(speech, perSeg[0]?.probs ?? {}, perSeg[peakSeg]?.probs ?? {}, intensityRaw);
+  if (pick) {
+    meta.motion = { id: pick.id, label: pick.label, reason: pick.reason };
+    // 情绪先上脸，身体再跟上，才像是被触发的
+    const seg = pick.id === 'greeting' ? 0 : peakSeg;
+    motionTrack.push({ at: seg === 0 ? 0.15 : segAt(seg), clip: pick.id, speed: 1 });
   }
 
   return {
@@ -459,7 +456,7 @@ export function composeAct(
               : 0,
         arousal: intensity,
       },
-      tracks: { posture, expression, gesture: gestureTrack, gaze },
+      tracks: { posture, expression, motion: motionTrack, gaze },
     },
     meta,
   };

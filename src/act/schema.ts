@@ -2,7 +2,7 @@
  * Act IR —— Jev 与渲染层之间的唯一契约。
  *
  * 设计要点：
- * 1. 四条独立轨道（expression / gesture / gaze / posture），而不是一个整块动作。
+ * 1. 四条独立轨道（expression / motion / gaze / posture），而不是一个整块动作。
  *    一句话一个表情是数字人显得僵硬的头号原因。
  * 2. 所有 id 都是**闭集枚举**。LLM 自由发挥出来的动作名映射不到 clip 库，
  *    所以词表必须在这里定死，并原样写进 Jev 的 output schema。
@@ -15,37 +15,14 @@ export const EMOTIONS = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surpris
 export type Emotion = (typeof EMOTIONS)[number];
 
 /**
- * 手势 clip 词表。新增动作 = 在 vrm/gestures.ts 里加一条，然后加到这里。
+ * 动作词表：VRoid 官方免费的 7 个动捕动作（.vrma，见 vrm/motion.ts）。
+ * 新增动作 = 把 .vrma 放进 public/motions/，在 motion.ts 的 MOTION_FILES 里登记，再加到这里。
  *
- * 分两组：
- *   手到脸（hand-to-face）—— 半身景别下**唯一看得见**的一类，和表情耦合，
- *                            由 Jev 的情绪判断推导出来，是当前默认启用的。
- *   身体动作            —— 全身景别才有意义，胸像里手垂在画面外，默认不触发。
+ * 这几个都是全身的展示动作（7~12 秒），不是对话里的小手势 —— 对话里只有打招呼、
+ * 比耶这类会自动触发（见 act/motionRules.ts），其余只在预览面板里播。
  */
-export const GESTURES = [
-  // 手到脸
-  'cover_mouth_laugh',
-  'cover_mouth_gasp',
-  'hand_to_cheek',
-  'hand_to_chin',
-  'rub_neck',
-  'hand_on_chest',
-  'palm_forehead',
-  // 身体
-  'wave',
-  'wave_small',
-  'nod',
-  'shake_head',
-  'tilt_head',
-  'shrug',
-  'point_self',
-  'present',
-  'think',
-  'lean_in',
-  'bow',
-  'clap',
-] as const;
-export type GestureId = (typeof GESTURES)[number];
+export const MOTIONS = ['show_full_body', 'greeting', 'peace_sign', 'shoot', 'spin', 'model_pose', 'squat'] as const;
+export type MotionId = (typeof MOTIONS)[number];
 
 /** 全身待机基调。决定"这个人此刻整体是什么状态"，比手势的时间尺度长得多。 */
 export const POSTURES = ['idle_neutral', 'idle_cheerful', 'idle_low', 'idle_alert'] as const;
@@ -79,11 +56,9 @@ export interface ExpressionBeat {
   fade?: number;
 }
 
-export interface GestureBeat {
+export interface MotionBeat {
   at: TimeRef;
-  clip: GestureId;
-  /** 0..1，叠加到 idle 层上的权重，默认 1 */
-  weight?: number;
+  clip: MotionId;
   /** 播放速度倍率，默认 1 */
   speed?: number;
 }
@@ -96,14 +71,14 @@ export interface GazeBeat {
 }
 
 export interface ActScript {
-  /** 台词。可含内联锚点 `<b:wave>`，渲染/TTS 前会被剥离。 */
+  /** 台词。可含内联锚点 `<b:settle>`，渲染/TTS 前会被剥离。 */
   speech: string;
   /** 情绪坐标，供 idle 层做连续调制（不是离散表情）。 */
   emotion: { valence: number; arousal: number };
   tracks: {
     posture: PostureId;
     expression: ExpressionBeat[];
-    gesture: GestureBeat[];
+    motion: MotionBeat[];
     gaze: GazeBeat[];
   };
 }
@@ -142,7 +117,7 @@ export function baselineAct(speech: string, seed?: Array<[Emotion, number]> | nu
     tracks: {
       posture: 'idle_neutral',
       expression,
-      gesture: [],
+      motion: [],
       gaze: [{ at: 0, target: 'camera' }],
     },
   };
@@ -156,7 +131,7 @@ export function fallbackAct(speech: string): ActScript {
     tracks: {
       posture: 'idle_neutral',
       expression: [{ at: 0, preset: 'neutral', weight: 1 }],
-      gesture: [],
+      motion: [],
       gaze: [{ at: 0, target: 'camera' }],
     },
   };
@@ -196,12 +171,11 @@ export function sanitizeAct(raw: unknown, fallbackSpeech = '……'): ActScript 
           weight: Math.max(0, Math.min(1, num(b.weight, 1))),
           fade: Math.max(0, num(b.fade, 0.25)),
         })),
-      gesture: (r.tracks.gesture ?? [])
-        .filter((b) => inSet(GESTURES, b?.clip))
+      motion: (r.tracks.motion ?? [])
+        .filter((b) => inSet(MOTIONS, b?.clip))
         .map((b) => ({
           at: time(b.at),
           clip: b.clip,
-          weight: Math.max(0, Math.min(1, num(b.weight, 1))),
           speed: Math.max(0.25, Math.min(3, num(b.speed, 1))),
         })),
       gaze: (r.tracks.gaze ?? [])

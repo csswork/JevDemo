@@ -13,14 +13,22 @@ export class PoseAccumulator {
   private hipsOffset = new THREE.Vector3();
   private _q = new THREE.Quaternion();
   private _e = new THREE.Euler();
+  /**
+   * 整层的权重。动作层（.vrma）在播时，idle 和视线的偏移按 (1 - 动作权重) 让出来：
+   * 动捕里已经有呼吸和重心，再叠一层会重复；视线的头部跟随按"身体面朝前"算，
+   * 转圈时叠上去会把脖子拧歪
+   */
+  scale = 1;
 
   reset() {
     for (const v of this.euler.values()) v.set(0, 0, 0);
     this.hipsOffset.set(0, 0, 0);
+    this.scale = 1;
   }
 
   /** 累加一条骨骼的欧拉偏移（弧度，XYZ 序），weight 用于 clip 淡入淡出。 */
   add(bone: VRMHumanBoneName, x: number, y: number, z: number, weight = 1) {
+    weight *= this.scale;
     if (weight === 0) return;
     let v = this.euler.get(bone);
     if (!v) {
@@ -34,6 +42,7 @@ export class PoseAccumulator {
 
   /** 整体位移（呼吸起伏、重心偏移），作用在 hips 上。 */
   translateHips(x: number, y: number, z: number, weight = 1) {
+    weight *= this.scale;
     this.hipsOffset.x += x * weight;
     this.hipsOffset.y += y * weight;
     this.hipsOffset.z += z * weight;
@@ -66,4 +75,9 @@ export function smoothstep(t: number): number {
 /** 指数趋近，帧率无关。用于所有"平滑跟随"的场景（视线、表情权重）。 */
 export function damp(current: number, target: number, lambda: number, dt: number): number {
   return current + (target - current) * (1 - Math.exp(-lambda * dt));
+}
+
+/** 从 VRM 读出 meta 版本（'0' = VRM 0.x），各层据此决定骨骼局部轴向 */
+export function vrmMetaVersion(vrm: { meta?: unknown }): string | undefined {
+  return (vrm.meta as { metaVersion?: string } | undefined)?.metaVersion;
 }

@@ -58,7 +58,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'soft' }, preset: 'relaxed', weight: 0.8, fade: 0.35 },
           { at: 2.6, preset: 'happy', weight: 0.6, fade: 0.3 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [{ at: 0, target: 'camera' }],
       },
     },
@@ -72,7 +72,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'soft' }, preset: 'relaxed', weight: 0.9, fade: 0.4 },
           { at: 2.2, preset: 'happy', weight: 0.5, fade: 0.3 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: 1.4, target: 'away_right', hold: 0.5 },
@@ -92,7 +92,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'turn' }, preset: 'relaxed', weight: 0.9, fade: 0.45 },
           { at: 2.0, preset: 'sad', weight: 0.2, fade: 0.6 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: 1.8, target: 'down', hold: 0.9 },
@@ -112,7 +112,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'turn' }, preset: 'happy', weight: 0.8, fade: 0.28 },
           { at: 1.6, preset: 'relaxed', weight: 0.6, fade: 0.35 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: 0.9, target: 'away_right', hold: 0.6 },
@@ -132,7 +132,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'turn' }, preset: 'happy', weight: 1, fade: 0.3 },
           { at: 2.6, preset: 'relaxed', weight: 0.85, fade: 0.4 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: 0.5, target: 'away_left', hold: 1.4 },
@@ -154,7 +154,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'turn' }, preset: 'relaxed', weight: 0.7, fade: 0.3 },
           { at: 4.4, preset: 'surprised', weight: 0.4, fade: 0.2 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: { anchor: 'think' }, target: 'up', hold: 1.8 },
@@ -172,7 +172,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: 1.0, preset: 'neutral', weight: 1, fade: 0.3 },
           { at: { anchor: 'turn' }, preset: 'surprised', weight: 0.5, fade: 0.2 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: 1.1, target: 'away_left', hold: 0.6 },
@@ -192,7 +192,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'turn' }, preset: 'sad', weight: 0.55, fade: 0.5 },
           { at: 3.4, preset: 'relaxed', weight: 0.7, fade: 0.7 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'down', hold: 1.4 },
           { at: 2.4, target: 'camera' },
@@ -212,7 +212,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: 1.6, preset: 'relaxed', weight: 0.9, fade: 0.35 },
           { at: 2.6, preset: 'happy', weight: 0.7, fade: 0.3 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: 0.5, target: 'up', hold: 0.6 },
@@ -232,7 +232,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'turn' }, preset: 'neutral', weight: 1, fade: 0.3 },
           { at: 3.6, preset: 'happy', weight: 0.85, fade: 0.3 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: 2.0, target: 'away_right', hold: 0.8 },
@@ -252,7 +252,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'turn' }, preset: 'angry', weight: 0.45, fade: 0.25 },
           { at: 4.2, preset: 'happy', weight: 1, fade: 0.25 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [{ at: 0, target: 'camera' }],
       },
     },
@@ -269,7 +269,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: 0.9, preset: 'relaxed', weight: 0.7, fade: 0.35 },
           { at: 2.0, preset: 'happy', weight: 0.4, fade: 0.3 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [{ at: 0, target: 'camera' }],
       },
     },
@@ -283,7 +283,7 @@ const TEMPLATES: Record<Intent, ActScript[]> = {
           { at: { anchor: 'turn' }, preset: 'relaxed', weight: 0.8, fade: 0.35 },
           { at: 2.4, preset: 'happy', weight: 0.55, fade: 0.25 },
         ],
-        gesture: [],
+        motion: [],
         gaze: [
           { at: 0, target: 'camera' },
           { at: 1.2, target: 'away_left', hold: 0.8 },

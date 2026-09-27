@@ -1,4 +1,4 @@
-import { EMOTIONS, GAZE_TARGETS, GESTURES, POSTURES } from '../act/schema';
+import { EMOTIONS, GAZE_TARGETS, MOTIONS, POSTURES } from '../act/schema';
 
 /**
  * 给 Jev（或任何 LLM）的 output schema 说明。
@@ -11,23 +11,23 @@ export const ACT_SCHEMA_PROMPT = `你要输出一段"表演脚本"JSON，描述�
 
 字段：
 {
-  "speech": string,        // 台词。可内联时间锚点 <b:手势名>，标记会在播放前剥离
+  "speech": string,        // 台词。可内联时间锚点 <b:锚点名>，标记会在播放前剥离
   "emotion": { "valence": -1..1, "arousal": 0..1 },
   "tracks": {
     "posture": ${POSTURES.map((p) => JSON.stringify(p)).join(' | ')},
     "expression": [{ "at": 秒数 | {"anchor":"锚点名"}, "preset": 表情, "weight": 0..1, "fade": 秒 }],
-    "gesture":    [{ "at": 秒数 | {"anchor":"锚点名"}, "clip": 手势, "weight": 0..1, "speed": 0.25..3 }],
+    "motion":     [{ "at": 秒数 | {"anchor":"锚点名"}, "clip": 动作, "speed": 0.25..3 }],
     "gaze":       [{ "at": 秒数 | {"anchor":"锚点名"}, "target": 视线目标, "hold": 秒 }]
   }
 }
 
 表情闭集：${EMOTIONS.join(' / ')}
-手势闭集：${GESTURES.join(' / ')}
+动作闭集：${MOTIONS.join(' / ')}（都是 7~12 秒的全身动作，只在真正合适时用，大多数台词不需要）
 视线闭集：${GAZE_TARGETS.join(' / ')}
 
 硬性要求：
 1. at 优先用 {"anchor": ...}，不要猜秒数 —— 你做决策时 TTS 时长还不知道。
-2. 台词里写 <b:wave> 即可自动触发同名手势，不必在 gesture 数组里重复声明。
+2. 台词里写 <b:greeting> 即可自动触发同名动作，不必在 motion 数组里重复声明。
 3. **表演密度**：每段台词至少给 2~3 个 expression beat，在语义转折处切换。
    只在开头给一个表情，角色看起来会像 PPT 翻页。
 4. 思考、回避、不确定时把 gaze 移开（away_left / up / down）并给 hold，

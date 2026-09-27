@@ -1,6 +1,6 @@
 import { composeAct, composeReaction, type Answers, type ChoiceAnswer, type JevMeta } from '../act/fromJev';
 import { splitSegments } from '../act/segments';
-import { EMOTIONS, GESTURES, type ActScript, type Emotion, type GestureId } from '../act/schema';
+import { EMOTIONS, MOTIONS, type ActScript, type Emotion, type MotionId } from '../act/schema';
 
 /**
  * 测试指令。
@@ -57,33 +57,29 @@ const DEFAULT_ARC_SPEECH: Record<number, string> = {
   3: '诶？真的吗！那也太好了吧。',
 };
 
-/** 手势的中文别名。测试指令里可以直接写「掩嘴笑」。 */
-const GESTURE_ALIASES: Record<string, GestureId> = {
-  掩嘴笑: 'cover_mouth_laugh',
-  捂嘴笑: 'cover_mouth_laugh',
-  捂嘴: 'cover_mouth_gasp',
-  捂嘴惊讶: 'cover_mouth_gasp',
-  倒吸气: 'cover_mouth_gasp',
-  手贴脸: 'hand_to_cheek',
-  脸颊: 'hand_to_cheek',
-  害羞: 'hand_to_cheek',
-  托腮: 'hand_to_chin',
-  摸下巴: 'hand_to_chin',
-  思考: 'hand_to_chin',
-  摸后颈: 'rub_neck',
-  挠头: 'rub_neck',
-  尴尬: 'rub_neck',
-  抚胸: 'hand_on_chest',
-  松口气: 'hand_on_chest',
-  扶额: 'palm_forehead',
-  撑额头: 'palm_forehead',
-  无奈: 'palm_forehead',
+/** 动作的中文别名。测试指令里可以直接写「比耶」 */
+const MOTION_ALIASES: Record<string, MotionId> = {
+  展示全身: 'show_full_body',
+  全身: 'show_full_body',
+  打招呼: 'greeting',
+  招手: 'greeting',
+  挥手: 'greeting',
+  比耶: 'peace_sign',
+  剪刀手: 'peace_sign',
+  开枪: 'shoot',
+  比枪: 'shoot',
+  转圈: 'spin',
+  模特: 'model_pose',
+  模特姿势: 'model_pose',
+  摆姿势: 'model_pose',
+  蹲下: 'squat',
+  蹲: 'squat',
 };
 
-function toGesture(word: string): GestureId | null {
+function toMotion(word: string): MotionId | null {
   const w = word.trim();
-  if ((GESTURES as readonly string[]).includes(w)) return w as GestureId;
-  return GESTURE_ALIASES[w] ?? null;
+  if ((MOTIONS as readonly string[]).includes(w)) return w as MotionId;
+  return MOTION_ALIASES[w] ?? null;
 }
 
 function toEmotion(word: string): Emotion | null {
@@ -123,13 +119,13 @@ export function parseTestCommand(input: string): TestCommand | null {
     specPart = specAll.slice(rm[0].length);
   }
 
-  // 先把手势名摘出来 —— 它不带百分比，剩下的才交给情绪解析
-  let gesture: GestureId | null = null;
+  // 先把动作名摘出来 —— 它不带百分比，剩下的才交给情绪解析
+  let motion: MotionId | null = null;
   const words = specPart.match(/[一-龥A-Za-z_]+/g) ?? [];
   for (const w of words) {
-    const g = toGesture(w);
-    if (g) {
-      gesture = g;
+    const m = toMotion(w);
+    if (m) {
+      motion = m;
       break;
     }
   }
@@ -137,8 +133,8 @@ export function parseTestCommand(input: string): TestCommand | null {
   // 「>」分段：每一段一个情绪（或混合）
   const segSpecs = specPart.split(/[>＞→]/).map(parsePairs);
   const hasEmotion = segSpecs.some((p) => p.length > 0);
-  // 只写手势名也算合法：「测试: 掩嘴笑」
-  if (!hasEmotion && !gesture && !reactionSpec) return null;
+  // 只写动作名也算合法：「测试: 比耶」
+  if (!hasEmotion && !motion && !reactionSpec) return null;
   const specs = segSpecs.map((p) => (p.length ? p : ([['neutral', 0.6]] as Array<[Emotion, number]>)));
 
   const speech = speechPart?.trim() || DEFAULT_ARC_SPEECH[specs.length] || DEFAULT_SPEECH;
@@ -181,12 +177,12 @@ export function parseTestCommand(input: string): TestCommand | null {
   }
 
   const { act, meta } = composeAct(speech, answers);
-  if (gesture) {
-    act.tracks.gesture = [{ at: 0.35, clip: gesture, weight: 1, speed: 1 }];
+  if (motion) {
+    act.tracks.motion = [{ at: 0.2, clip: motion, speed: 1 }];
   }
   const spec = [
     specs.map((pairs) => pairs.map(([e, p]) => `${e} ${Math.round(p * 100)}%`).join(' + ')).join(' → '),
-    ...(gesture ? [gesture] : []),
+    ...(motion ? [motion] : []),
   ].join(' + ');
   return {
     act,
