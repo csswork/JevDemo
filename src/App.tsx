@@ -11,6 +11,7 @@ import type { JevMeta as Meta } from './act/fromJev';
 import { HAND_GESTURES } from './act/gestureRules';
 import { EMOTIONS, type Emotion } from './act/schema';
 import { DEFAULT_MODEL, MODELS, modelUrl, probeModels } from './models';
+import { appendChat, openChat, resetChat, type ChatSession } from './chat';
 import './App.css';
 
 /** 选过的模型存在这个 key 下（和音色一样，只是本机浏览器的偏好） */
@@ -112,6 +113,10 @@ export default function App() {
   const [modelLoading, setModelLoading] = useState<number | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const modelPick = useRef(0);
+  // 聊天记录：每个模型一个 session（session id = 模型 id）
+  const [persona, setPersona] = useState<ChatSession['persona'] | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const session = modelId ?? 'default';
   const [previewSpeed, setPreviewSpeed] = useState(0.25);
   const [previewLoop, setPreviewLoop] = useState(true);
   const [previewClock, setPreviewClock] = useState<{
@@ -132,21 +137,34 @@ export default function App() {
     rt.onSpeechText = setSubtitle;
 
     let disposed = false;
+    let sessionId = 'default';
     probeModels()
       .then((avail) => {
         setModelAvail(avail);
         const init = initialModel(avail);
         setModelId(init.id);
+        sessionId = init.id ?? 'default';
         return rt.mount(canvas, init.url, setProgress);
       })
-      .then(() => {
+      .then(async () => {
         if (disposed) return;
         setLoading(false);
-        deciderRef.current.decide('你好', { history: [] }).then((act) => {
+        // 接着上次的聊天记录；第一次见面就先打招呼（页面刚打开还不能出声，只有字幕）
+        try {
+          const chat = await openChat(sessionId);
+          if (disposed) return;
+          setPersona(chat.persona);
+          setTurns(chat.turns);
+          if (chat.greeted) rt.play(baselineAct(chat.persona.greeting));
+        } catch (e) {
+          // 没有聊天记录服务（比如生产构建）：退回以前的规则模板开场，这一轮不存
+          setChatError(`聊天记录不可用：${e instanceof Error ? e.message : String(e)}`);
+          const act = await deciderRef.current.decide('你好', { history: [] });
+          if (disposed) return;
           setLastAct(act);
           rt.play(act);
           setTurns([{ role: 'character', text: act.speech.replace(/<b:[a-z0-9_]+>/gi, '') }]);
-        });
+        }
       })
       .catch((e: unknown) => {
         if (disposed) return;
@@ -236,6 +254,60 @@ export default function App() {
     if (await session.prepare()) rt.play(baselineAct(line), { voice: session });
   };
 
+  /**
+   * 开场白：新 session 或刚重置时她先开口。有 Jev 就让 Jev 判断怎么演（1 次评估），
+   * 和普通的一轮一样先用基线表演开口、判断到了再升级
+   */
+  const greet = async (text: string, sid: string) => {
+    const rt = runtimeRef.current;
+    if (!rt) return;
+    const decider = deciderRef.current;
+    const judgeP =
+      decider instanceof HttpDecider && jev.progressive
+        ? decider.judge('（对方来了）', { history: [], session: sid }, text)
+        : null;
+    let voice: VoiceSession | null = null;
+    if (useVoice) {
+      voice = rt.createVoice(text);
+      if (voice) {
+        voice.setFallbackTone(DEFAULT_TONE);
+        const v = voice;
+        if (judgeP) {
+          judgeP.then(() => v.setJudgedTones(segmentTones((decider as HttpDecider).lastMeta) ?? [])).catch(() => v.setJudgedTones([]));
+        } else v.setJudgedTones([]);
+        if (!(await voice.prepare())) voice = null;
+      }
+    }
+    rt.play(baselineAct(text), { voice });
+    judgeP?.then((act) => rt.upgrade(act)).catch(() => {});
+  };
+
+  /** 读一个 session 的聊天记录显示出来；是新开场就打招呼 */
+  const showChat = async (sid: string, load: () => Promise<ChatSession>) => {
+    try {
+      const chat = await load();
+      setPersona(chat.persona);
+      setTurns(chat.turns);
+      setChatError(null);
+      if (chat.greeted) await greet(chat.persona.greeting, sid);
+    } catch (e) {
+      setChatError(`聊天记录不可用：${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  /** 重置对话：她会忘掉之前聊过的内容。旧记录在服务端归档，不是删除 */
+  const resetConversation = async () => {
+    const rt = runtimeRef.current;
+    if (!rt || busy) return;
+    const who = persona?.name ?? '她';
+    if (!window.confirm(`清空和${who}的聊天记录？\n她会忘掉之前聊过的内容（旧记录会归档在 data/chats/archive/，不会删除）。`)) return;
+    if (useVoice) rt.unlockAudio();
+    rt.stop();
+    setJevMeta(null);
+    setJevError(null);
+    await showChat(session, () => resetChat(session));
+  };
+
   /** 换模型：旧模型留在画面里直到新的加载好；选择记下来，下次打开默认用它 */
   const pickModel = async (id: string) => {
     const m = MODELS.find((x) => x.id === id);
@@ -243,6 +315,8 @@ export default function App() {
     if (!m || !rt || id === modelId) return;
     const prev = modelId;
     const pick = ++modelPick.current;
+    // 选择框的改动就是用户操作：趁现在解锁音频，新角色打招呼时才能出声
+    if (useVoice) rt.unlockAudio();
     setModelId(id);
     setModelLoading(0);
     setModelError(null);
@@ -253,6 +327,8 @@ export default function App() {
       } catch {
         // 存不了：这次照样生效，下次打开不记得
       }
+      // 每个模型一个 session：换成她的聊天记录，第一次见面就打招呼
+      await showChat(id, () => openChat(id));
     } catch (e) {
       if (pick !== modelPick.current) return;
       setModelId(prev);
@@ -338,7 +414,7 @@ export default function App() {
   const send = useCallback(async () => {
     const text = input.trim();
     const rt = runtimeRef.current;
-    if (!text || !rt || busy) return;
+    if (!text || !rt || busy || modelLoading != null) return;
 
     setInput('');
     setBusy(true);
@@ -346,8 +422,12 @@ export default function App() {
     setJevError(null);
     // 音频必须在用户操作里启动：发送这一下（点击或回车）就是
     if (useVoice) rt.unlockAudio();
-    const history = turns.slice(-6);
-    const ctx = { history };
+    const history = turns.slice(-6).map(({ role, text }) => ({ role, text }));
+    const ctx = { history, session };
+    // 台词不是服务端写的（规则模板、passthrough）时，由前端把这一轮记进聊天记录
+    const record = (reply: string) => {
+      if (!chatError) void appendChat(session, [{ role: 'user', text }, { role: 'character', text: reply }]).catch(() => {});
+    };
     setTurns((t) => [...t, { role: 'user', text }]);
 
     // 测试指令：跳过 DeepSeek 和真实 Jev，用合成答案走同一份 composeAct。
@@ -466,6 +546,8 @@ export default function App() {
       setJevError(decider instanceof HttpDecider ? decider.lastError : null);
       const compiled = rt.play(act);
       setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
+      // Jev 模式下这条路的台词也是服务端写的（已经记了），其余情况前端记
+      if (!(decider instanceof HttpDecider && jev.mode === 'jev')) record(compiled.text);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const act = fallbackAct(`决策层出错了：${msg}`);
@@ -475,7 +557,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [input, busy, turns, jev.progressive, jev.reaction, useVoice]);
+  }, [input, busy, turns, jev.progressive, jev.reaction, jev.mode, useVoice, session, chatError, modelLoading]);
 
 
 
@@ -553,6 +635,21 @@ export default function App() {
           <p>一期：文本驱动的表演管线 · 半身表情</p>
         </header>
 
+        <div className="chat-head">
+          <span>
+            {persona ? `和 ${persona.name} 的对话` : '对话'}
+            {turns.length > 0 && <em>{` · ${turns.length} 条`}</em>}
+          </span>
+          <button
+            onClick={() => void resetConversation()}
+            disabled={loading || busy || !!chatError || modelLoading != null}
+            title="清空这个角色的聊天记录，她会忘掉之前聊过的内容（旧记录归档，不删除）"
+          >
+            重置对话
+          </button>
+        </div>
+        {chatError && <div className="chat-error">{chatError}</div>}
+
         <div className="log" ref={logRef}>
           {turns.map((t, i) => (
             <div key={i} className={`turn ${t.role}`}>
@@ -579,7 +676,7 @@ export default function App() {
             }}
             disabled={loading || !!error}
           />
-          <button onClick={() => void send()} disabled={busy || loading || !input.trim()}>
+          <button onClick={() => void send()} disabled={busy || loading || modelLoading != null || !input.trim()}>
             发送
           </button>
         </div>
@@ -633,7 +730,7 @@ export default function App() {
             <span>模型</span>
             <select
               value={modelId ?? ''}
-              disabled={loading}
+              disabled={loading || busy}
               onChange={(e) => void pickModel(e.target.value)}
             >
               {modelId == null && (

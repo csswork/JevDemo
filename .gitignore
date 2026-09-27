@@ -36,3 +36,5 @@ tts/out/
 public/models/candidates/
 # 开发工具存的对比图（server/devSave.ts）
 dev-out/
+# 聊天记录（server/chatStore.ts）：每个模型一个 session，不进仓库
+data/
