@@ -24,7 +24,7 @@ export type Emotion = (typeof EMOTIONS)[number];
 export const MOTIONS = ['show_full_body', 'greeting', 'peace_sign', 'shoot', 'spin', 'model_pose', 'squat'] as const;
 export type MotionId = (typeof MOTIONS)[number];
 
-/** 全身待机基调。决定"这个人此刻整体是什么状态"，比手势的时间尺度长得多。 */
+/** 全身待机基调。决定"这个人此刻整体是什么状态"，比单个动作的时间尺度长得多。 */
 export const POSTURES = ['idle_neutral', 'idle_cheerful', 'idle_low', 'idle_alert'] as const;
 export type PostureId = (typeof POSTURES)[number];
 

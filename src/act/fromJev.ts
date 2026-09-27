@@ -207,7 +207,7 @@ export interface JevMeta {
   backend?: 'vercel' | 'jevstation' | 'typesafe';
   /** 每一段的情绪判断（一句话里的情绪变化） */
   segments?: Array<EmotionMeta & { text: string }>;
-  /** 整句的情绪：各段按字数加权平均。手势推导和旧面板用 */
+  /** 整句的情绪：各段按字数加权平均。姿态推导和面板用 */
   emotion?: EmotionMeta;
   intensity?: { score: number; confidence: number };
   gaze?: { choice: string; confidence: number };
@@ -270,7 +270,7 @@ function intensityOf(score: number): { raw: number; scaled: number } {
   return { raw, scaled: 0.3 + raw * 0.7 };
 }
 
-/** 没问姿态时，从情绪推导（和手势一样，不额外问 Jev） */
+/** 没问姿态时，从情绪推导（和动作一样，不额外问 Jev） */
 function derivePosture(probs: Record<string, number>, intensity: number): PostureId {
   const { dominant } = blendOf(probs);
   if (dominant === 'sad') return 'idle_low';
@@ -370,7 +370,7 @@ export function composeAct(
   }
   meta.looksAway = looksAway;
 
-  // --- 锚点：每段开头一个 <b:segN>，另有 mid / settle 给视线和手势用 ---
+  // --- 锚点：每段开头一个 <b:segN>，另有 mid / settle 给视线用 ---
   const text = [...speech];
   const marks = new Map<number, string[]>();
   const mark = (at: number, name: string) => {

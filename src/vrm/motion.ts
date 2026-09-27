@@ -211,7 +211,7 @@ export class MotionLayer {
       if (!p.leaving && p.speed > 0 && remain <= p.fadeOut * p.speed) p.leaving = true;
       const target = p.leaving ? 0 : 1;
       const rate = 1 / Math.max(0.05, p.leaving ? p.fadeOut : p.fadeIn);
-      p.w = target > p.w ? Math.min(1, p.w + dt * rate) : Math.max(0, p.w - dt * rate);
+      p.w = target >= p.w ? Math.min(target, p.w + dt * rate) : Math.max(target, p.w - dt * rate);
     }
     this.playing = this.playing.filter((p) => !(p.leaving && p.w <= 0));
   }

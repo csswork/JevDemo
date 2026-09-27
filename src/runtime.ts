@@ -77,7 +77,7 @@ export class Runtime {
     // 调参用：控制台里可以直接 __jev.character / __jev.stage 拨数值
     if (import.meta.env.DEV) {
       (window as unknown as { __jev: unknown }).__jev = this;
-      // 手势穿模 / 连贯性审计，见 src/dev/audit.ts。动态 import，生产包里不会有
+      // 表情 / 动作的观察工具，见 src/dev/audit.ts。动态 import，生产包里不会有
       void import('./dev/audit').then((m) => m.installAudit(this));
     }
 
@@ -136,7 +136,7 @@ export class Runtime {
 
   /**
    * 换模型。新模型加载好之前旧的一直在画面里，加载好之后一帧内换掉。
-   * 正在说的话会停掉 —— 口型、表情、手势都绑在旧模型上。调试开关沿用旧角色的。
+   * 正在说的话会停掉 —— 口型、表情、动作都绑在旧模型上。调试开关沿用旧角色的。
    * 连着换好几次时只有最后一次生效。
    */
   async setModel(url: string, onProgress?: (r: number) => void): Promise<boolean> {
@@ -276,7 +276,7 @@ export class Runtime {
 
     // 补齐已经过去的节拍时，只补"状态"（表情、视线、姿态），不补"瞬间"：
     // 过去的节奏信号（问句睁眼、句界眨眼）现在补上会在同一帧里一齐爆出来；
-    // 手势晚了太久再做也不对劲（笑点已经过去了）
+    // 动作晚了太久再做也不对劲（该打招呼的那一刻已经过去了）
     for (const ev of this.player.upgrade(compiled)) {
       if (ev.kind === 'cue') continue;
       if (ev.kind === 'motion' && this.elapsed - ev.time > 0.8) continue;

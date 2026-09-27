@@ -31,7 +31,7 @@ export type { JevMeta } from '../src/act/fromJev.ts';
  *
  * 这个分工反而比用通用 LLM 出 Act IR 更合适：
  *   - choice 的 criteria 就是闭集枚举，和 act/schema.ts 的词表天然对齐，
- *     不会出现"LLM 发明了一个不存在的手势名"这类问题
+ *     不会出现"LLM 发明了一个不存在的动作名"这类问题
  *   - choice 回的是**整个概率分布**，不只是 top-1 —— 直接喂给 ExpressionLayer.setBlend，
  *     混合表情白拿。happy 0.6 + surprised 0.3 比单一 happy 1.0 像人得多
  *   - score 回的是级别之间的连续值（文档例子里是 1.04），正好当权重用

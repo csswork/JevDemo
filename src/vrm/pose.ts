@@ -5,7 +5,7 @@ import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
  * 分层姿态累加器。
  *
  * 每帧流程固定为：humanoid.resetNormalizedPose() → 各层往这里 add 偏移 → flush()。
- * 各层之间因此完全解耦：idle 不需要知道手势在做什么，手势也不需要知道 posture 是什么。
+ * 各层之间因此完全解耦：idle 不需要知道视线在做什么，视线也不需要知道 posture 是什么。
  * 这是"轨道分层"在渲染侧的落地，也是避免动作互相打架的关键。
  */
 export class PoseAccumulator {
