@@ -20,36 +20,28 @@ import { DEFAULT_TONE } from '../act/voiceStyle';
  *   level()  此刻的音量，口型按它开合
  */
 
-export interface VoiceStatus {
-  ready: boolean;
-  /** 服务端的默认音色（TTS_SPEAKER） */
-  speaker?: string;
-  /** 模型支持的全部预设音色 */
-  speakers?: string[];
-  /** 用文字设计的音色（tts/voices.json），走 VoiceDesign 模型 */
-  designed?: Array<{ id: string; name: string; desc: string }>;
-  /** VoiceDesign 模型加载好了没有（比预设音色晚十几秒） */
-  designed_ready?: boolean;
-  design_error?: string | null;
-  error?: string | null;
+export interface VoiceMeta {
+  id: string;
+  name: string;
+  desc: string;
+  /** 下拉框里的分组（"千问系统音色"、"预设音色"、"设计音色"） */
+  group: string;
+  /** 暂时不能选（比如本地的设计音色模型还在加载） */
   disabled?: boolean;
 }
 
-/**
- * 给角色用的音色：Qwen3-TTS CustomVoice 预设里的女声（角色是女生，男声不列出来）。
- * 描述译自官方 README；母语不是中文的也能说中文，只是带口音。
- * 模型另外还有 5 个男声预设（uncle_fu / dylan / eric / ryan / aiden），不在下拉框里。
- */
-export const SPEAKER_INFO: Record<string, { name: string; desc: string }> = {
-  vivian: { name: 'Vivian', desc: '年轻女声，明亮、略带锐感' },
-  serena: { name: 'Serena', desc: '年轻女声，温暖、柔和' },
-  ono_anna: { name: 'Ono Anna', desc: '俏皮女声，轻快（母语日语，中文带口音）' },
-  sohee: { name: 'Sohee', desc: '温暖女声，情感丰富（母语韩语，中文带口音）' },
-};
-
-export function speakerLabel(id: string): string {
-  const info = SPEAKER_INFO[id];
-  return info ? `${info.name} · ${info.desc}` : id;
+export interface VoiceStatus {
+  ready: boolean;
+  /** qwen = 远程千问；local = 本机 tts/server.py */
+  backend?: 'qwen' | 'local';
+  /** 服务端的默认音色（TTS_SPEAKER） */
+  speaker?: string;
+  /** 可选的音色。由服务端给，前端不用知道是哪个后端 */
+  voices?: VoiceMeta[];
+  /** 还有东西在加载（本地设计音色），前端继续探测 */
+  pending?: boolean;
+  error?: string | null;
+  disabled?: boolean;
 }
 
 export async function probeVoice(): Promise<VoiceStatus> {

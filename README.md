@@ -558,12 +558,25 @@ Vite 会给 app 里的 import 加 `?t=时间戳`，控制台拿到的是另一�
 
 ## 语音
 
-本地跑 [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)（阿里，Apache-2.0）的 1.7B CustomVoice 模型，
-音色 Vivian，通过 [mlx-audio](https://github.com/Blaizzy/mlx-audio) 跑在 Apple Silicon 上。
-选它的理由：能用一句话指定语气（「用开心、轻快的语气说」）、可商用、能在本机跑。
+[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)（阿里）。选它的理由：能用一句话指定语气
+（「用开心、轻快的语气说」），一句话里按段换语气就靠这个。两种后端，对浏览器是同一套接口：
+
+| 后端 | 什么时候用 | 说明 |
+|---|---|---|
+| **远程千问**（`server/qwenTts.ts`） | 配了 `DASHSCOPE_API_KEY` 就默认用它 | 模型 `qwen3-tts-instruct-flash`，13 个说普通话的女声系统音色。不占本机内存，以后搬到服务器也只是一个 key |
+| 本地（`tts/server.py`） | 没配 key，或 `TTS_BACKEND=local` | mlx-audio 跑在 Apple Silicon 上，4.5~9GB 内存 |
+
+远程：千问 AI 平台和阿里云百炼（国内 / 国际）的 key 都能用，它们是同一套 DashScope 接口、
+不同的地址。不指定地址时自动探测：给每个地址发一个缺字段的请求，key 不对的回 401/403、
+对的回 400（参数错误），不产生合成、不计费。
+
+浏览器拿到的格式两种后端完全一样（流式 PCM + `X-Sample-Rate`，非流式 WAV），
+所以前端的播放、口型、时间轴一行都不用改。音色列表也由服务端给（`/api/tts/health` 的 `voices`）。
+
+下面几节讲的是本地后端；"声音的语气和表情用同一个判断""时间轴跟着真实音频走"两种后端都一样。
 试过的方案对比、每种语气的试听见 `tts/bench.py` / `tts/listen.py`（生成 `tts/out/listen.html`）。
 
-### 安装（一次）
+### 本地后端：安装（一次）
 
 ```bash
 /opt/homebrew/bin/python3.13 -m venv tts/.venv
@@ -583,10 +596,13 @@ tts/.venv/bin/pip install mlx-audio
 界面上的下拉框选，选择记在浏览器里，下次打开默认用它（没选过就用 `TTS_SPEAKER`，默认 vivian）。
 切换后角色会用新音色说一句，直接听效果。只列女声，分两组：
 
-| 分组 | 音色 | 来源 |
+| 后端 | 分组 | 音色 |
 |---|---|---|
-| 预设音色 | Vivian、Serena、Ono Anna（日语母语）、Sohee（韩语母语） | CustomVoice 模型的预设说话人，音色固定 |
-| 设计音色 | 元气少女、清冷御姐 | VoiceDesign 模型按 `tts/voices.json` 里的文字描述生成 |
+| 远程 | 千问系统音色 | 千雪（二次元虚拟女友）、芊悦、苏瑶、十三（Vivian）、茉兔、四月、少女阿月 …… 共 13 个 |
+| 本地 | 预设音色 | Vivian、Serena、Ono Anna（日语母语）、Sohee（韩语母语），CustomVoice 的预设说话人 |
+| 本地 | 设计音色 | 元气少女、清冷御姐，VoiceDesign 模型按 `tts/voices.json` 里的文字描述生成 |
+
+存下来的选择按 id **不区分大小写**匹配：本地的 `serena` 和千问的 `Serena` 能对上，换后端不丢选择。
 
 设计音色要多加载一个模型，语音服务的内存从约 4.5GB 变成约 9GB（`voices.json` 为空就不加载）。
 加新的设计音色：在 `voices.json` 里加一条 `{id, name, desc, prompt}`，重启语音服务。

@@ -5,7 +5,7 @@ import { HttpDecider, probeJev, type JevMeta, type JevStatus } from './jev/httpD
 import type { ActDecider } from './jev/decider';
 import { baselineAct, fallbackAct, type ActScript } from './act/schema';
 import { isTestCommand, parseTestCommand } from './jev/testCommand';
-import { probeVoice, SPEAKER_INFO, speakerLabel, type VoiceSession, type VoiceStatus } from './speech/voice';
+import { probeVoice, type VoiceSession, type VoiceStatus } from './speech/voice';
 import { DEFAULT_TONE, toneFor } from './act/voiceStyle';
 import type { JevMeta as Meta } from './act/fromJev';
 import { HAND_GESTURES } from './act/gestureRules';
@@ -17,12 +17,6 @@ const MODEL_URL = `${import.meta.env.BASE_URL}models/Sendagaya_Shino.vrm`;
 interface Turn {
   role: 'user' | 'character';
   text: string;
-}
-
-/** 下拉框只列 SPEAKER_INFO 里的音色（女声），按它的顺序：中文母语的排前面 */
-function sortSpeakers(ids: string[]): string[] {
-  const order = Object.keys(SPEAKER_INFO);
-  return ids.filter((id) => order.includes(id)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
 }
 
 /** 选过的音色存在这个 key 下（只是本机浏览器的偏好，不影响别人） */
@@ -151,10 +145,8 @@ export default function App() {
         // 本地语音就绪就默认开口说话（用户手动关过就不再替他打开）
         setTts(true);
       }
-      // 预设音色先就绪，设计音色的模型还要再加载十几秒：两个都好了才停止探测
-      const pending =
-        !s.ready || ((s.designed?.length ?? 0) > 0 && !s.designed_ready && !s.error && !s.design_error);
-      if (!s.disabled && pending) timer = window.setTimeout(poll, 3000);
+      // 本地后端的设计音色模型比预设音色晚十几秒：都好了才停止探测
+      if (!s.disabled && !s.error && (!s.ready || s.pending)) timer = window.setTimeout(poll, 3000);
     };
     void poll();
     return () => {
@@ -178,14 +170,15 @@ export default function App() {
       return null;
     }
   });
-  const listed = sortSpeakers(voice.speakers ?? []);
-  const designed = voice.designed ?? [];
-  // 设计音色要等它的模型加载好才能选；没加载好时退回预设音色，但不改用户存的选择
-  const usable = [...listed, ...(voice.designed_ready ? designed.map((d) => d.id) : [])];
-  const activeSpeaker =
-    speaker && usable.includes(speaker) ? speaker : listed.includes(voice.speaker ?? '') ? voice.speaker! : 'vivian';
-  const activeName =
-    designed.find((d) => d.id === activeSpeaker)?.name ?? SPEAKER_INFO[activeSpeaker]?.name ?? activeSpeaker;
+  const voices = voice.voices ?? [];
+  // 不区分大小写：本地后端的音色 id 是小写（serena），千问的是首字母大写（Serena），
+  // 换后端之后存下来的选择还能对上。暂时不能选的（加载中）不算，但不改用户存的选择
+  const usable = voices.filter((v) => !v.disabled);
+  const match = (id?: string | null) => usable.find((v) => id && v.id.toLowerCase() === id.toLowerCase());
+  const activeVoice = match(speaker) ?? match(voice.speaker) ?? usable[0];
+  const activeSpeaker = activeVoice?.id ?? voice.speaker ?? 'Vivian';
+  const activeName = activeVoice?.name ?? activeSpeaker;
+  const groups = [...new Set(voices.map((v) => v.group))];
   useEffect(() => {
     if (runtimeRef.current) runtimeRef.current.voiceSpeaker = activeSpeaker;
   }, [activeSpeaker]);
@@ -550,12 +543,12 @@ export default function App() {
               }}
             />
             {voice.ready
-              ? `语音：${activeName}（本地 Qwen3-TTS）`
+              ? `语音：${activeName}（${voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS'}）`
               : voice.disabled || voice.error
                 ? '语音合成（系统内置）'
                 : '语音合成（系统内置 · 本地语音加载中）'}
           </label>
-          {voice.ready && listed.length > 0 && (
+          {voice.ready && voices.length > 0 && (
             <label className="voice-pick" title="选择会记住，下次打开默认用这个音色">
               <span>音色</span>
               <select
@@ -563,22 +556,17 @@ export default function App() {
                 disabled={!tts}
                 onChange={(e) => void pickSpeaker(e.target.value)}
               >
-                <optgroup label="预设音色">
-                  {listed.map((id) => (
-                    <option key={id} value={id}>
-                      {speakerLabel(id)}
-                    </option>
-                  ))}
-                </optgroup>
-                {designed.length > 0 && (
-                  <optgroup label={voice.designed_ready ? '设计音色' : '设计音色（加载中）'}>
-                    {designed.map((d) => (
-                      <option key={d.id} value={d.id} disabled={!voice.designed_ready}>
-                        {`${d.name} · ${d.desc}`}
-                      </option>
-                    ))}
+                {groups.map((g) => (
+                  <optgroup key={g} label={g}>
+                    {voices
+                      .filter((v) => v.group === g)
+                      .map((v) => (
+                        <option key={v.id} value={v.id} disabled={v.disabled}>
+                          {`${v.name} · ${v.desc}`}
+                        </option>
+                      ))}
                   </optgroup>
-                )}
+                ))}
               </select>
             </label>
           )}
