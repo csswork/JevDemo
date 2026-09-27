@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 /** three.js 场景骨架：相机、灯光、背景、resize。与 VRM 无关，便于单独调。 */
 export function createStage(canvas: HTMLCanvasElement) {
@@ -18,6 +19,27 @@ export function createStage(canvas: HTMLCanvasElement) {
   camera.position.set(0, 1.42, 1.58);
   const lookTarget = new THREE.Vector3(0, 1.395, 0);
   camera.lookAt(lookTarget);
+
+  // 鼠标看模型：绕胸像横向随便转，上下各 30°，远近在默认距离的 1/1.5 ~ 1.5 倍之间。
+  // 不能平移 —— 转轴始终是上面的取景中心，怎么拖都不会把人拖出画面。
+  //
+  // 角色的视线不跟着相机走：GazeLayer 在构造时复制了相机的初始位置，那是"对话的人"
+  // 站的地方。转到侧面看，她还是在和正前方的你说话，而不是扭头追着镜头。
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.copy(lookTarget);
+  controls.enablePan = false;
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.rotateSpeed = 0.6;
+  controls.zoomSpeed = 0.6;
+  const home = camera.position.clone().sub(lookTarget);
+  const homePolar = Math.acos(home.y / home.length());
+  const PITCH = THREE.MathUtils.degToRad(30);
+  controls.minPolarAngle = homePolar - PITCH;
+  controls.maxPolarAngle = homePolar + PITCH;
+  controls.minDistance = home.length() / 1.5;
+  controls.maxDistance = home.length() * 1.5;
+  controls.update();
 
   // 三点布光。MToon 对方向光敏感，主光别太硬，否则二次元材质会出现明显的明暗切割线。
   const key = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -52,12 +74,14 @@ export function createStage(canvas: HTMLCanvasElement) {
   const view: { camera: THREE.PerspectiveCamera | null } = { camera: null };
 
   function render() {
+    controls.update();
     renderer.render(scene, view.camera ?? camera);
   }
 
   function dispose() {
+    controls.dispose();
     renderer.dispose();
   }
 
-  return { renderer, scene, camera, view, lookTarget, resize, render, dispose };
+  return { renderer, scene, camera, controls, view, lookTarget, resize, render, dispose };
 }
