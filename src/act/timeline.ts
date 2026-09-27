@@ -31,10 +31,20 @@ export interface CompiledAct {
   events: TimelineEvent[];
 }
 
-export function compileAct(act: ActScript, opts: { duration?: number } = {}): CompiledAct {
+export function compileAct(
+  act: ActScript,
+  opts: {
+    duration?: number;
+    /**
+     * 字符下标 → 秒。省略就按时长线性估算。
+     * 接上真实语音后由每一段的实测时长构造（makeMeasuredMapper），锚点就落在真实的时间上。
+     */
+    charToTime?: (charIndex: number) => number;
+  } = {},
+): CompiledAct {
   const { text, anchors } = parseAnchors(act.speech);
   const duration = opts.duration ?? estimateDuration(text);
-  const charToTime = makeLinearMapper(text.length, duration);
+  const charToTime = opts.charToTime ?? makeLinearMapper(text.length, duration);
 
   const anchorTime = (name: string): number | null => {
     const a: Anchor | undefined = anchors.find((x) => x.name === name);
@@ -170,16 +180,22 @@ export class TimelinePlayer {
    * 前提：新旧脚本的台词和时长必须一致，否则锚点解析出的时间对不上。
    * 调用方负责保证（Runtime.upgrade 里做了校验）。
    *
-   * speech_start / speech_end 不参与替换：语音已经在播，它的时间由第一次 play 拥有。
+   * speech_start 不参与替换：语音已经在播。speech_end 默认也不换（时长由第一次 play 拥有），
+   * 只有 retime —— 真实语音的时长比估算的更准 —— 时才换成新的。
    */
-  upgrade(compiled: CompiledAct): TimelineEvent[] {
+  upgrade(compiled: CompiledAct, opts: { replaceEnd?: boolean } = {}): TimelineEvent[] {
     if (!this.playing) return [];
 
-    const speechEnd = this.events.find((e) => e.kind === 'speech_end');
+    const speechEnd = opts.replaceEnd
+      ? compiled.events.find((e) => e.kind === 'speech_end')
+      : this.events.find((e) => e.kind === 'speech_end');
     const next: TimelineEvent[] = compiled.events.filter(
       (e) => e.kind !== 'speech_start' && e.kind !== 'speech_end',
     );
     if (speechEnd) next.push(speechEnd);
+    // 还没触发的 speech_start 要留着。真实语音的第一段一排上就会校时，那时第一帧都还没跑，
+    // 丢掉它角色就永远进不了"说话"状态（实测整句都停在"倾听"）
+    next.push(...this.events.slice(this.cursor).filter((e) => e.kind === 'speech_start'));
     next.sort((a, b) => a.time - b.time);
 
     this.events = next;
@@ -192,8 +208,16 @@ export class TimelinePlayer {
 
   /** 每帧调用，返回本帧到期的事件。 */
   update(dt: number): TimelineEvent[] {
+    return this.updateTo(this.elapsed + dt);
+  }
+
+  /**
+   * 推进到指定时刻（秒）。有真实语音时时钟跟着音频走，而不是按帧累加 ——
+   * 下一段音频晚到了、播放顿了一下，表情的时间点也跟着顿。
+   */
+  updateTo(time: number): TimelineEvent[] {
     if (!this.playing) return [];
-    this.elapsed += dt;
+    this.elapsed = Math.max(this.elapsed, time);
     const due: TimelineEvent[] = [];
     while (this.cursor < this.events.length && this.events[this.cursor].time <= this.elapsed) {
       due.push(this.events[this.cursor++]);

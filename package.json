@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tts": "tts/.venv/bin/python tts/server.py"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.5",

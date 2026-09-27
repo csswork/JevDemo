@@ -1,11 +1,8 @@
 /**
- * Web Speech API 封装。
+ * Web Speech API 封装 —— 本地语音（voice.ts，Qwen3-TTS · Vivian）不可用时的兜底。
  *
- * 一期选它纯粹因为零配置：不用 key、不用后端，macOS/Windows 自带中文嗓音。
- * 局限也要说清楚 —— 拿不到音频流，所以口型只能靠估算时长驱动。
- *
- * 二期换成能给音素时间戳的 TTS（Azure / ElevenLabs）后：
- *   onBoundary 换成真实 viseme 事件 → LipSyncLayer 直接消费，其余不用动。
+ * 零配置：不用 key、不用后端，macOS/Windows 自带中文嗓音。
+ * 局限也要说清楚 —— 拿不到音频流，所以口型只能靠估算时长驱动，也没有语气可言。
  */
 
 export interface SpeakHandle {

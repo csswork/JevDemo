@@ -292,6 +292,27 @@ body {
 
 .options input:disabled + * { opacity: 0.5; }
 
+/* 音色下拉框：缩进到语音开关下面，表示它是那个开关的子选项 */
+.options .voice-pick {
+  padding-left: 20px;
+  cursor: default;
+}
+.options .voice-pick select {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.options .voice-pick select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .section {
   border-bottom: 1px solid var(--line);
 }

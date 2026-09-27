@@ -5,6 +5,9 @@ import { HttpDecider, probeJev, type JevMeta, type JevStatus } from './jev/httpD
 import type { ActDecider } from './jev/decider';
 import { baselineAct, fallbackAct, type ActScript } from './act/schema';
 import { isTestCommand, parseTestCommand } from './jev/testCommand';
+import { probeVoice, SPEAKER_INFO, speakerLabel, type VoiceSession, type VoiceStatus } from './speech/voice';
+import { DEFAULT_TONE, toneFor } from './act/voiceStyle';
+import type { JevMeta as Meta } from './act/fromJev';
 import { HAND_GESTURES } from './act/gestureRules';
 import { EMOTIONS, type Emotion } from './act/schema';
 import './App.css';
@@ -14,6 +17,45 @@ const MODEL_URL = `${import.meta.env.BASE_URL}models/Sendagaya_Shino.vrm`;
 interface Turn {
   role: 'user' | 'character';
   text: string;
+}
+
+/** 下拉框只列 SPEAKER_INFO 里的音色（女声），按它的顺序：中文母语的排前面 */
+function sortSpeakers(ids: string[]): string[] {
+  const order = Object.keys(SPEAKER_INFO);
+  return ids.filter((id) => order.includes(id)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+}
+
+/** 选过的音色存在这个 key 下（只是本机浏览器的偏好，不影响别人） */
+const SPEAKER_KEY = 'jev.voice.speaker';
+
+/** Jev 按段的判断 → 每段的语气指令（声音和表情用同一个判断） */
+function segmentTones(meta: Meta | null | undefined): string[] | null {
+  if (!meta?.segments?.length) return null;
+  const intensity = (meta.intensity?.score ?? 1) / 2;
+  return meta.segments.map((s) => toneFor(s.probabilities, intensity));
+}
+
+/** 倾听反应 → 第一段的语气（整句判断还没回来时用） */
+function reactionTone(meta: Meta): string {
+  const r = meta.reaction!;
+  return toneFor(r.probabilities, r.intensity / 2);
+}
+
+/**
+ * 测试指令用：台词和每段的情绪都已知，直接按段合成。合成失败返回 null（无声播放）。
+ */
+async function voiced(
+  rt: Runtime,
+  speech: string,
+  meta: Meta,
+  fallback?: string,
+): Promise<VoiceSession | null> {
+  const session = rt.createVoice(speech);
+  if (!session) return null;
+  const tones = segmentTones(meta);
+  if (fallback) session.setFallbackTone(fallback);
+  if (tones) session.setJudgedTones(tones);
+  return (await session.prepare()) ? session : null;
 }
 
 /** 概率分布的简写："happy 0.62 + surprised 0.21"（只列 ≥ 0.15 的） */
@@ -95,9 +137,78 @@ export default function App() {
     };
   }, []);
 
+  // 本地语音（Vivian）。模型加载要 20 秒左右，没就绪时每 3 秒探一次
+  const [voice, setVoice] = useState<VoiceStatus>({ ready: false });
+  const ttsTouched = useRef(false);
   useEffect(() => {
-    if (runtimeRef.current) runtimeRef.current.ttsEnabled = tts;
-  }, [tts]);
+    let alive = true;
+    let timer = 0;
+    const poll = async () => {
+      const s = await probeVoice();
+      if (!alive) return;
+      setVoice(s);
+      if (s.ready && !ttsTouched.current) {
+        // 本地语音就绪就默认开口说话（用户手动关过就不再替他打开）
+        setTts(true);
+      }
+      // 预设音色先就绪，设计音色的模型还要再加载十几秒：两个都好了才停止探测
+      const pending =
+        !s.ready || ((s.designed?.length ?? 0) > 0 && !s.designed_ready && !s.error && !s.design_error);
+      if (!s.disabled && pending) timer = window.setTimeout(poll, 3000);
+    };
+    void poll();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    // 系统语音只在本地语音不可用时兜底
+    if (runtimeRef.current) runtimeRef.current.ttsEnabled = tts && !voice.ready;
+  }, [tts, voice.ready]);
+
+  const useVoice = tts && voice.ready;
+
+  // 音色：下拉框选的记在浏览器里，下次打开默认用它；没选过就用服务端的默认音色（TTS_SPEAKER）
+  const [speaker, setSpeaker] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(SPEAKER_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const listed = sortSpeakers(voice.speakers ?? []);
+  const designed = voice.designed ?? [];
+  // 设计音色要等它的模型加载好才能选；没加载好时退回预设音色，但不改用户存的选择
+  const usable = [...listed, ...(voice.designed_ready ? designed.map((d) => d.id) : [])];
+  const activeSpeaker =
+    speaker && usable.includes(speaker) ? speaker : listed.includes(voice.speaker ?? '') ? voice.speaker! : 'vivian';
+  const activeName =
+    designed.find((d) => d.id === activeSpeaker)?.name ?? SPEAKER_INFO[activeSpeaker]?.name ?? activeSpeaker;
+  useEffect(() => {
+    if (runtimeRef.current) runtimeRef.current.voiceSpeaker = activeSpeaker;
+  }, [activeSpeaker]);
+
+  /** 换了音色：记下来，并让角色用新音色说一句，直接听效果 */
+  const pickSpeaker = async (id: string) => {
+    setSpeaker(id);
+    try {
+      localStorage.setItem(SPEAKER_KEY, id);
+    } catch {
+      // 隐私模式等存不了：这次会话里照样生效，只是下次打开不记得
+    }
+    const rt = runtimeRef.current;
+    if (!rt) return;
+    rt.voiceSpeaker = id;
+    if (busy || !useVoice) return;
+    rt.unlockAudio();
+    const line = '嗨，换成这个声音了，你觉得怎么样？';
+    const session = rt.createVoice(line);
+    if (!session) return;
+    session.setFallbackTone(DEFAULT_TONE);
+    if (await session.prepare()) rt.play(baselineAct(line), { voice: session });
+  };
 
   // 探测服务端代理有没有配好。key 在代理那一侧，前端只知道"能不能用"。
   useEffect(() => {
@@ -181,6 +292,8 @@ export default function App() {
     setBusy(true);
     setJevMeta(null);
     setJevError(null);
+    // 音频必须在用户操作里启动：发送这一下（点击或回车）就是
+    if (useVoice) rt.unlockAudio();
     const history = turns.slice(-6);
     const ctx = { history };
     setTurns((t) => [...t, { role: 'user', text }]);
@@ -198,13 +311,17 @@ export default function App() {
         const mix = cmd.reaction;
         await new Promise((r) => setTimeout(r, 900));
         rt.react(mix);
-        await new Promise((r) => setTimeout(r, 1300));
-        const compiled = rt.play(cmd.act);
+        const [session] = await Promise.all([
+          useVoice ? voiced(rt, cmd.act.speech, cmd.meta, toneFor(Object.fromEntries(mix), 0.6)) : null,
+          new Promise((r) => setTimeout(r, 1300)),
+        ]);
+        const compiled = rt.play(cmd.act, { voice: session });
         setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
       } else if (cmd) {
         setLastAct(cmd.act);
         setJevMeta(cmd.meta);
-        const compiled = rt.play(cmd.act);
+        const session = useVoice ? await voiced(rt, cmd.act.speech, cmd.meta) : null;
+        const compiled = rt.play(cmd.act, { voice: session });
         setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
       } else {
         setTurns((t) => [
@@ -230,29 +347,47 @@ export default function App() {
     //   发出消息 → 角色"想"（视线移开、抿嘴）
     //            ↘ 同时 Jev 判断第一反应（只看用户那句话），到了就先上脸
     //   台词到了 → 带着第一反应开口
-    //   整句判断到了 → 每一段换成 Jev 判断的情绪（一句话里情绪可以变）
+    //              （有本地语音时：先合成第一段，语气用第一反应；合成要 0.5~1.5s，角色还在"想"）
+    //   整句判断到了 → 每一段换成 Jev 判断的情绪（一句话里情绪可以变），
+    //                  还没合成的段也换成这一段的语气
     //   说完 → 表情慢慢淡成余韵，不是一下子回到面无表情
     if (decider instanceof HttpDecider && jev.progressive) {
       rt.think();
       let reaction: Array<[Emotion, number]> | null = null;
       let reactionMeta: JevMeta | null = null;
+      let session: VoiceSession | null = null;
       const reactP = jev.reaction
         ? decider.react(text, ctx).then((r) => {
             if (!r) return;
             reaction = r.mix;
             reactionMeta = r.meta;
             rt.react(r.mix);
+            if (r.meta.reaction) session?.setFallbackTone(reactionTone(r.meta));
           })
         : Promise.resolve();
       try {
         const speech = await decider.speak(text, ctx);
-        const compiled = rt.play(baselineAct(speech, reaction));
+        // 整句判断立刻发出去，不等语音 —— 语音后面几段要等它给语气
+        const judgeP = decider.judge(text, ctx, speech);
+        if (useVoice) {
+          const meta = reactionMeta as JevMeta | null;
+          session = rt.createVoice(speech);
+          if (session) {
+            session.setFallbackTone(meta?.reaction ? reactionTone(meta) : DEFAULT_TONE);
+            const s = session;
+            // 判断失败（降级）也要通知：后面的段不必再等，直接用倾听反应的语气合成
+            judgeP
+              .then(() => s.setJudgedTones(segmentTones(decider.lastMeta) ?? []))
+              .catch(() => s.setJudgedTones([]));
+            if (!(await session.prepare())) session = null;
+          }
+        }
+        const compiled = rt.play(baselineAct(speech, reaction), { voice: session });
         setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
         setBusy(false);
 
         // 不 await：让它在角色说话的同时跑
-        void decider
-          .judge(text, ctx, speech)
+        void judgeP
           .then(async (act) => {
             rt.upgrade(act);
             await reactP;
@@ -288,7 +423,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [input, busy, turns, jev.progressive, jev.reaction]);
+  }, [input, busy, turns, jev.progressive, jev.reaction, useVoice]);
 
 
 
@@ -406,9 +541,47 @@ export default function App() {
         */}
         <div className="options">
           <label>
-            <input type="checkbox" checked={tts} onChange={(e) => setTts(e.target.checked)} />
-            语音合成（系统内置）
+            <input
+              type="checkbox"
+              checked={tts}
+              onChange={(e) => {
+                ttsTouched.current = true;
+                setTts(e.target.checked);
+              }}
+            />
+            {voice.ready
+              ? `语音：${activeName}（本地 Qwen3-TTS）`
+              : voice.disabled || voice.error
+                ? '语音合成（系统内置）'
+                : '语音合成（系统内置 · 本地语音加载中）'}
           </label>
+          {voice.ready && listed.length > 0 && (
+            <label className="voice-pick" title="选择会记住，下次打开默认用这个音色">
+              <span>音色</span>
+              <select
+                value={activeSpeaker}
+                disabled={!tts}
+                onChange={(e) => void pickSpeaker(e.target.value)}
+              >
+                <optgroup label="预设音色">
+                  {listed.map((id) => (
+                    <option key={id} value={id}>
+                      {speakerLabel(id)}
+                    </option>
+                  ))}
+                </optgroup>
+                {designed.length > 0 && (
+                  <optgroup label={voice.designed_ready ? '设计音色' : '设计音色（加载中）'}>
+                    {designed.map((d) => (
+                      <option key={d.id} value={d.id} disabled={!voice.designed_ready}>
+                        {`${d.name} · ${d.desc}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </label>
+          )}
           <label title={jev.endpoint ?? jev.backend ?? '在 .env.local 里配置后重启 dev server'}>
             <input
               type="checkbox"

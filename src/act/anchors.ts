@@ -83,3 +83,30 @@ export function makeMeasuredMapper(
     return durationSec;
   };
 }
+
+/**
+ * 上面那个的反向：秒 → 字符下标。口型层要知道"此刻念到第几个字"。
+ * 采样点和 makeMeasuredMapper 用同一组，两边保持一致。
+ */
+export function makeTimeToChar(
+  samples: Array<{ charIndex: number; time: number }>,
+  totalChars: number,
+  durationSec: number,
+) {
+  const pts = [{ charIndex: 0, time: 0 }, ...samples, { charIndex: totalChars, time: durationSec }]
+    .filter((p) => Number.isFinite(p.charIndex) && Number.isFinite(p.time))
+    .sort((a, b) => a.time - b.time);
+
+  return (time: number) => {
+    for (let i = 1; i < pts.length; i++) {
+      if (time <= pts[i].time) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        const span = b.time - a.time;
+        const t = span <= 0 ? 0 : (time - a.time) / span;
+        return a.charIndex + (b.charIndex - a.charIndex) * t;
+      }
+    }
+    return totalChars;
+  };
+}

@@ -2,9 +2,10 @@ import { VRMUtils } from '@pixiv/three-vrm';
 import { createStage } from './vrm/stage';
 import { Character } from './vrm/character';
 import { TimelinePlayer, compileAct, type CompiledAct } from './act/timeline';
-import { estimateDuration } from './act/anchors';
+import { estimateDuration, makeMeasuredMapper, makeTimeToChar } from './act/anchors';
 import type { ActScript, Emotion } from './act/schema';
 import { pickChineseVoice, speak, ttsAvailable, type SpeakHandle } from './speech/tts';
+import { VoiceSession } from './speech/voice';
 
 export interface LiveState {
   fps: number;
@@ -27,15 +28,23 @@ export class Runtime {
   private player = new TimelinePlayer();
   private lastTime = 0;
   private raf = 0;
-  private voice: SpeechSynthesisVoice | null = null;
+  private systemVoice: SpeechSynthesisVoice | null = null;
   private speech: SpeakHandle | null = null;
   private compiled: CompiledAct | null = null;
+  /** 当前在演的脚本（基线，或者升级之后的）。真实语音的时长到了要用它重新编译 */
+  private act: ActScript | null = null;
+  private audio: AudioContext | null = null;
+  /** 本地语音（Vivian）的这一次说话；没有就是 null（无声或系统语音） */
+  private session: VoiceSession | null = null;
+  /** 此刻的秒 → 字符下标，给口型用 */
+  private timeToChar: ((t: number) => number) | null = null;
   private elapsed = 0;
   private fpsAccum = 0;
   private fpsFrames = 0;
   private fps = 0;
   private stateTimer = 0;
 
+  /** 系统语音（Web Speech）。本地语音可用时不用它 */
   ttsEnabled = false;
   /**
    * dispose() 可能在 mount() 的 await 返回之前就被调用（React StrictMode 会挂两次，
@@ -69,7 +78,7 @@ export class Runtime {
       void import('./dev/audit').then((m) => m.installAudit(this));
     }
 
-    if (ttsAvailable()) this.voice = await pickChineseVoice();
+    if (ttsAvailable()) this.systemVoice = await pickChineseVoice();
     if (this.disposed) return vrm;
 
     this.lastTime = performance.now();
@@ -86,14 +95,56 @@ export class Runtime {
     this.stage?.resize();
   }
 
-  /** 播放一段表演。返回编译后的时间轴，供 UI 展示。 */
-  play(act: ActScript): CompiledAct {
-    const character = this.character;
-    // 先估算时长；TTS 开启时 boundary 事件会在播放中校正口型
-    const text = act.speech.replace(/<b:[a-z0-9_]+>/gi, '');
-    const duration = estimateDuration(text);
-    const compiled = compileAct(act, { duration });
+  // ---- 本地语音 ----
 
+  /**
+   * 浏览器要求音频必须在用户操作里启动。发送消息时调一次（点击 / 回车都算用户操作），
+   * 之后同一个 AudioContext 一直复用。
+   */
+  unlockAudio() {
+    if (!this.audio) this.audio = new AudioContext();
+    if (this.audio.state === 'suspended') void this.audio.resume();
+  }
+
+  /** 本地语音的音色（预设音色 id）；null = 用服务端默认音色 */
+  voiceSpeaker: string | null = null;
+
+  /** 为一句台词准备本地语音。之后 prepare() 合成第一段，再交给 play({ voice }) */
+  createVoice(text: string): VoiceSession | null {
+    if (!this.audio) return null;
+    return new VoiceSession(this.audio, text.replace(/<b:[a-z0-9_]+>/gi, ''), this.voiceSpeaker);
+  }
+
+  /**
+   * 字符 ↔ 时间的换算。有真实语音时用每一段的实测起止时间（还没合成的段按语速外推），
+   * 否则按字数估算。
+   */
+  private timing(text: string): { duration: number; charToTime: (i: number) => number } {
+    const chars = text.length;
+    const session = this.session;
+    if (!session) {
+      const duration = estimateDuration(text);
+      this.timeToChar = null;
+      return { duration, charToTime: (i) => (i / Math.max(1, chars)) * duration };
+    }
+    const duration = Math.max(0.3, session.estimatedDuration());
+    const samples = session.samples.filter((p) => p.charIndex > 0 && p.charIndex < chars);
+    this.timeToChar = makeTimeToChar(samples, chars, duration);
+    return { duration, charToTime: makeMeasuredMapper(samples, chars, duration) };
+  }
+
+  /** 播放一段表演。返回编译后的时间轴，供 UI 展示。 */
+  play(act: ActScript, opts: { voice?: VoiceSession | null } = {}): CompiledAct {
+    const character = this.character;
+    const text = act.speech.replace(/<b:[a-z0-9_]+>/gi, '');
+
+    this.session?.stop();
+    this.session = opts.voice ?? null;
+    this.speech?.cancel();
+    this.speech = null;
+
+    const compiled = compileAct(act, this.timing(text));
+    this.act = act;
     this.compiled = compiled;
     this.elapsed = 0;
     this.judged = false;
@@ -103,11 +154,13 @@ export class Runtime {
     character?.lipsync.start(compiled.text, compiled.duration);
     this.onSpeechText?.(compiled.text);
 
-    this.speech?.cancel();
-    this.speech = null;
-    if (this.ttsEnabled && ttsAvailable()) {
+    if (this.session) {
+      // 每合成好一段，时长就更准一点：重新编译时间轴，表情锚点落到真实的时间上
+      this.session.onUpdate = () => this.retime();
+      this.session.play();
+    } else if (this.ttsEnabled && ttsAvailable()) {
       this.speech = speak(compiled.text, {
-        voice: this.voice,
+        voice: this.systemVoice,
         onEnd: () => {
           this.character?.lipsync.stop();
         },
@@ -115,6 +168,22 @@ export class Runtime {
     }
 
     return compiled;
+  }
+
+  /**
+   * 真实语音的某一段排上了：用新的时长重新编译当前脚本，替换还没触发的节拍
+   * （和渐进升级是同一个机制，只是这次变的是时间，不是内容）。
+   */
+  private retime() {
+    const character = this.character;
+    if (!this.session || !this.act || !character || !this.player.isPlaying) return;
+    const compiled = compileAct(this.act, this.timing(this.compiled?.text ?? ''));
+    for (const ev of this.player.upgrade(compiled, { replaceEnd: true })) {
+      if (ev.kind === 'cue') continue;
+      if (ev.kind === 'gesture' && this.elapsed - ev.time > 0.8) continue;
+      character.apply(ev);
+    }
+    this.compiled = compiled;
   }
 
   /**
@@ -129,8 +198,9 @@ export class Runtime {
     const character = this.character;
     if (!base || !character || !this.player.isPlaying) return false;
 
-    const compiled = compileAct(act, { duration: base.duration });
+    const compiled = compileAct(act, this.session ? this.timing(base.text) : { duration: base.duration });
     if (compiled.text !== base.text) return false;
+    this.act = act;
 
     // 补齐已经过去的节拍时，只补"状态"（表情、视线、姿态），不补"瞬间"：
     // 过去的节奏信号（问句睁眼、句界眨眼）现在补上会在同一帧里一齐爆出来；
@@ -286,14 +356,21 @@ export class Runtime {
   step(dt: number) {
     const character = this.character;
     if (!character) return;
-    for (const ev of this.player.update(dt)) {
+    // 有真实语音时时钟跟着音频走：下一段晚到了、播放顿了一下，表情也一起等
+    const session = this.player.isPlaying ? this.session : null;
+    const due = session ? this.player.updateTo(session.time) : this.player.update(dt);
+    for (const ev of due) {
       character.apply(ev);
+    }
+    if (session && this.timeToChar) {
+      character.lipsync.follow(this.timeToChar(Math.max(0, session.time)), session.level());
     }
     if (this.preview?.loop && !character.gesture.frozen && !character.gesture.info()) {
       character.gesture.play(this.preview.id as never, 1, this.preview.speed);
     }
     character.layersEnabled = this.layersEnabled;
-    if (this.player.isPlaying) this.elapsed += dt;
+    if (session) this.elapsed = Math.max(0, session.time);
+    else if (this.player.isPlaying) this.elapsed += dt;
     character.update(dt);
   }
 
@@ -338,6 +415,8 @@ export class Runtime {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.speech?.cancel();
+    this.session?.stop();
+    void this.audio?.close();
     this.character?.dispose();
     this.stage?.dispose();
     this.stage = null;

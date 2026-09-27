@@ -26,6 +26,11 @@ export class LipSyncLayer {
   private weights = new Map<Viseme, number>();
   /** 0..1，情绪表情留给口型的余量，由 Character 每帧喂进来 */
   private mouthRoom = 1;
+  /**
+   * 跟着真实语音走（Runtime 每帧喂）：此刻念到第几个字、音量多大。
+   * 没有真实语音时是 null，按估算时长匀速走。
+   */
+  private drive: { charPos: number; level: number } | null = null;
   private resolved = new Map<Viseme, string | null>();
 
   bind(vrm: VRM) {
@@ -46,6 +51,16 @@ export class LipSyncLayer {
     this.duration = Math.max(0.2, duration);
     this.t = 0;
     this.active = true;
+    this.drive = null;
+  }
+
+  /**
+   * 用真实语音驱动：charPos 由音频时钟和每段的实测时长换算而来，level 是此刻的音量。
+   * 音量决定嘴张多大 —— 停顿、气口、段与段之间的空白处嘴会自己合上，
+   * 不再需要靠标点去猜哪里该闭嘴。
+   */
+  follow(charPos: number, level: number) {
+    this.drive = { charPos, level };
   }
 
   stop() {
@@ -79,15 +94,15 @@ export class LipSyncLayer {
 
     if (this.active) {
       this.t += dt;
-      if (this.t >= this.duration) {
+      if (!this.drive && this.t >= this.duration) {
         this.active = false;
       } else {
         const chars = Math.max(1, this.text.length);
-        const pos = (this.t / this.duration) * chars;
-        const idx = Math.min(chars - 1, Math.floor(pos));
+        const pos = this.drive ? this.drive.charPos : (this.t / this.duration) * chars;
+        const idx = Math.max(0, Math.min(chars - 1, Math.floor(pos)));
         const ch = this.text[idx] ?? '';
 
-        if (PUNCT.test(ch)) {
+        if (!this.drive && PUNCT.test(ch)) {
           targetW = 0;
         } else {
           const code = ch.charCodeAt(0) || 0;
@@ -98,6 +113,11 @@ export class LipSyncLayer {
           // 幅度刻意压得很低：VRM 的 aa 给到 1 是"张到最大"，
           // 再叠上笑脸表情就成了打哈欠。人说话时嘴其实开得很小。
           targetW = (0.10 + open * 0.34) * this.mouthRoom;
+          // 有真实语音时，音量是门：没声音就不张嘴，声音大嘴就张大一点
+          if (this.drive) {
+            const gate = Math.min(1, Math.max(0, (this.drive.level - 0.04) / 0.18));
+            targetW *= gate * (0.75 + 0.35 * this.drive.level);
+          }
         }
       }
     }
