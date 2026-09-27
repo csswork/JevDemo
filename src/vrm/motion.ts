@@ -26,17 +26,28 @@ import { MOTIONS, type MotionId } from '../act/schema';
  */
 
 /**
- * 每个动作的文件和说明（VRMA_MotionPack 的 Readme）。
+ * 每个动作的文件和说明（VRMA_MotionPack 的 Readme），以及对原片的剪辑。
  *
- * talk = 对话里自动触发时只播其中一段（秒）。这些是全身的展示动作，半身景别里
- * 有的部分看不见或者太长，逐个看过全身截图（`__motionstrip`）后定的：
- *   打招呼  0~2s 是蹲下再跳起来，胸像里人直接掉出画面 —— 从站起来那一刻（2.2s）开始挥手
- *   比耶    V 手势从 2.2s 一直举到 9.5s，比一句台词长得多 —— 举到 7s 就收
- * 预览面板播完整的。
+ * trim = 剪辑：加载时只保留原片的这一段（秒），预览和对话都用剪过的版本。
+ *        原文件不动 —— 规约允许自由改数据，但文件本身不能再分发，改在代码里最干净
+ *   打招呼  原片 0~1.6s 蹲着（膝盖弯 155°、胯部只有站立时的 35%），1.6~2.4s 跳起来，
+ *           2.6s 才完全站直开始挥手。对话里看到"先蹲一下再打招呼"很奇怪 —— 从 2.6s 开始
+ *
+ * talk = 对话里自动触发时只播（剪辑后的）其中一段。一句台词没有 7~12 秒那么长：
+ *   比耶    V 手势从 2.2s 一直举到 9.5s —— 举到 7s 就收
+ *
+ * 数值都是逐个看过全身截图（`__motionstrip`）、读过关键骨骼的曲线后定的。
  */
-export const MOTION_FILES: Record<MotionId, { file: string; label: string; talk?: { from?: number; to?: number } }> = {
+export interface MotionEdit {
+  file: string;
+  label: string;
+  trim?: { from?: number; to?: number };
+  talk?: { from?: number; to?: number };
+}
+
+export const MOTION_FILES: Record<MotionId, MotionEdit> = {
   show_full_body: { file: 'VRMA_01.vrma', label: '展示全身' },
-  greeting: { file: 'VRMA_02.vrma', label: '打招呼', talk: { from: 2.2 } },
+  greeting: { file: 'VRMA_02.vrma', label: '打招呼', trim: { from: 2.6 } },
   peace_sign: { file: 'VRMA_03.vrma', label: '比耶', talk: { to: 7 } },
   shoot: { file: 'VRMA_04.vrma', label: '开枪' },
   spin: { file: 'VRMA_05.vrma', label: '转圈' },
@@ -67,7 +78,10 @@ function loadAnimation(id: MotionId): Promise<VRMAnimation | null> {
 
 /** 一个动作针对当前模型的轨道（按模型的 hips 高度和 VRM 0/1 轴向换算过） */
 interface Clip {
+  /** 剪辑后的长度 */
   duration: number;
+  /** 剪辑后的第 0 秒对应原片的第几秒 */
+  offset: number;
   rotation: Array<{ bone: VRMHumanBoneName; interp: THREE.Interpolant }>;
   hips: THREE.Interpolant | null;
 }
@@ -133,8 +147,12 @@ export class MotionLayer {
     const interp = (track: THREE.KeyframeTrack) =>
       track.InterpolantFactoryMethodLinear(new Float32Array(track.getValueSize()));
     const hips = tracks.translation.get('hips');
+    const trim = MOTION_FILES[id].trim ?? {};
+    const from = Math.max(0, Math.min(anim.duration, trim.from ?? 0));
+    const to = Math.max(from, Math.min(anim.duration, trim.to ?? anim.duration));
     const clip: Clip = {
-      duration: anim.duration,
+      duration: to - from,
+      offset: from,
       rotation: [...tracks.rotation].map(([bone, track]) => ({ bone, interp: interp(track) })),
       hips: hips ? interp(hips) : null,
     };
@@ -227,7 +245,7 @@ export class MotionLayer {
       if (p.w <= 0) continue;
       // 平滑的起止：线性权重过一遍 smoothstep，速度连续
       const w = p.w * p.w * (3 - 2 * p.w);
-      const t = Math.min(p.t, p.end);
+      const t = Math.min(p.t, p.end) + p.clip.offset;
       for (const { bone, interp } of p.clip.rotation) {
         const node = vrm.humanoid.getNormalizedBoneNode(bone);
         if (!node) continue;

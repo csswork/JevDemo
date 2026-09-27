@@ -20,8 +20,8 @@ export function createStage(canvas: HTMLCanvasElement) {
   const lookTarget = new THREE.Vector3(0, 1.395, 0);
   camera.lookAt(lookTarget);
 
-  // 鼠标看模型：绕胸像横向随便转，上下各 30°，远近在默认距离的 1/1.5 ~ 1.5 倍之间。
-  // 不能平移 —— 转轴始终是上面的取景中心，怎么拖都不会把人拖出画面。
+  // 鼠标看模型：绕胸像横向随便转，上下各 30°；滚轮往近最多到默认距离的 1/1.5，
+  // 往远一直能拉到全身（见下面的 fullDistance）。不能平移 —— 转轴由程序决定，怎么拖都不会把人拖出画面。
   //
   // 角色的视线不跟着相机走：GazeLayer 在构造时复制了相机的初始位置，那是"对话的人"
   // 站的地方。转到侧面看，她还是在和正前方的你说话，而不是扭头追着镜头。
@@ -37,9 +37,46 @@ export function createStage(canvas: HTMLCanvasElement) {
   const PITCH = THREE.MathUtils.degToRad(30);
   controls.minPolarAngle = homePolar - PITCH;
   controls.maxPolarAngle = homePolar + PITCH;
-  controls.minDistance = home.length() / 1.5;
-  controls.maxDistance = home.length() * 1.5;
+  const homeDistance = home.length();
+  controls.minDistance = homeDistance / 1.5;
   controls.update();
+
+  // --- 拉远到全身 ---
+  // 转轴在胸像的取景中心（眼睛略下）。如果一直绕它拉远，脚要到 6m 开外才进画面，人小得看不清；
+  // 所以拉远的同时把转轴从头部平滑地挪到全身的中心，到最远时正好是一张全身照：
+  // 头顶留一点余量、脚在画面底部。转轴只随距离变，不随拖动变，所以依然没有平移
+  const HAIR_ABOVE_EYE = 0.17; // 詩乃实测发顶比眼睛高 17cm，样例模型都在这附近
+  const frameY = { head: lookTarget.y, center: 0.85, half: 0.95 };
+  let fullDistance = homeDistance * 1.5;
+  function updateZoomRange() {
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    // 横向也要装得下（窗口很窄时）：张开手臂约 0.8m 宽
+    const byHeight = frameY.half / tanHalf;
+    const byWidth = 0.4 / (tanHalf * Math.max(0.2, camera.aspect));
+    fullDistance = Math.max(homeDistance * 1.5, byHeight, byWidth);
+    controls.maxDistance = fullDistance;
+  }
+  function setBodyHeight(eyeY: number) {
+    // 上下各留一点：脚底贴着画面下沿看着像被裁了
+    const top = eyeY + HAIR_ABOVE_EYE + 0.07;
+    const bottom = -0.12;
+    frameY.center = (top + bottom) / 2;
+    frameY.half = (top - bottom) / 2;
+    updateZoomRange();
+  }
+  setBodyHeight(1.481);
+  const _offset = new THREE.Vector3();
+  /** 按当前距离把转轴放到头部和全身中心之间（每帧调用） */
+  function followZoom() {
+    _offset.copy(camera.position).sub(controls.target);
+    const d = _offset.length();
+    const k = THREE.MathUtils.clamp((d - homeDistance) / Math.max(1e-3, fullDistance - homeDistance), 0, 1);
+    const eased = k * k * (3 - 2 * k);
+    const dy = frameY.head + (frameY.center - frameY.head) * eased - controls.target.y;
+    if (Math.abs(dy) < 1e-5) return;
+    controls.target.y += dy;
+    camera.position.y += dy;
+  }
 
   // 上面的构图是按 Shino 的眼高（1.481）定的。换模型时以眼睛为基准整组平移：
   // 景别、透视、鼠标的活动范围都不变，眼睛始终落在同一个位置
@@ -52,6 +89,8 @@ export function createStage(canvas: HTMLCanvasElement) {
     camera.position.copy(designCamera).setY(designCamera.y + dy);
     camera.lookAt(lookTarget);
     controls.target.copy(lookTarget);
+    frameY.head = lookTarget.y;
+    setBodyHeight(eyeY);
     controls.update();
   }
 
@@ -79,6 +118,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    updateZoomRange();
   }
 
   /**
@@ -89,6 +129,7 @@ export function createStage(canvas: HTMLCanvasElement) {
 
   function render() {
     controls.update();
+    followZoom();
     renderer.render(scene, view.camera ?? camera);
   }
 
