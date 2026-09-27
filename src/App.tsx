@@ -8,8 +8,9 @@ import { isTestCommand, parseTestCommand } from './jev/testCommand';
 import { probeVoice, type VoiceSession, type VoiceStatus } from './speech/voice';
 import { DEFAULT_TONE, toneFor } from './act/voiceStyle';
 import type { JevMeta as Meta } from './act/fromJev';
-import { HAND_GESTURES } from './act/gestureRules';
-import { EMOTIONS, type Emotion } from './act/schema';
+import { MOTION_CREDIT, MOTION_FILES } from './vrm/motion';
+import { isGreeting } from './act/motionRules';
+import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
 import { DEFAULT_MODEL, MODELS, modelUrl, probeModels } from './models';
 import { appendChat, openChat, resetChat, type ChatSession } from './chat';
 import './App.css';
@@ -117,12 +118,11 @@ export default function App() {
   const [persona, setPersona] = useState<ChatSession['persona'] | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
   const session = modelId ?? 'default';
-  const [previewSpeed, setPreviewSpeed] = useState(0.25);
-  const [previewLoop, setPreviewLoop] = useState(true);
+  const [previewSpeed, setPreviewSpeed] = useState(1);
+  const [previewLoop, setPreviewLoop] = useState(false);
   const [previewClock, setPreviewClock] = useState<{
     time: number;
     duration: number;
-    phases?: number[];
     paused: boolean;
   } | null>(null);
 
@@ -155,7 +155,11 @@ export default function App() {
           if (disposed) return;
           setPersona(chat.persona);
           setTurns(chat.turns);
-          if (chat.greeted) rt.play(baselineAct(chat.persona.greeting));
+          if (chat.greeted) {
+            const act = baselineAct(chat.persona.greeting);
+            if (isGreeting(chat.persona.greeting)) act.tracks.motion = [{ at: 0.15, clip: 'greeting' }];
+            rt.play(act);
+          }
         } catch (e) {
           // 没有聊天记录服务（比如生产构建）：退回以前的规则模板开场，这一轮不存
           setChatError(`聊天记录不可用：${e instanceof Error ? e.message : String(e)}`);
@@ -278,8 +282,11 @@ export default function App() {
         if (!(await voice.prepare())) voice = null;
       }
     }
-    rt.play(baselineAct(text), { voice });
-    judgeP?.then((act) => rt.upgrade(act)).catch(() => {});
+    // 开场白是问候（"你好""欢迎光临""你来啦"）就挥手；"……哦，是你啊"这种冷淡的不挥
+    const act = baselineAct(text);
+    if (isGreeting(text)) act.tracks.motion = [{ at: 0.15, clip: 'greeting' }];
+    rt.play(act, { voice });
+    judgeP?.then((judged) => rt.upgrade(judged)).catch(() => {});
   };
 
   /** 读一个 session 的聊天记录显示出来；是新开场就打招呼 */
@@ -367,12 +374,10 @@ export default function App() {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns]);
 
-  const previewGesture = (id: string, pair: Partial<Record<Emotion, number>>) => {
+  const previewMotion = (id: MotionId) => {
     const rt = runtimeRef.current;
-    const ch = rt?.character;
-    if (!rt || !ch) return;
-    ch.expression.setBlend(pair, 0.2);
-    rt.playPreview(id, previewSpeed, previewLoop);
+    if (!rt) return;
+    rt.playMotion(id, previewSpeed, previewLoop);
     setPreviewing(id);
   };
 
@@ -386,8 +391,8 @@ export default function App() {
         return;
       }
       setPreviewClock((prev) =>
-        st.info
-          ? { time: st.info.time, duration: st.info.duration, phases: st.info.phases, paused: st.paused }
+        st.current
+          ? { time: st.current.t, duration: st.current.duration, paused: st.paused }
           : prev && { ...prev, time: prev.duration, paused: true },
       );
     }, 50);
@@ -406,7 +411,7 @@ export default function App() {
   const resetPreview = () => {
     const rt = runtimeRef.current;
     setPreviewClock(null);
-    rt?.releaseGesture();
+    rt?.stopMotion();
     rt?.character?.expression.reset();
     setPreviewing(null);
   };
@@ -623,7 +628,7 @@ export default function App() {
             <Track label="gaze" value={live.gaze} />
             <Track label="mouth" value={live.speaking ? 'speaking' : 'idle'} active={live.speaking} />
             <Track label="posture" value={live.posture} />
-            <Track label="gesture" value={live.gestures.join(' + ') || 'off'} active={live.gestures.length > 0} />
+            <Track label="motion" value={live.motion ?? 'off'} active={!!live.motion} />
             <div className="fps">{live.fps} fps</div>
           </div>
         )}
@@ -867,10 +872,10 @@ export default function App() {
                   <span className="w">{jevMeta.looksAway.toFixed(2)}</span>
                 </label>
               )}
-              <label className={jevMeta.gesture ? 'on derived' : 'derived'}>
+              <label className={jevMeta.motion ? 'on derived' : 'derived'} title={jevMeta.motion?.reason}>
                 <span className="n">→ 动作</span>
-                <span className="v-wide">{jevMeta.gesture ? jevMeta.gesture.label : '不做动作'}</span>
-                <span className="w">{jevMeta.gesture ? jevMeta.gesture.score.toFixed(2) : ''}</span>
+                <span className="v-wide">{jevMeta.motion ? `${jevMeta.motion.label}（${jevMeta.motion.reason}）` : '不做动作'}</span>
+                <span className="w" />
               </label>
             </div>
           </details>
@@ -891,22 +896,22 @@ export default function App() {
               </button>
             </summary>
             <div className="hint">
-              只在开发环境出现，不进生产构建。手势会自动配上它通常伴随的情绪
-              （配对表在 act/gestureRules.ts，Jev 驱动时用的是同一张）。
+              只在开发环境出现，不进生产构建。动作是 VRoid 官方的动捕（.vrma），
+              从当前姿势交叉淡入；对话里只有打招呼、比耶、转圈会自动触发（act/motionRules.ts）。
             </div>
 
             <div className="preview-row">
-              <span className="preview-k">手势 · 从当前姿势开始播</span>
+              <span className="preview-k">动作</span>
             </div>
             <div className="chips">
-              {HAND_GESTURES.map((g) => (
+              {MOTIONS.map((id) => (
                 <button
-                  key={g.id}
-                  className={previewing === g.id ? 'on' : ''}
-                  title={g.id}
-                  onClick={() => previewGesture(g.id, g.pair)}
+                  key={id}
+                  className={previewing === id ? 'on' : ''}
+                  title={`${id} · ${MOTION_FILES[id].file}`}
+                  onClick={() => previewMotion(id)}
                 >
-                  {g.label}
+                  {MOTION_FILES[id].label}
                 </button>
               ))}
             </div>
@@ -923,7 +928,7 @@ export default function App() {
                   {previewClock && !previewClock.paused ? '暂停' : '播放'}
                 </button>
                 <div className="speeds">
-                  {[0.1, 0.25, 0.5, 1].map((v) => (
+                  {[0.25, 0.5, 1].map((v) => (
                     <button
                       key={v}
                       className={previewSpeed === v ? 'on' : ''}
@@ -952,9 +957,6 @@ export default function App() {
               {previewClock && (
                 <div className="timeline">
                   <div className="track-wrap">
-                    {previewClock.phases && (
-                      <PhaseBands phases={previewClock.phases} duration={previewClock.duration} />
-                    )}
                     <input
                       type="range"
                       min={0}
@@ -968,7 +970,6 @@ export default function App() {
                     <span>
                       {previewClock.time.toFixed(2)}s / {previewClock.duration.toFixed(2)}s
                     </span>
-                    <span>{phaseName(previewClock.time, previewClock.phases)}</span>
                   </div>
                 </div>
               )}
@@ -994,6 +995,8 @@ export default function App() {
           </details>
         )}
 
+        <div className="credits">动作：{MOTION_CREDIT}</div>
+
         <details className="section">
           <summary>上一次的 Act IR</summary>
           <pre>{lastAct ? JSON.stringify(lastAct, null, 2) : '—'}</pre>
@@ -1002,29 +1005,6 @@ export default function App() {
       </aside>
     </div>
   );
-}
-
-/** IK 手势的四个时刻 → 接近 / 保持 / 撤回 三段，画在时间轴底下 */
-function PhaseBands({ phases, duration }: { phases: number[]; duration: number }) {
-  const [t0, t1, t2, t3] = phases;
-  const pct = (t: number) => `${(t / duration) * 100}%`;
-  return (
-    <div className="phase-bands">
-      <i className="in" style={{ left: pct(t0), width: pct(t1 - t0) }} />
-      <i className="hold" style={{ left: pct(t1), width: pct(t2 - t1) }} />
-      <i className="out" style={{ left: pct(t2), width: pct(t3 - t2) }} />
-    </div>
-  );
-}
-
-function phaseName(t: number, phases?: number[]) {
-  if (!phases) return '';
-  const [t0, t1, t2, t3] = phases;
-  if (t < t0) return '准备';
-  if (t < t1) return '接近';
-  if (t <= t2) return '保持';
-  if (t < t3) return '撤回';
-  return '回到待机';
 }
 
 function Track({ label, value, active }: { label: string; value: string; active?: boolean }) {

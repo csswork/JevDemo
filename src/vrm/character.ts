@@ -4,7 +4,7 @@ import { VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import type { TimelineEvent } from '../act/timeline';
 import { PoseAccumulator, vrmMetaVersion } from './pose';
 import { IdleLayer } from './idle';
-import { MotionLayer } from './motion';
+import { MOTION_FILES, MotionLayer } from './motion';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
 import { LipSyncLayer } from './lipsync';
@@ -109,7 +109,10 @@ export class Character {
         this.expression.setBlend(Object.fromEntries(ev.mix), ev.fade);
         break;
       case 'motion':
-        if (this.motionsEnabled) void this.motion.play(ev.clip, { speed: ev.speed });
+        // 对话里只播适合半身景别的那一段（见 MOTION_FILES 的 talk）。
+        // 同一个动作已经在播就不重来：Jev 的判断晚到时会把已经过去的节拍补一次
+        if (!this.motionsEnabled || this.motion.current?.id === ev.clip) break;
+        void this.motion.play(ev.clip, { speed: ev.speed, ...MOTION_FILES[ev.clip].talk });
         break;
       case 'gaze':
         this.gaze.look(ev.target, ev.hold);

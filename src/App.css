@@ -649,11 +649,6 @@ input[type='range']::-webkit-slider-thumb {
 .timeline { margin-top: 10px; }
 .track-wrap { position: relative; padding-top: 4px; }
 .track-wrap input[type='range'] { width: 100%; position: relative; z-index: 1; background: transparent; }
-.phase-bands { position: absolute; left: 0; right: 0; top: 11px; height: 5px; pointer-events: none; }
-.phase-bands i { position: absolute; top: 0; height: 100%; border-radius: 2px; }
-.phase-bands .in { background: rgba(125, 211, 192, 0.35); }
-.phase-bands .hold { background: rgba(125, 211, 192, 0.12); }
-.phase-bands .out { background: rgba(217, 164, 65, 0.35); }
 .timeline-meta {
   display: flex;
   justify-content: space-between;
@@ -666,4 +661,12 @@ input[type='range']::-webkit-slider-thumb {
 /* Jev 面板里每一段的原文：跟在情绪后面（放不下由 .v-wide 省略） */
 .sliders .v-wide .seg-text {
   opacity: 0.6;
+}
+
+/* 动作素材的署名（VRoid 动作包的使用条件） */
+.credits {
+  padding: 8px 20px;
+  font-size: 11px;
+  color: var(--dim);
+  opacity: 0.8;
 }

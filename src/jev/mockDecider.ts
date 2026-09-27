@@ -43,7 +43,7 @@ function classify(input: string): Intent {
 /**
  * 模板。半身景别下手势看不见，所以这里全部按**表情节拍**写：
  * 每条台词 3~4 个 expression beat，落在语义转折处，并配合视线移动。
- * 锚点（<b:xxx>）名字不在手势表里时是纯时间标记，只用来给 beat 定位。
+ * 锚点（<b:xxx>）名字不在动作表里时是纯时间标记，只用来给 beat 定位。
  */
 const TEMPLATES: Record<Intent, ActScript[]> = {
   greeting: [

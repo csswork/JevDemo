@@ -25,15 +25,23 @@ import { MOTIONS, type MotionId } from '../act/schema';
  * 动作放完淡出，身体就回到 idle 的待机里。
  */
 
-/** 每个动作的文件和说明（VRMA_MotionPack 的 Readme） */
-export const MOTION_FILES: Record<MotionId, { file: string; label: string }> = {
+/**
+ * 每个动作的文件和说明（VRMA_MotionPack 的 Readme）。
+ *
+ * talk = 对话里自动触发时只播其中一段（秒）。这些是全身的展示动作，半身景别里
+ * 有的部分看不见或者太长，逐个看过全身截图（`__motionstrip`）后定的：
+ *   打招呼  0~2s 是蹲下再跳起来，胸像里人直接掉出画面 —— 从站起来那一刻（2.2s）开始挥手
+ *   比耶    V 手势从 2.2s 一直举到 9.5s，比一句台词长得多 —— 举到 7s 就收
+ * 预览面板播完整的。
+ */
+export const MOTION_FILES: Record<MotionId, { file: string; label: string; talk?: { from?: number; to?: number } }> = {
   show_full_body: { file: 'VRMA_01.vrma', label: '展示全身' },
-  greeting: { file: 'VRMA_02.vrma', label: '打招呼' },
-  peace_sign: { file: 'VRMA_03.vrma', label: '比耶' },
+  greeting: { file: 'VRMA_02.vrma', label: '打招呼', talk: { from: 2.2 } },
+  peace_sign: { file: 'VRMA_03.vrma', label: '比耶', talk: { to: 7 } },
   shoot: { file: 'VRMA_04.vrma', label: '开枪' },
   spin: { file: 'VRMA_05.vrma', label: '转圈' },
   model_pose: { file: 'VRMA_06.vrma', label: '模特姿势' },
-  squat: { file: 'VRMA_07.vrma', label: '蹲下' },
+  squat: { file: 'VRMA_07.vrma', label: '蹲下（深蹲）' },
 };
 
 export const MOTION_CREDIT = 'キャラクターアニメーション: ピクシブ株式会社 VRoidプロジェクト';
@@ -68,6 +76,8 @@ interface Playing {
   id: MotionId;
   clip: Clip;
   t: number;
+  /** 播到哪里为止（秒，默认整段） */
+  end: number;
   /** 当前权重（淡入淡出） */
   w: number;
   fadeIn: number;
@@ -93,7 +103,7 @@ export class MotionLayer {
 
   get current(): { id: MotionId; t: number; duration: number } | null {
     const p = this.playing.find((x) => !x.leaving);
-    return p ? { id: p.id, t: p.t, duration: p.clip.duration } : null;
+    return p ? { id: p.id, t: p.t, duration: p.end } : null;
   }
 
   /** 正在播，或者正在加载准备播（第一次播某个动作要先下载 .vrma） */
@@ -119,10 +129,14 @@ export class MotionLayer {
     if (!anim || !vrm || vrm !== this.vrm) return null;
     const meta = (vrm.meta as { metaVersion?: string }).metaVersion === '0' ? '0' : '1';
     const tracks = createVRMAnimationHumanoidTracks(anim, vrm.humanoid, meta);
+    // 线性插值；四元数轨道的 Linear 工厂在 three 里返回的是 slerp 插值器
+    const interp = (track: THREE.KeyframeTrack) =>
+      track.InterpolantFactoryMethodLinear(new Float32Array(track.getValueSize()));
+    const hips = tracks.translation.get('hips');
     const clip: Clip = {
       duration: anim.duration,
-      rotation: [...tracks.rotation].map(([bone, track]) => ({ bone, interp: track.createInterpolant() })),
-      hips: tracks.translation.get('hips')?.createInterpolant() ?? null,
+      rotation: [...tracks.rotation].map(([bone, track]) => ({ bone, interp: interp(track) })),
+      hips: hips ? interp(hips) : null,
     };
     this.clips.set(id, clip);
     return clip;
@@ -132,22 +146,45 @@ export class MotionLayer {
    * 播一个动作。正在播的会被淡出（交叉淡化），不是硬切。
    * 返回 false = 动作文件不在（没下载 / 加载失败）
    */
-  async play(id: MotionId, opts: { speed?: number; fadeIn?: number; fadeOut?: number } = {}): Promise<boolean> {
+  play(
+    id: MotionId,
+    opts: { speed?: number; fadeIn?: number; fadeOut?: number; from?: number; to?: number } = {},
+  ): Promise<boolean> {
+    // 已经准备好的动作当帧就开始（不等 Promise），没准备好的等下载完
+    const ready = this.clips.get(id);
+    if (ready) {
+      this.start(id, ready, opts);
+      return Promise.resolve(true);
+    }
     this.loading++;
-    const clip = await this.prepare(id).finally(() => this.loading--);
-    if (!clip) return false;
+    return this.prepare(id)
+      .finally(() => this.loading--)
+      .then((clip) => {
+        if (!clip) return false;
+        this.start(id, clip, opts);
+        return true;
+      });
+  }
+
+  private start(
+    id: MotionId,
+    clip: Clip,
+    opts: { speed?: number; fadeIn?: number; fadeOut?: number; from?: number; to?: number },
+  ) {
     for (const p of this.playing) p.leaving = true;
+    const from = Math.max(0, Math.min(clip.duration, opts.from ?? 0));
     this.playing.push({
       id,
       clip,
-      t: 0,
+      t: from,
+      end: Math.max(from, Math.min(clip.duration, opts.to ?? clip.duration)),
       w: 0,
-      fadeIn: opts.fadeIn ?? 0.45,
+      // 从中间开始播时起始姿势离待机更远，淡入慢一点
+      fadeIn: opts.fadeIn ?? (from > 0 ? 0.6 : 0.45),
       fadeOut: opts.fadeOut ?? 0.7,
       speed: opts.speed ?? 1,
       leaving: false,
     });
-    return true;
   }
 
   /** 停下（淡出） */
@@ -163,14 +200,14 @@ export class MotionLayer {
   /** 预览面板拖时间轴用：跳到某一时刻 */
   seek(t: number) {
     const p = this.playing.find((x) => !x.leaving);
-    if (p) p.t = Math.max(0, Math.min(p.clip.duration, t));
+    if (p) p.t = Math.max(0, Math.min(p.end, t));
   }
 
   update(dt: number) {
     for (const p of this.playing) {
       p.t += dt * p.speed;
       // 快放完时自己开始淡出，淡完正好到最后一帧（暂停时不算）
-      const remain = p.clip.duration - p.t;
+      const remain = p.end - p.t;
       if (!p.leaving && p.speed > 0 && remain <= p.fadeOut * p.speed) p.leaving = true;
       const target = p.leaving ? 0 : 1;
       const rate = 1 / Math.max(0.05, p.leaving ? p.fadeOut : p.fadeIn);
@@ -190,7 +227,7 @@ export class MotionLayer {
       if (p.w <= 0) continue;
       // 平滑的起止：线性权重过一遍 smoothstep，速度连续
       const w = p.w * p.w * (3 - 2 * p.w);
-      const t = Math.min(p.t, p.clip.duration);
+      const t = Math.min(p.t, p.end);
       for (const { bone, interp } of p.clip.rotation) {
         const node = vrm.humanoid.getNormalizedBoneNode(bone);
         if (!node) continue;

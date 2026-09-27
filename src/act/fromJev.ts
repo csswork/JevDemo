@@ -429,19 +429,12 @@ export function composeAct(
   }
 
   // --- 动作：从 Jev 的答案推导（见 motionRules.ts），大多数台词没有 ---
-  // 比耶 / 转圈看情绪最强的那一段，在那一段开头出手；打招呼总在开头
-  const feel = (probs: Record<string, number>) => 1 - (probs.neutral ?? 0);
-  let peakSeg = 0;
-  perSeg.forEach((p, i) => {
-    if (feel(p.probs) > feel(perSeg[peakSeg].probs)) peakSeg = i;
-  });
   const motionTrack: ActScript['tracks']['motion'] = [];
-  const pick = pickMotion(speech, perSeg[0]?.probs ?? {}, perSeg[peakSeg]?.probs ?? {}, intensityRaw);
+  const pick = pickMotion(speech, perSeg.map((p) => p.probs), intensityRaw);
   if (pick) {
     meta.motion = { id: pick.id, label: pick.label, reason: pick.reason };
     // 情绪先上脸，身体再跟上，才像是被触发的
-    const seg = pick.id === 'greeting' ? 0 : peakSeg;
-    motionTrack.push({ at: seg === 0 ? 0.15 : segAt(seg), clip: pick.id, speed: 1 });
+    motionTrack.push({ at: pick.seg === 0 ? 0.15 : segAt(pick.seg), clip: pick.id, speed: 1 });
   }
 
   return {
