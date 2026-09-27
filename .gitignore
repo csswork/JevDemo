@@ -31,3 +31,8 @@ dist-ssr
 # 本地 TTS（Qwen3-TTS via mlx-audio）：虚拟环境和生成的音频不进仓库
 tts/.venv/
 tts/out/
+
+# 候选模型（对比用，不进仓库）
+public/models/candidates/
+# 开发工具存的对比图（server/devSave.ts）
+dev-out/

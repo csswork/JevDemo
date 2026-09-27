@@ -49,6 +49,15 @@ export class GazeLayer {
     this.desired.copy(this.cameraPos);
   }
 
+  /** 对话的人站在哪（舞台按模型身高重新取景之后调一次） */
+  setCameraPos(p: THREE.Vector3) {
+    const d = p.clone().sub(this.cameraPos);
+    this.cameraPos.copy(p);
+    this.target.position.add(d);
+    this.current.add(d);
+    this.desired.add(d);
+  }
+
   setVrmVersion(metaVersion: string | undefined) {
     this.axisFlip = metaVersion === '0' ? -1 : 1;
   }

@@ -3,6 +3,11 @@ import type { ActScript } from '../act/schema';
 export interface DecideContext {
   /** 最近几轮对话，最新的在最后 */
   history: Array<{ role: 'user' | 'character'; text: string }>;
+  /**
+   * 聊天记录的 session（= 模型 id）。带上它，服务端的输入层用这个角色的人设和完整记忆，
+   * 说完自己记下这一轮（见 src/chat.ts）
+   */
+  session?: string;
 }
 
 /**

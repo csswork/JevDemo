@@ -772,6 +772,7 @@ __closeup(null)                                   // 换回主相机
 __spec('hand_to_chin').palmOffset = [...]         // 现场改 spec，下一次 __audit / __look 生效
 __trace('反应 惊讶 70%; 惊讶 80% > 开心 70%')     // 表情时间线（测试指令语法，不花钱）
 __filmstrip('惊讶 80% > 开心 70%', [0.3, 1, 2])   // 指定时刻的脸部特写拼图，点图片关闭
+await __faces('faces_Vivi.jpg')                    // 默认取景 + 六种表情特写，存到 dev-out/（换模型对比用）
 __probe([0, 0.12, 0.3], [0, 0, -1], { hair: true }) // 静止姿态下量表面位置（相对头骨）
 ```
 
@@ -781,3 +782,22 @@ __probe([0, 0.12, 0.3], [0, 0, -1], { hair: true }) // 静止姿态下量表面�
 
 `public/models/Sendagaya_Shino.vrm` —— VRoid 官方示例模型，**CC0**。
 详见 `public/models/LICENSE.txt`。
+
+面板上"音色"下面的"模型"可以换角色，选择记在浏览器里（`localStorage['jev.model']`）。
+换的时候旧模型留在画面里，新的加载好再一帧内换掉；正在说的话会停掉。
+开发时也可以直接在地址栏指定文件：`?model=candidates/Vita.vrm`（路径相对 `public/models/`）。
+
+其余候选模型放在 `public/models/candidates/`（**gitignored**，新克隆的仓库里没有，
+下拉框里显示"未下载"）。清单和实测结果在 `src/models.ts`：
+
+| 模型 | 来源 | 授权 | 表情 |
+|---|---|---|---|
+| Vivi / Victoria Rubin / Vita / HairSample_Female | [madjin/vrm-samples](https://github.com/madjin/vrm-samples)（VRoid 测试版官方样例） | CC0 | 分部位（和詩乃同一套形状布局，直接沿用标定） |
+| AvatarSample_B | [pixiv/ChatVRM](https://github.com/pixiv/ChatVRM) | VRM 许可：可商用、可改、可再分发 | 分部位（有 VRoid 形状名） |
+| VRoid 素体（52 表情形状） | [hinzka/52blendshapes-for-VRoid-face](https://github.com/hinzka/52blendshapes-for-VRoid-face) | 作者 README：可商用、可再分发（文件元数据写的却是禁止再分发） | 分部位；另有 iPhone 52 个形状暂未使用 |
+| AvatarSample_A | madjin/vrm-samples（VRoid 正式版样例） | 可商用、可改、可再分发 | 整脸（56 个无名形状，布局和已标定的不同） |
+| Alicia Solid | [vrm-c/UniVRM](https://github.com/vrm-c/UniVRM) 测试模型 | [ニコニ立体ちゃん利用规约](https://3d.nicovideo.jp/alicia/rule.html) | 整脸（非 VRoid 形状） |
+
+换模型时自动适配的：取景（按眼睛高度，眼高 1.25 ~ 1.61m 都在同一个构图）、视线目标、
+分部位表情（有 VRoid 形状名，或者形状布局能和已标定的对上）。**没适配的**：手到脸的动作
+是按詩乃的脸型和刘海调的，换模型后要用 `__audit` 复查。

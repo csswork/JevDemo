@@ -26,7 +26,10 @@ export interface DeepSeekOptions {
   model?: string;
   /** 省略则完全不发 reasoning 相关参数，走最朴素的兼容形状 */
   reasoningEffort?: string;
+  /** 通用规则（server/persona.md） */
   personaPath?: string;
+  /** 角色段：这个模型的人设（server/personas.ts 拼好的），放在通用规则前面 */
+  character?: string;
 }
 
 interface ChatResponse {
@@ -42,13 +45,14 @@ interface ChatResponse {
   error?: { message?: string };
 }
 
-const FALLBACK_PERSONA = `你是一个虚拟角色，正在和用户面对面说话。
+const FALLBACK_PERSONA = `你正在和对方面对面聊天。
 - 说人话。口语、短句，一次回应 1~3 句，不要写成书面语。
 - 不确定就说不确定，不要硬编。
 - 不要提到自己是 AI、模型或程序，除非用户直接问。`;
 
 function readPersona(path?: string): string {
-  if (path && existsSync(path)) return readFileSync(path, 'utf8');
+  // 文件开头的 <!-- --> 是写给人看的说明，不发给模型
+  if (path && existsSync(path)) return readFileSync(path, 'utf8').replace(/<!--[\s\S]*?-->/g, '').trim();
   return FALLBACK_PERSONA;
 }
 
@@ -67,13 +71,15 @@ export async function writeSpeech(
   opts: DeepSeekOptions,
   params: {
     input: string;
+    /** 调用方已经按长度截好（见 chatStore.recentForModel），这里原样全带上 */
     history?: Array<{ role: 'user' | 'character'; text: string }>;
   },
 ): Promise<string> {
   const url = `${(opts.baseUrl || DEFAULT_BASE).replace(/\/+$/, '')}/chat/completions`;
 
+  const persona = [opts.character, readPersona(opts.personaPath)].filter(Boolean).join('\n\n');
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: readPersona(opts.personaPath) },
+    { role: 'system', content: persona },
     {
       role: 'system',
       // 说清楚只要台词本身：加了旁白或动作描述，后面 Jev 拿到的 state 就脏了
@@ -81,7 +87,7 @@ export async function writeSpeech(
         '只输出角色要说的那句话本身。不要引号，不要旁白，不要括号里的动作描述，不要解释。1~3 句口语。',
     },
   ];
-  for (const t of (params.history ?? []).slice(-8)) {
+  for (const t of params.history ?? []) {
     messages.push({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text });
   }
   messages.push({ role: 'user', content: params.input });

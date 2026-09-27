@@ -71,7 +71,7 @@ export class HttpDecider implements ActDecider {
     const res = await fetch(this.endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ input, history: ctx.history, draft }),
+      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, draft }),
     });
 
     if (!res.ok) {
@@ -98,7 +98,7 @@ export class HttpDecider implements ActDecider {
     const res = await fetch(JEV_SPEECH_API, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ input, history: ctx.history, draft }),
+      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, draft }),
     });
     if (!res.ok) throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
     return ((await res.json()) as { speech: string }).speech;
@@ -116,7 +116,7 @@ export class HttpDecider implements ActDecider {
       const res = await fetch(JEV_REACT_API, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ input, history: ctx.history }),
+        body: JSON.stringify({ input, history: ctx.history, session: ctx.session }),
       });
       if (!res.ok) return null;
       const json = (await res.json()) as { mix: Array<[Emotion, number]> | null; meta?: JevMeta };
@@ -131,7 +131,7 @@ export class HttpDecider implements ActDecider {
     const res = await fetch(JEV_JUDGE_API, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ input, history: ctx.history, speech }),
+      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, speech }),
     });
     if (!res.ok) throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
 

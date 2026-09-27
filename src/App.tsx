@@ -10,9 +10,30 @@ import { DEFAULT_TONE, toneFor } from './act/voiceStyle';
 import type { JevMeta as Meta } from './act/fromJev';
 import { HAND_GESTURES } from './act/gestureRules';
 import { EMOTIONS, type Emotion } from './act/schema';
+import { DEFAULT_MODEL, MODELS, modelUrl, probeModels } from './models';
 import './App.css';
 
-const MODEL_URL = `${import.meta.env.BASE_URL}models/Sendagaya_Shino.vrm`;
+/** 选过的模型存在这个 key 下（和音色一样，只是本机浏览器的偏好） */
+const MODEL_KEY = 'jev.model';
+
+/**
+ * 开始时用哪个模型。开发时可以用 ?model=candidates/Vita.vrm 直接指定文件（路径相对
+ * public/models/，对比截图用）；否则用上次选的，文件不在就用詩乃
+ */
+function initialModel(avail: Record<string, boolean>): { id: string | null; url: string } {
+  const param = import.meta.env.DEV ? new URLSearchParams(location.search).get('model') : null;
+  if (param && /^[\w/.-]+\.vrm$/.test(param) && !param.includes('..')) {
+    return { id: MODELS.find((m) => m.file === param)?.id ?? null, url: `${import.meta.env.BASE_URL}models/${param}` };
+  }
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem(MODEL_KEY);
+  } catch {
+    // 存不了就用默认
+  }
+  const m = MODELS.find((x) => x.id === saved && avail[x.id]) ?? DEFAULT_MODEL;
+  return { id: m.id, url: modelUrl(m) };
+}
 
 interface Turn {
   role: 'user' | 'character';
@@ -85,6 +106,12 @@ export default function App() {
   const [jevError, setJevError] = useState<string | null>(null);
   // 测试预览（仅 dev）
   const [previewing, setPreviewing] = useState<string | null>(null);
+  // 模型
+  const [modelId, setModelId] = useState<string | null>(null);
+  const [modelAvail, setModelAvail] = useState<Record<string, boolean>>({});
+  const [modelLoading, setModelLoading] = useState<number | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const modelPick = useRef(0);
   const [previewSpeed, setPreviewSpeed] = useState(0.25);
   const [previewLoop, setPreviewLoop] = useState(true);
   const [previewClock, setPreviewClock] = useState<{
@@ -105,7 +132,13 @@ export default function App() {
     rt.onSpeechText = setSubtitle;
 
     let disposed = false;
-    rt.mount(canvas, MODEL_URL, setProgress)
+    probeModels()
+      .then((avail) => {
+        setModelAvail(avail);
+        const init = initialModel(avail);
+        setModelId(init.id);
+        return rt.mount(canvas, init.url, setProgress);
+      })
       .then(() => {
         if (disposed) return;
         setLoading(false);
@@ -201,6 +234,32 @@ export default function App() {
     if (!session) return;
     session.setFallbackTone(DEFAULT_TONE);
     if (await session.prepare()) rt.play(baselineAct(line), { voice: session });
+  };
+
+  /** 换模型：旧模型留在画面里直到新的加载好；选择记下来，下次打开默认用它 */
+  const pickModel = async (id: string) => {
+    const m = MODELS.find((x) => x.id === id);
+    const rt = runtimeRef.current;
+    if (!m || !rt || id === modelId) return;
+    const prev = modelId;
+    const pick = ++modelPick.current;
+    setModelId(id);
+    setModelLoading(0);
+    setModelError(null);
+    try {
+      if (!(await rt.setModel(modelUrl(m), setModelLoading))) return;
+      try {
+        localStorage.setItem(MODEL_KEY, id);
+      } catch {
+        // 存不了：这次照样生效，下次打开不记得
+      }
+    } catch (e) {
+      if (pick !== modelPick.current) return;
+      setModelId(prev);
+      setModelError(`${m.name} 载入失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      if (pick === modelPick.current) setModelLoading(null);
+    }
   };
 
   // 探测服务端代理有没有配好。key 在代理那一侧，前端只知道"能不能用"。
@@ -569,6 +628,34 @@ export default function App() {
                 ))}
               </select>
             </label>
+          )}
+          <label className="voice-pick" title="选择会记住，下次打开默认用这个模型">
+            <span>模型</span>
+            <select
+              value={modelId ?? ''}
+              disabled={loading}
+              onChange={(e) => void pickModel(e.target.value)}
+            >
+              {modelId == null && (
+                <option value="" disabled>
+                  地址栏指定的模型
+                </option>
+              )}
+              {(['分部位', '整脸'] as const).map((face) => (
+                <optgroup key={face} label={face === '分部位' ? '表情完整' : '表情较弱（只有整脸预设，未标定）'}>
+                  {MODELS.filter((m) => m.face === face).map((m) => (
+                    <option key={m.id} value={m.id} disabled={!modelAvail[m.id]}>
+                      {`${m.name} · ${m.desc}${modelAvail[m.id] ? '' : '（未下载）'}`}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          {(modelLoading != null || modelError) && (
+            <div className={`model-note${modelError ? ' error' : ''}`}>
+              {modelError ?? `载入模型 ${Math.round((modelLoading ?? 0) * 100)}%`}
+            </div>
           )}
           <label title={jev.endpoint ?? jev.backend ?? '在 .env.local 里配置后重启 dev server'}>
             <input

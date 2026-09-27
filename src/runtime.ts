@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { VRMUtils } from '@pixiv/three-vrm';
 import { createStage } from './vrm/stage';
 import { Character } from './vrm/character';
@@ -70,6 +71,7 @@ export class Runtime {
       return vrm;
     }
     stage.scene.add(vrm.scene);
+    this.frameCharacter(character);
 
     // 调参用：控制台里可以直接 __jev.character / __jev.stage 拨数值
     if (import.meta.env.DEV) {
@@ -93,6 +95,76 @@ export class Runtime {
 
   resize() {
     this.stage?.resize();
+  }
+
+  /**
+   * 按模型的眼睛高度取景（模型之间身高差得很多：眼高 1.25 ~ 1.61m）。
+   * 没有眼睛骨骼的模型（Seed-san）用头骨往上 6cm —— 12 个样例模型实测眼睛比头骨高 4.6 ~ 6.5cm
+   */
+  private frameCharacter(character: Character) {
+    const stage = this.stage;
+    const vrm = character.vrm;
+    if (!stage || !vrm) return;
+    vrm.scene.updateMatrixWorld(true);
+    const eye = vrm.humanoid.getRawBoneNode('leftEye');
+    const head = vrm.humanoid.getRawBoneNode('head');
+    const eyeY = eye
+      ? eye.getWorldPosition(new THREE.Vector3()).y
+      : head
+        ? head.getWorldPosition(new THREE.Vector3()).y + 0.06
+        : null;
+    if (eyeY == null) return;
+    stage.frame(eyeY);
+    character.gaze.setCameraPos(stage.camera.position);
+  }
+
+  private modelLoad = 0;
+
+  /** 停下正在说的话（换模型、重置对话时）。表情照常慢慢淡掉 */
+  stop() {
+    const wasPlaying = this.player.isPlaying;
+    this.player.stop();
+    this.session?.stop();
+    this.session = null;
+    this.speech?.cancel();
+    this.speech = null;
+    // 说到一半停下：补一个"说完了"，不然对话状态会一直停在 speaking、嘴也不合上
+    if (wasPlaying) this.character?.apply({ time: this.elapsed, kind: 'speech_end' });
+    this.onSpeechText?.('');
+  }
+
+  /**
+   * 换模型。新模型加载好之前旧的一直在画面里，加载好之后一帧内换掉。
+   * 正在说的话会停掉 —— 口型、表情、手势都绑在旧模型上。调试开关沿用旧角色的。
+   * 连着换好几次时只有最后一次生效。
+   */
+  async setModel(url: string, onProgress?: (r: number) => void): Promise<boolean> {
+    const stage = this.stage;
+    if (!stage) return false;
+    const id = ++this.modelLoad;
+    const next = new Character(stage.camera.position);
+    const vrm = await next.load(url, onProgress);
+    if (this.disposed || id !== this.modelLoad) {
+      next.dispose();
+      return false;
+    }
+
+    this.stop();
+    this.preview = null;
+
+    const old = this.character;
+    if (old) {
+      next.gesturesEnabled = old.gesturesEnabled;
+      next.expression.microEnabled = old.expression.microEnabled;
+      next.idle.setBodyMotion(old.idle.bodyMotionScale);
+      if (old.vrm) stage.scene.remove(old.vrm.scene);
+      old.dispose();
+    }
+    stage.scene.add(vrm.scene);
+    this.character = next;
+    this.frameCharacter(next);
+    this.onSpeechText?.('');
+    return true;
   }
 
   // ---- 本地语音 ----

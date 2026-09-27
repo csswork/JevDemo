@@ -393,6 +393,15 @@ export function installAudit(rt: Runtime) {
     ].join('\n');
   };
 
+  const FACE_SET: Array<[string, Partial<Record<Emotion, number>>]> = [
+    ['平静', {}],
+    ['开心', { happy: 0.9 }],
+    ['放松', { relaxed: 0.7 }],
+    ['难过', { sad: 0.8 }],
+    ['生气', { angry: 0.8 }],
+    ['惊讶', { surprised: 0.8 }],
+  ];
+
   /**
    * 同一条测试指令，在指定时刻各截一张脸部特写，拼成一张图盖在页面上。
    * 也可以直接传一份 Act（比如真实对话后的 __jev.act），不花钱重放同一段表演
@@ -456,7 +465,69 @@ export function installAudit(rt: Runtime) {
     return `${k} shots（点图片关闭）`;
   };
 
+  /**
+   * 换模型对比用：默认取景一张 + 几种表情的脸部特写，拼成一张图存到 dev-out/。
+   * 截图期间关掉眨眼和微表情，免得正好截到闭眼
+   */
+  const faces = async (name: string, mixes: Array<[string, Partial<Record<Emotion, number>>]> = FACE_SET) => {
+    const stage = rt.stage!;
+    const cvs = stage.renderer.domElement;
+    const exr = ch().expression;
+    // nextBlink 是私有字段，只有这里的截图需要把它推远
+    const ex = exr as unknown as { nextBlink: number };
+    const saved = { micro: exr.microEnabled };
+    exr.microEnabled = false;
+    rt.releaseGesture();
+    const tw = 360, th = 400;
+    const cols = mixes.length + 1;
+    const sheet = document.createElement('canvas');
+    sheet.width = cols * tw;
+    sheet.height = th + 36;
+    const g = sheet.getContext('2d')!;
+    g.fillStyle = '#111';
+    g.fillRect(0, 0, sheet.width, sheet.height);
+    const label = (text: string, k: number) => {
+      g.fillStyle = '#fff';
+      g.font = 'bold 24px sans-serif';
+      g.fillText(text, k * tw + 10, th + 27);
+    };
+    const settle = (secs: number) => {
+      for (let t = 0; t < secs; t += 1 / 60) {
+        ex.nextBlink = 1e9;
+        rt.step(1 / 60);
+      }
+    };
+    // 默认取景（用户看到的样子）：主相机，画面中间裁一条
+    exr.reset();
+    settle(1.5);
+    stage.view.camera = null;
+    stage.render();
+    const cw = (cvs.height * tw) / th;
+    g.drawImage(cvs, (cvs.width - cw) / 2, 0, cw, cvs.height, 0, 0, tw, th);
+    label('默认取景', 0);
+    const head = node('head');
+    for (let k = 0; k < mixes.length; k++) {
+      const [text, mix] = mixes[k];
+      exr.reset();
+      exr.setBlend(mix, 0.2);
+      settle(1.2);
+      const p = head.getWorldPosition(new THREE.Vector3());
+      closeup([p.x, p.y + 0.045, p.z + 0.08], 9);
+      const fw = (cvs.height * tw) / th;
+      g.drawImage(cvs, (cvs.width - fw) / 2, 0, fw, cvs.height, (k + 1) * tw, 0, tw, th);
+      label(text, k + 1);
+    }
+    closeup(null);
+    exr.reset();
+    exr.microEnabled = saved.micro;
+    ex.nextBlink = 2;
+    const blob = await new Promise<Blob>((r) => sheet.toBlob((b) => r(b!), 'image/jpeg', 0.88));
+    const res = await fetch(`/__dev/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
+    return res.json();
+  };
+
   const w = window as unknown as Record<string, unknown>;
+  w.__faces = faces;
   w.__trace = trace;
   w.__filmstrip = filmstrip;
   w.__look = look;

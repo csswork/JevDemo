@@ -317,6 +317,14 @@ body {
   opacity: 0.5;
   cursor: default;
 }
+.options .model-note {
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.options .model-note.error {
+  color: #f08c7a;
+}
 
 .section {
   border-bottom: 1px solid var(--line);

@@ -41,6 +41,20 @@ export function createStage(canvas: HTMLCanvasElement) {
   controls.maxDistance = home.length() * 1.5;
   controls.update();
 
+  // 上面的构图是按 Shino 的眼高（1.481）定的。换模型时以眼睛为基准整组平移：
+  // 景别、透视、鼠标的活动范围都不变，眼睛始终落在同一个位置
+  const DESIGN_EYE = 1.481;
+  const designCamera = camera.position.clone();
+  const designTarget = lookTarget.clone();
+  function frame(eyeY: number) {
+    const dy = eyeY - DESIGN_EYE;
+    lookTarget.copy(designTarget).setY(designTarget.y + dy);
+    camera.position.copy(designCamera).setY(designCamera.y + dy);
+    camera.lookAt(lookTarget);
+    controls.target.copy(lookTarget);
+    controls.update();
+  }
+
   // 三点布光。MToon 对方向光敏感，主光别太硬，否则二次元材质会出现明显的明暗切割线。
   const key = new THREE.DirectionalLight(0xffffff, 1.5);
   key.position.set(1.2, 2.0, 1.6);
@@ -83,5 +97,5 @@ export function createStage(canvas: HTMLCanvasElement) {
     renderer.dispose();
   }
 
-  return { renderer, scene, camera, controls, view, lookTarget, resize, render, dispose };
+  return { renderer, scene, camera, controls, view, lookTarget, frame, resize, render, dispose };
 }

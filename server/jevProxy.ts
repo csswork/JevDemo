@@ -4,6 +4,8 @@ import { loadEnv } from 'vite';
 import { baselineAct, sanitizeAct, type ActScript } from '../src/act/schema.ts';
 import { detectBackend, judgePerformance, judgeReaction, type JevBackend, type JevMeta } from './jev.ts';
 import { writeSpeech } from './deepseek.ts';
+import { appendChat, loadChat, recentForModel, resetChat, validSession } from './chatStore.ts';
+import { personaOf, personaPrompt } from './personas.ts';
 
 /**
  * Jev 决策层的服务端代理。
@@ -110,6 +112,12 @@ let server_log: (msg: string) => void = () => {};
 
 interface DecideRequest {
   input: string;
+  /**
+   * 聊天记录的 session（= 模型 id）。带了它，输入层的人设和历史都从服务端取
+   * （server/personas.ts、data/chats/），说完这一轮记下来；没带就用下面的 history
+   */
+  session?: string;
+  /** 最近几轮。Jev 的判断只看这几轮；没带 session 时输入层也用它 */
   history?: Array<{ role: 'user' | 'character'; text: string }>;
   /** 前端的规则模板台词。只在输入层没配 DeepSeek 时用得上。 */
   draft?: string;
@@ -140,6 +148,8 @@ async function viaPassthrough(cfg: JevConfig, payload: DecideRequest): Promise<A
  * 正是这句话，两者天然串行，没法并发。既然不能并发，就让说话别等判断。
  */
 async function runSpeech(cfg: JevConfig, payload: DecideRequest): Promise<string> {
+  const session = validSession(payload.session) ? payload.session : null;
+  const history = session ? recentForModel(loadChat(session)) : (payload.history ?? []).slice(-8);
   const speech =
     cfg.speechSource === 'deepseek' && cfg.deepseekKey
       ? await writeSpeech(
@@ -149,13 +159,21 @@ async function runSpeech(cfg: JevConfig, payload: DecideRequest): Promise<string
             model: cfg.deepseekModel,
             reasoningEffort: cfg.deepseekEffort,
             personaPath: cfg.personaPath,
+            character: personaPrompt(personaOf(session)),
           },
-          { input: payload.input, history: payload.history },
+          { input: payload.input, history },
         )
       : (payload.draft || '').trim();
 
   if (!speech) {
     throw new Error('没有台词可演：输入层没配 DEEPSEEK_API_KEY，前端也没带 draft。');
+  }
+  // 谁写的台词谁记：这一轮说完就进聊天记录，下一轮的输入层就能看到
+  if (session) {
+    appendChat(session, [
+      { role: 'user', text: payload.input },
+      { role: 'character', text: speech },
+    ]);
   }
   return speech;
 }
@@ -299,6 +317,47 @@ export function jevProxy(): Plugin {
             const msg = e instanceof Error ? e.message : String(e);
             server_log(msg);
             json(res, 502, { error: msg });
+          }
+        })();
+      });
+
+      // --- 聊天记录（每个模型一个 session）---
+      //   POST /api/chat/open   {session} → {persona, turns, greeted}
+      //                          没有记录就先记一句开场白（greeted = true，前端据此让她开口）
+      //   POST /api/chat/reset  {session} → 同上；旧记录归档到 data/chats/archive/
+      //   POST /api/chat/append {session, turns} → {turns}  台词不是服务端写的时候用（规则模板模式）
+      const opened = (session: string, archived: string | null = null) => {
+        const persona = personaOf(session);
+        let turns = loadChat(session);
+        let greeted = false;
+        if (!turns.length) {
+          turns = appendChat(session, [{ role: 'character', text: persona.greeting }]);
+          greeted = true;
+        }
+        return { persona: { id: persona.id, name: persona.name, greeting: persona.greeting }, turns, greeted, archived };
+      };
+      server.middlewares.use('/api/chat', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        void (async () => {
+          try {
+            const body = JSON.parse((await readBody(req)) || '{}') as {
+              session?: string;
+              turns?: Array<{ role: 'user' | 'character'; text: string }>;
+            };
+            if (!validSession(body.session)) return json(res, 400, { error: 'session 不合法' });
+            const action = (req.url ?? '').replace(/^\/+|\?.*$/g, '');
+            if (action === 'open') return json(res, 200, opened(body.session));
+            if (action === 'reset') {
+              const archived = resetChat(body.session);
+              server.config.logger.info(`[chat] 重置 ${body.session}${archived ? `，旧记录 → ${archived}` : ''}`);
+              return json(res, 200, opened(body.session, archived));
+            }
+            if (action === 'append') return json(res, 200, { turns: appendChat(body.session, body.turns ?? []) });
+            json(res, 404, { error: `未知操作 ${action}` });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            server_log(msg);
+            json(res, 500, { error: msg });
           }
         })();
       });
