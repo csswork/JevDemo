@@ -94,6 +94,16 @@ export class IdleLayer {
    * 默认压到 0.25：留呼吸和头部微漂移，去掉重心转移那一档。
    */
   private bodyMotion = 0.25;
+  /**
+   * 动捕待机（motion.ts 的底层）的权重。动捕里已经有呼吸、重心转移、头部微动和垂手，
+   * 这一层按它让出来，只留姿态（开心 / 低落 / 警觉）相对中性姿态的那点差别 ——
+   * Jev 判成低落时，角色照样微微含胸低头
+   */
+  private baseWeight = 0;
+
+  setBaseWeight(w: number) {
+    this.baseWeight = Math.max(0, Math.min(1, w));
+  }
 
   setVrmVersion(metaVersion: string | undefined) {
     this.axisFlip = metaVersion === '0' ? -1 : 1;
@@ -146,6 +156,10 @@ export class IdleLayer {
     b.breathScale = damp(b.breathScale, this.bias.breathScale, l, dt);
 
     const flip = this.axisFlip;
+    // 有动捕待机时，手臂只加相对中性姿态的差值（垂手本身由动捕负责），节律性的动作全部让出来
+    const bw = this.baseWeight;
+    const n = POSTURE_BIAS.idle_neutral;
+    const live = 1 - bw;
 
     // --- 基础姿态 ---
     acc.add('spine', deg(b.spine[0]) * flip, deg(b.spine[1]), deg(b.spine[2]) * flip);
@@ -153,16 +167,20 @@ export class IdleLayer {
     acc.add('head', deg(b.head[0]) * flip, deg(b.head[1]), deg(b.head[2]) * flip);
     acc.add('leftShoulder', 0, 0, deg(-b.shoulderDrop) * flip);
     acc.add('rightShoulder', 0, 0, deg(b.shoulderDrop) * flip);
-    acc.add('leftUpperArm', 0, deg(-b.armForward), deg(-b.armClose) * flip);
-    acc.add('rightUpperArm', 0, deg(b.armForward), deg(b.armClose) * flip);
-    acc.add('leftLowerArm', 0, deg(-b.elbowBend), 0);
-    acc.add('rightLowerArm', 0, deg(b.elbowBend), 0);
+    const armClose = b.armClose - bw * n.armClose;
+    const armForward = b.armForward - bw * n.armForward;
+    const elbowBend = b.elbowBend - bw * n.elbowBend;
+    acc.add('leftUpperArm', 0, deg(-armForward), deg(-armClose) * flip);
+    acc.add('rightUpperArm', 0, deg(armForward), deg(armClose) * flip);
+    acc.add('leftLowerArm', 0, deg(-elbowBend), 0);
+    acc.add('rightLowerArm', 0, deg(elbowBend), 0);
 
+    if (live <= 0) return;
     const bm = this.bodyMotion;
 
     // --- 呼吸 (~4s) ---
     // 呼吸不随 bodyMotion 归零：停掉呼吸的角色立刻变成静态贴图。
-    const breath = Math.sin((t * Math.PI * 2) / 4.1) * b.breathScale * (0.65 + 0.35 * bm);
+    const breath = Math.sin((t * Math.PI * 2) / 4.1) * b.breathScale * (0.65 + 0.35 * bm) * live;
     acc.add('chest', deg(-1.1) * breath * flip, 0, 0);
     acc.add('spine', deg(-0.5) * breath * flip, 0, 0);
     acc.add('leftShoulder', 0, 0, deg(-0.8) * breath * flip);
@@ -170,7 +188,7 @@ export class IdleLayer {
     acc.translateHips(0, 0.0035 * breath, 0);
 
     // --- 重心转移 (~9s) ---
-    const shift = noise(t * 0.7, 11.3) * bm;
+    const shift = noise(t * 0.7, 11.3) * bm * live;
     acc.translateHips(0.011 * shift * flip, -0.004 * Math.abs(shift), 0);
     acc.add('hips', 0, deg(1.4) * shift, deg(-1.8) * shift * flip);
     acc.add('spine', 0, deg(-0.8) * shift, deg(1.2) * shift * flip);
@@ -180,7 +198,7 @@ export class IdleLayer {
     // --- 头部微漂移 (~13s) ---
     // 这一档只随 bodyMotion 衰减一半：半身景别下头部的微动就是"活着"本身，
     // 关掉之后哪怕表情做得再细，整个人也会显得发呆。
-    const hm = 0.5 + 0.5 * bm;
+    const hm = (0.5 + 0.5 * bm) * live;
     acc.add(
       'head',
       deg(1.3) * noise(t * 0.41, 3.1) * hm * flip,

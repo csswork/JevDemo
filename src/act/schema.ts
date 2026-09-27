@@ -15,7 +15,7 @@ export const EMOTIONS = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surpris
 export type Emotion = (typeof EMOTIONS)[number];
 
 /**
- * 动作词表：VRoid 官方免费的 7 个动捕动作（.vrma），加上腾讯混元文生动作生成的（.fbx），见 vrm/motion.ts。
+ * 动作词表：VRoid 官方免费的 7 个动捕动作（.vrma，见 vrm/motion.ts）。
  * 新增动作 = 把 .vrma 放进 public/motions/，在 motion.ts 的 MOTION_FILES 里登记，再加到这里。
  *
  * 这几个都是全身的展示动作（7~12 秒），不是对话里的小手势 —— 对话里只有打招呼、
@@ -30,8 +30,8 @@ export const MOTIONS = [
   'spin',
   'model_pose',
   'squat',
-  // 腾讯混元文生动作生成的
-  'listen_smile',
+  // 底层待机循环（pixiv ChatVRM 的 idle_loop.vrma），一直在播，不由 Jev 触发
+  'idle_loop',
 ] as const;
 export type MotionId = (typeof MOTIONS)[number];
 

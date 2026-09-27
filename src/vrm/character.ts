@@ -4,7 +4,7 @@ import { VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import type { TimelineEvent } from '../act/timeline';
 import { PoseAccumulator, vrmMetaVersion } from './pose';
 import { IdleLayer } from './idle';
-import { MOTION_FILES, MotionLayer } from './motion';
+import { IDLE_BASE, MOTION_FILES, MotionLayer } from './motion';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
 import { LipSyncLayer } from './lipsync';
@@ -15,8 +15,9 @@ import { LipSyncLayer } from './lipsync';
  * 每帧的层叠顺序是固定的，也是这个 demo 的核心：
  *   resetNormalizedPose → motion → idle → gaze → flush → expression → lipsync → vrm.update
  *
- * motion 写的是绝对姿势（静止姿势和动捕之间按权重混），idle / gaze 是乘在上面的偏移，
- * 动作在播时按 (1 - 动作权重) 让出来。
+ * motion 写的是绝对姿势：底层是一直循环的动捕待机，对话触发的动作整体叠在它上面。
+ * idle / gaze 是乘在上面的偏移：动作在播时按 (1 - 动作权重) 让出来；
+ * 有动捕待机时 idle 只留姿态的微调（呼吸、重心、垂手都由动捕负责）。
  *
  * 换渲染引擎（Live2D / Unity / AnimeActEngine）时，需要重写的只有这个文件和 vrm/ 目录；
  * act/ 和 jev/ 两层原样保留。
@@ -69,6 +70,8 @@ export class Character {
     this.expression.bind(vrm);
     this.lipsync.bind(vrm);
     this.motion.bind(vrm);
+    // 有动捕待机就垫在最底下；没配（IDLE_BASE = null）或文件不在时用 idle 层的程序待机
+    if (IDLE_BASE) void this.motion.setBase(IDLE_BASE);
 
     const hips = vrm.humanoid.getNormalizedBoneNode('hips');
     if (hips) this.hipsRest.copy(hips.position);
@@ -150,6 +153,8 @@ export class Character {
 
   setArousal(a: number) {
     this.idle.setArousal(a);
+    // 情绪越激动，待机的节奏越快一点（和 idle 层的呼吸节奏同一个道理）
+    this.motion.setBaseSpeed(0.92 + Math.max(0, Math.min(1, a)) * 0.16);
   }
 
   update(dt: number) {
@@ -165,6 +170,7 @@ export class Character {
       this.motion.apply();
       this.acc.reset();
       this.acc.scale = 1 - this.motion.weight;
+      this.idle.setBaseWeight(this.motion.baseWeight);
       this.idle.update(dt, this.acc);
       this.gaze.update(dt, vrm, this.acc);
       this.acc.flush(vrm);
