@@ -2,19 +2,21 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import type { TimelineEvent } from '../act/timeline';
-import { PoseAccumulator } from './pose';
+import { PoseAccumulator, vrmMetaVersion } from './pose';
 import { IdleLayer } from './idle';
-import { GestureLayer, vrmMetaVersion } from './gestures';
+import { MotionLayer } from './motion';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
 import { LipSyncLayer } from './lipsync';
-import { ReachLayer } from './reach';
 
 /**
  * 角色控制器 —— Act IR 的消费端。
  *
  * 每帧的层叠顺序是固定的，也是这个 demo 的核心：
- *   resetNormalizedPose → idle → gesture → gaze → flush → expression → lipsync → vrm.update
+ *   resetNormalizedPose → motion → idle → gaze → flush → expression → lipsync → vrm.update
+ *
+ * motion 写的是绝对姿势（静止姿势和动捕之间按权重混），idle / gaze 是乘在上面的偏移，
+ * 动作在播时按 (1 - 动作权重) 让出来。
  *
  * 换渲染引擎（Live2D / Unity / AnimeActEngine）时，需要重写的只有这个文件和 vrm/ 目录；
  * act/ 和 jev/ 两层原样保留。
@@ -23,23 +25,16 @@ export class Character {
   vrm: VRM | null = null;
 
   readonly idle = new IdleLayer();
-  readonly gesture = new GestureLayer();
+  readonly motion = new MotionLayer();
   readonly gaze: GazeLayer;
   readonly expression = new ExpressionLayer();
   readonly lipsync = new LipSyncLayer();
-  readonly reach = new ReachLayer();
 
   private acc = new PoseAccumulator();
   /** 调试开关：关掉后只跑 vrm.update，用于隔离"是我的层还是引擎本身"的问题 */
   layersEnabled = true;
-  /**
-   * 手势总开关。
-   *
-   * 默认开：手到脸那一组（掩嘴笑、扶额、托腮…）本来就是为半身景别写的，
-   * 是表情的延伸而不是独立的肢体表演。垂在身侧的那组在这个景别里看不见，
-   * 由 Jev 答案的推导规则决定不去触发它们。
-   */
-  gesturesEnabled = true;
+  /** 动作总开关（对话里由 Jev 的答案触发的动作；预览面板不受它影响） */
+  motionsEnabled = true;
   private hipsRest = new THREE.Vector3();
   private conversation: ConversationState = 'idle';
 
@@ -68,13 +63,12 @@ export class Character {
     });
 
     const metaVersion = vrmMetaVersion(vrm);
-    this.gesture.setVrmVersion(metaVersion);
     this.idle.setVrmVersion(metaVersion);
     this.gaze.setVrmVersion(metaVersion);
 
     this.expression.bind(vrm);
     this.lipsync.bind(vrm);
-    this.reach.bind(vrm, metaVersion);
+    this.motion.bind(vrm);
 
     const hips = vrm.humanoid.getNormalizedBoneNode('hips');
     if (hips) this.hipsRest.copy(hips.position);
@@ -114,8 +108,8 @@ export class Character {
         // 逐个 setExclusive 会让同时刻的后一拍清掉前一拍，分布退化成 top-1。
         this.expression.setBlend(Object.fromEntries(ev.mix), ev.fade);
         break;
-      case 'gesture':
-        if (this.gesturesEnabled) this.gesture.play(ev.clip, ev.weight, ev.speed);
+      case 'motion':
+        if (this.motionsEnabled) void this.motion.play(ev.clip, { speed: ev.speed });
         break;
       case 'gaze':
         this.gaze.look(ev.target, ev.hold);
@@ -164,20 +158,13 @@ export class Character {
     if (hips) hips.position.copy(this.hipsRest);
 
     if (this.layersEnabled) {
+      this.motion.update(dt);
+      this.motion.apply();
       this.acc.reset();
+      this.acc.scale = 1 - this.motion.weight;
       this.idle.update(dt, this.acc);
-      this.gesture.update(dt, this.acc);
       this.gaze.update(dt, vrm, this.acc);
       this.acc.flush(vrm);
-      // IK 必须在 FK 写进骨骼之后跑：它要读 FK 姿势作为混合的起点，
-      // 也要读已经带上点头/歪头的头部位置作为目标的挂点
-      // 预览里拖时间轴时手势是冻结的，这时要精确值而不是滤波后的值
-      this.reach.apply(this.gesture.activeReach(), dt, this.gesture.frozen);
-    }
-
-    // 动作的表情节奏只放大 Jev 已经选中的情绪，不引入新情绪
-    for (const [emo, peak, dur] of this.gesture.takeAccents()) {
-      if (this.expression.weightOf(emo) > 0.15) this.expression.flick(emo, peak, dur);
     }
 
     this.expression.setMouthActivity(this.lipsync.openness);

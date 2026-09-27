@@ -4,14 +4,15 @@ import { createStage } from './vrm/stage';
 import { Character } from './vrm/character';
 import { TimelinePlayer, compileAct, type CompiledAct } from './act/timeline';
 import { estimateDuration, makeMeasuredMapper, makeTimeToChar } from './act/anchors';
-import type { ActScript, Emotion } from './act/schema';
+import type { ActScript, Emotion, MotionId } from './act/schema';
 import { pickChineseVoice, speak, ttsAvailable, type SpeakHandle } from './speech/tts';
 import { VoiceSession } from './speech/voice';
 
 export interface LiveState {
   fps: number;
   posture: string;
-  gestures: string[];
+  /** 正在播的动作（没有就是 null） */
+  motion: string | null;
   gaze: string;
   expressions: Array<[string, number]>;
   speaking: boolean;
@@ -154,7 +155,7 @@ export class Runtime {
 
     const old = this.character;
     if (old) {
-      next.gesturesEnabled = old.gesturesEnabled;
+      next.motionsEnabled = old.motionsEnabled;
       next.expression.microEnabled = old.expression.microEnabled;
       next.idle.setBodyMotion(old.idle.bodyMotionScale);
       if (old.vrm) stage.scene.remove(old.vrm.scene);
@@ -222,7 +223,6 @@ export class Runtime {
     this.judged = false;
     this.player.start(compiled);
     character?.setArousal(act.emotion.arousal);
-    character?.gesture.clear();
     character?.lipsync.start(compiled.text, compiled.duration);
     this.onSpeechText?.(compiled.text);
 
@@ -252,7 +252,7 @@ export class Runtime {
     const compiled = compileAct(this.act, this.timing(this.compiled?.text ?? ''));
     for (const ev of this.player.upgrade(compiled, { retime: true })) {
       if (ev.kind === 'cue') continue;
-      if (ev.kind === 'gesture' && this.elapsed - ev.time > 0.8) continue;
+      if (ev.kind === 'motion' && this.elapsed - ev.time > 0.8) continue;
       character.apply(ev);
     }
     this.compiled = compiled;
@@ -279,7 +279,7 @@ export class Runtime {
     // 手势晚了太久再做也不对劲（笑点已经过去了）
     for (const ev of this.player.upgrade(compiled)) {
       if (ev.kind === 'cue') continue;
-      if (ev.kind === 'gesture' && this.elapsed - ev.time > 0.8) continue;
+      if (ev.kind === 'motion' && this.elapsed - ev.time > 0.8) continue;
       character.apply(ev);
     }
     character.setArousal(act.emotion.arousal);
@@ -322,30 +322,26 @@ export class Runtime {
   /** 整句判断是否已经到了（到了之后倾听反应作废） */
   private judged = false;
 
-  /** 单独试放一个手势（正常速度播完）。 */
-  testGesture(id: string) {
-    const g = this.character?.gesture;
-    if (!g) return;
-    g.frozen = false;
-    g.play(id as never, 1, 1);
+  // ---- 动作预览（仅 dev 面板用）----
+  private preview: { id: MotionId; speed: number; loop: boolean; paused: boolean } | null = null;
+
+  /** 预览一个动作：从当前姿势交叉淡入，可以慢放、循环 */
+  playMotion(id: MotionId, speed = 1, loop = false) {
+    const m = this.character?.motion;
+    if (!m) return;
+    this.preview = { id, speed, loop, paused: false };
+    void m.play(id, { speed });
   }
 
-  // ---- 测试预览播放器（仅 dev 面板用）----
-  private preview: { id: string; speed: number; loop: boolean } | null = null;
-
-  /** 从当前姿势开始播放，可以慢放。 */
-  playPreview(id: string, speed: number, loop: boolean) {
-    const g = this.character?.gesture;
-    if (!g) return;
-    this.preview = { id, speed, loop };
-    g.frozen = false;
-    g.clear();
-    g.play(id as never, 1, speed);
+  stopMotion() {
+    this.preview = null;
+    this.character?.motion.stop();
   }
 
   setPreviewSpeed(speed: number) {
-    if (this.preview) this.preview.speed = speed;
-    this.character?.gesture.setSpeed(speed);
+    if (!this.preview) return;
+    this.preview.speed = speed;
+    if (!this.preview.paused) this.character?.motion.setSpeed(speed);
   }
 
   setPreviewLoop(loop: boolean) {
@@ -353,38 +349,29 @@ export class Runtime {
   }
 
   setPreviewPaused(paused: boolean) {
-    const g = this.character?.gesture;
-    if (!g || !this.preview) return;
+    const m = this.character?.motion;
+    if (!m || !this.preview) return;
     // 已经播完了再按播放：从头开始
-    if (!paused && !g.info()) {
-      this.playPreview(this.preview.id, this.preview.speed, this.preview.loop);
+    if (!paused && !m.current) {
+      this.playMotion(this.preview.id, this.preview.speed, this.preview.loop);
       return;
     }
-    g.frozen = paused;
+    this.preview.paused = paused;
+    m.setSpeed(paused ? 0 : this.preview.speed);
   }
 
   /** 拖时间轴：暂停并跳到指定时刻 */
   seekPreview(t: number) {
-    const g = this.character?.gesture;
-    if (!g || !this.preview) return;
-    g.frozen = true;
-    g.seek(this.preview.id as never, t);
-    g.setSpeed(this.preview.speed);
+    const m = this.character?.motion;
+    if (!m || !this.preview) return;
+    this.preview.paused = true;
+    m.setSpeed(0);
+    m.seek(t);
   }
 
   previewState() {
-    const g = this.character?.gesture;
-    const info = g?.info() ?? null;
-    return { id: this.preview?.id ?? null, info, paused: !!g?.frozen };
-  }
-
-  /** 解除冻结，让当前手势正常播完。 */
-  releaseGesture() {
-    const g = this.character?.gesture;
-    if (!g) return;
-    this.preview = null;
-    g.frozen = false;
-    g.clear();
+    const cur = this.character?.motion.current ?? null;
+    return { id: this.preview?.id ?? null, current: cur, paused: !!this.preview?.paused };
   }
 
   /** 直接让表情层演一个情绪，走完整通路（含换表情时的眨眼和微表情）。 */
@@ -409,8 +396,8 @@ export class Runtime {
     this.character?.idle.setBodyMotion(scale);
   }
 
-  setGesturesEnabled(v: boolean) {
-    if (this.character) this.character.gesturesEnabled = v;
+  setMotionsEnabled(v: boolean) {
+    if (this.character) this.character.motionsEnabled = v;
   }
 
   setMicroExpressions(v: boolean) {
@@ -437,8 +424,9 @@ export class Runtime {
     if (session && this.timeToChar) {
       character.lipsync.follow(this.timeToChar(Math.max(0, session.time)), session.level());
     }
-    if (this.preview?.loop && !character.gesture.frozen && !character.gesture.info()) {
-      character.gesture.play(this.preview.id as never, 1, this.preview.speed);
+    // 预览循环：快放完（开始淡出）时从头再来，首尾交叉淡化
+    if (this.preview?.loop && !this.preview.paused && !character.motion.busy) {
+      void character.motion.play(this.preview.id, { speed: this.preview.speed });
     }
     character.layersEnabled = this.layersEnabled;
     if (session) this.elapsed = Math.max(0, session.time);
@@ -474,7 +462,7 @@ export class Runtime {
       this.onState({
         fps: Math.round(this.fps),
         posture: character.idle.currentPosture,
-        gestures: character.gesture.activeIds,
+        motion: character.motion.current?.id ?? null,
         gaze: character.gaze.currentTarget,
         expressions: character.expression.snapshot(),
         speaking: character.lipsync.isActive,

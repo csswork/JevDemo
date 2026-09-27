@@ -96,6 +96,13 @@ export class MotionLayer {
     return p ? { id: p.id, t: p.t, duration: p.clip.duration } : null;
   }
 
+  /** 正在播，或者正在加载准备播（第一次播某个动作要先下载 .vrma） */
+  get busy(): boolean {
+    return this.loading > 0 || this.current != null;
+  }
+
+  private loading = 0;
+
   /** 绑定到一个模型，并在后台把所有动作准备好（第一次播放就不用等） */
   bind(vrm: VRM) {
     this.vrm = vrm;
@@ -126,7 +133,8 @@ export class MotionLayer {
    * 返回 false = 动作文件不在（没下载 / 加载失败）
    */
   async play(id: MotionId, opts: { speed?: number; fadeIn?: number; fadeOut?: number } = {}): Promise<boolean> {
-    const clip = await this.prepare(id);
+    this.loading++;
+    const clip = await this.prepare(id).finally(() => this.loading--);
     if (!clip) return false;
     for (const p of this.playing) p.leaving = true;
     this.playing.push({
@@ -147,6 +155,11 @@ export class MotionLayer {
     for (const p of this.playing) p.leaving = true;
   }
 
+  /** 改当前动作的播放速度（预览面板慢放；0 = 暂停在当前帧） */
+  setSpeed(speed: number) {
+    for (const p of this.playing) if (!p.leaving) p.speed = Math.max(0, speed);
+  }
+
   /** 预览面板拖时间轴用：跳到某一时刻 */
   seek(t: number) {
     const p = this.playing.find((x) => !x.leaving);
@@ -156,9 +169,9 @@ export class MotionLayer {
   update(dt: number) {
     for (const p of this.playing) {
       p.t += dt * p.speed;
-      // 快放完时自己开始淡出，淡完正好到最后一帧
+      // 快放完时自己开始淡出，淡完正好到最后一帧（暂停时不算）
       const remain = p.clip.duration - p.t;
-      if (!p.leaving && remain <= p.fadeOut * p.speed) p.leaving = true;
+      if (!p.leaving && p.speed > 0 && remain <= p.fadeOut * p.speed) p.leaving = true;
       const target = p.leaving ? 0 : 1;
       const rate = 1 / Math.max(0.05, p.leaving ? p.fadeOut : p.fadeIn);
       p.w = target > p.w ? Math.min(1, p.w + dt * rate) : Math.max(0, p.w - dt * rate);
