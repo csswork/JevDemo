@@ -93,7 +93,8 @@ export const MOTION_FILES: Record<MotionId, MotionEdit> = {
  */
 export const IDLE_BASE: MotionId | null = 'idle_loop';
 
-export const MOTION_CREDIT = 'キャラクターアニメーション: ピクシブ株式会社 VRoidプロジェクト';
+export const MOTION_CREDIT =
+  'キャラクターアニメーション: ピクシブ株式会社 VRoidプロジェクト · 待机动作 idle_loop.vrma © pixiv Inc.（MIT）';
 
 const motionUrl = (id: MotionId) => `${import.meta.env.BASE_URL}motions/${MOTION_FILES[id].file}`;
 
@@ -174,6 +175,12 @@ export class MotionLayer {
   /** VRM 0.x 的骨骼局部轴和 1.0 差 180°，offset 的 x / z 要取反 */
   private flip = 1;
   private loading = 0;
+  /** 待机时上臂额外外展多少度（按模型的裙子蓬不蓬定，见 models.ts 的 armOut），只作用于底层 */
+  private armClearance = 0;
+
+  setArmClearance(deg: number) {
+    this.armClearance = deg;
+  }
 
   /** 剪辑表（开发时在控制台里直接改，下一帧生效） */
   get edits() {
@@ -378,9 +385,12 @@ export class MotionLayer {
     // 注意 slerpQuaternions 会先把自己设成第一个参数，所以第二个参数不能是自己
     if (k != null && k !== 1) this._q.slerpQuaternions(MotionLayer.IDENTITY, this._o.copy(this._q), k);
     const off = edit.offset?.[bone];
-    if (off) {
+    // 底层待机按模型额外外展一点：裙子越蓬，垂手时越容易陷进裙摆
+    const extra = p.loop && this.armClearance ? (bone === 'leftUpperArm' ? 1 : bone === 'rightUpperArm' ? -1 : 0) : 0;
+    if (off || extra) {
       const d = Math.PI / 180;
-      this._e.set(off[0] * d * this.flip, off[1] * d, off[2] * d * this.flip);
+      const z = (off?.[2] ?? 0) + extra * this.armClearance;
+      this._e.set((off?.[0] ?? 0) * d * this.flip, (off?.[1] ?? 0) * d, z * d * this.flip);
       this._q.premultiply(this._o.setFromEuler(this._e));
     }
     return true;

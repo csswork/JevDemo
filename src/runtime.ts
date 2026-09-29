@@ -30,6 +30,7 @@ export class Runtime {
   private player = new TimelinePlayer();
   private lastTime = 0;
   private raf = 0;
+  private idleArmClearance = 0;
   private systemVoice: SpeechSynthesisVoice | null = null;
   private speech: SpeakHandle | null = null;
   private compiled: CompiledAct | null = null;
@@ -64,6 +65,7 @@ export class Runtime {
 
     const character = new Character(stage.camera.position);
     this.character = character;
+    character.motion.setArmClearance(this.idleArmClearance);
 
     const vrm = await character.load(modelUrl, onProgress);
     if (this.disposed) {
@@ -156,6 +158,7 @@ export class Runtime {
     const old = this.character;
     if (old) {
       next.motionsEnabled = old.motionsEnabled;
+      next.motion.setArmClearance(this.idleArmClearance);
       next.expression.microEnabled = old.expression.microEnabled;
       next.idle.setBodyMotion(old.idle.bodyMotionScale);
       if (old.vrm) stage.scene.remove(old.vrm.scene);
@@ -394,6 +397,12 @@ export class Runtime {
 
   setBodyMotion(scale: number) {
     this.character?.idle.setBodyMotion(scale);
+  }
+
+  /** 待机时上臂额外外展（按模型的裙子定，见 models.ts 的 armOut）。mount / setModel 前后调用都行 */
+  setIdleArmClearance(deg: number) {
+    this.idleArmClearance = deg;
+    this.character?.motion.setArmClearance(deg);
   }
 
   setMotionsEnabled(v: boolean) {

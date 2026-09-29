@@ -17,11 +17,24 @@ export interface ModelMeta {
   desc: string;
   license: string;
   face: '分部位' | '整脸';
+  /**
+   * 待机时上臂额外外展多少度（在待机动作自带的 6° 之上）。裙子越蓬，垂手时手越容易陷进裙摆：
+   * 逐个模型看手部特写定的 —— 詩乃 / Kira 这类窄裙 0，Vivi 的 A 字连衣裙 +3，Victoria 的蓬裙 +6
+   */
+  armOut?: number;
 }
 
 export const MODELS: ModelMeta[] = [
   { id: 'shino', name: '千駄ヶ谷 詩乃', file: 'Sendagaya_Shino.vrm', desc: '黑长直 · 制服', license: 'CC0', face: '分部位' },
-  { id: 'vivi', name: 'Vivi', file: 'candidates/Vivi.vrm', desc: '棕色短发 · 围裙连衣裙', license: 'CC0', face: '分部位' },
+  {
+    id: 'vivi',
+    name: 'Vivi',
+    file: 'candidates/Vivi.vrm',
+    desc: '棕色短发 · 围裙连衣裙',
+    license: 'CC0',
+    face: '分部位',
+    armOut: 3,
+  },
   {
     id: 'victoria',
     name: 'Victoria Rubin',
@@ -29,6 +42,7 @@ export const MODELS: ModelMeta[] = [
     desc: '金粉渐变 · 侧马尾',
     license: 'CC0',
     face: '分部位',
+    armOut: 6,
   },
   { id: 'vita', name: 'Vita', file: 'candidates/Vita.vrm', desc: '白发异瞳 · 科幻', license: 'CC0', face: '分部位' },
   {

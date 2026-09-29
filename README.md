@@ -502,6 +502,7 @@ Jev 判成 relaxed → neutral 0.87 → neutral 0.69，第一段只有 1.7s，�
 | 转圈 | `VRMA_05` | 9.3s | **自动**：开心又惊喜、强度拉满（最少见） |
 | 模特姿势 | `VRMA_06` | 7.5s | 只在预览里播 |
 | 深蹲 | `VRMA_07` | 11.5s | 只在预览里播 |
+| **待机循环** | ChatVRM `idle_loop.vrma` | 10.4s 循环 | **一直在播**：垫在最底下的待机（见下） |
 
 ### 素材和授权
 
@@ -554,9 +555,23 @@ Jev 判成 relaxed → neutral 0.87 → neutral 0.69，第一段只有 1.7s，�
 整体覆盖在底层上，放完淡回底层。同一层里的交叉淡化按权重归一化混合，**不经过静止姿势** ——
 静止姿势是 T-pose，往它混手臂会往上飘一下。
 
-现在底层是空的（`IDLE_BASE = null`），待机用 idle 层的程序待机。以后有合适的 `.vrma` 待机循环，
-登记进 `MOTION_FILES` 再填到 `IDLE_BASE` 就行：idle 层会自动让出呼吸、重心和垂手，
-只留 Jev 判断的姿态（开心 / 低落 / 警觉）的微调；文件不在时照样退回程序待机。
+底层现在是 pixiv ChatVRM 的站立待机循环（`IDLE_BASE = 'idle_loop'`）。有它时 idle 层让出呼吸、
+重心和垂手，只留 Jev 判断的姿态（开心 / 低落 / 警觉）的微调；情绪越激动播得越快一点（0.92~1.08 倍）。
+文件不在时（新克隆的仓库）静默退回原来的程序待机。
+
+### 待机：ChatVRM 的 idle_loop.vrma
+
+- 来源：[pixiv/ChatVRM](https://github.com/pixiv/ChatVRM) 的 `public/idle_loop.vrma`（153KB，**MIT**，
+  授权原文放在 `public/motions/chatvrm/LICENSE`）。和 VRoid 的 7 个动作一样是 `.vrma`、为 VRoid 体型的角色做的，
+  没有混元那种比例对不上的问题。放在 `public/motions/` 下，不进仓库
+- 原片里人站在偏离中心 15.7cm 的地方 → `hips.center` 以平均位置为中心；实际左右晃动只有约 2.8cm
+- 原片本身是无缝循环（首尾两帧所有骨骼差 < 0.05°）→ `loop: 'wrap'` 直接绕回开头。交叉淡化反而会
+  把相差零点几秒的两个姿势混在一起。实测 25 秒（跨两次接缝）单帧最大转动 0.17°
+- 手臂几乎竖直下垂（离竖直 5°），碰到往外蓬的裙摆，手指有一半在裙子里 → 上臂各外展 6°。
+  裙子更蓬的模型在 `models.ts` 的 `armOut` 里再加：Vivi 的 A 字连衣裙 +3°，Victoria 的蓬裙 +6°
+  （离竖直 17°）。这个额外外展只作用于待机，不影响打招呼、比耶这些动作
+- 实测（詩乃）：头部左右 4.1cm、胯部 2.8cm、脚几乎不动（1.7cm）；VRM 0.x（詩乃、Vivi、Victoria）
+  和 1.0（AvatarSample_B）上都验证过手不进裙子
 
 ### 试过、放弃了的：腾讯混元文生动作（HY-Motion）
 
@@ -572,7 +587,7 @@ Jev 判成 relaxed → neutral 0.87 → neutral 0.69，第一段只有 1.7s，�
 - 还踩了一个坑：FBX 里静止骨架和动画不在同一个高度基准上（胯部 -19cm vs 97cm），直接相减人会被抬高 1 米多
 
 代码已经删掉（在 git 历史里：`server/tencent3d.ts`、`server/motionGen.ts`、`src/vrm/retargetSmpl.ts`），
-生成的文件移到了废纸篓。剪辑层的 `scale` / `offset` / `hips` 和两层混合是通用的，留着给以后的 `.vrma` 用。
+生成的文件移到了废纸篓。剪辑层的 `scale` / `offset` / `hips` 和两层混合是通用的，待机循环就用上了。
 
 ### 测试预览
 
@@ -703,7 +718,7 @@ tts/.venv/bin/pip install mlx-audio
 resetNormalizedPose → motion → idle → gaze → flush → expression → lipsync → vrm.update
 ```
 
-motion 写绝对姿势（底层循环待机 + 上层对话触发的动作；底层现在是空的），其余各层只往 `PoseAccumulator` 里加偏移，
+motion 写绝对姿势（底层循环待机 + 上层对话触发的动作），其余各层只往 `PoseAccumulator` 里加偏移，
 互相不知道对方存在。上层动作在播时 idle / 视线按 `(1 - 动作权重)` 让出来；有动捕待机时 idle 只留姿态的微调。这是避免动作打架的关键，
 也是"一句话一个表情=PPT翻页"的解药——四条轨道可以在不同时间点各自变化。
 

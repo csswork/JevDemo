@@ -144,6 +144,7 @@ export default function App() {
         const init = initialModel(avail);
         setModelId(init.id);
         sessionId = init.id ?? 'default';
+        rt.setIdleArmClearance(MODELS.find((m) => m.id === init.id)?.armOut ?? 0);
         return rt.mount(canvas, init.url, setProgress);
       })
       .then(async () => {
@@ -328,6 +329,8 @@ export default function App() {
     setModelLoading(0);
     setModelError(null);
     try {
+      // 先定好外展量再换模型：setModel 会把它交给新角色
+      rt.setIdleArmClearance(m.armOut ?? 0);
       if (!(await rt.setModel(modelUrl(m), setModelLoading))) return;
       try {
         localStorage.setItem(MODEL_KEY, id);
