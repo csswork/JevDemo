@@ -3,7 +3,9 @@ import type { VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { Runtime } from '../runtime';
 import type { ActScript, Emotion, MotionId } from '../act/schema';
 import { MOTIONS } from '../act/schema';
-import { MOTION_FILES } from '../vrm/motion';
+import { motionSource, motionTalk } from '../vrm/motion';
+import { GESTURES } from '../vrm/gestures';
+import { isProceduralMotion } from '../act/schema';
 import { parseTestCommand } from '../jev/testCommand';
 
 /**
@@ -254,15 +256,17 @@ export function installAudit(rt: Runtime) {
     if (!(MOTIONS as readonly string[]).includes(id)) return `没有这个动作：${id}`;
     const stage = rt.stage!;
     const cvs = stage.renderer.domElement;
-    const m = ch().motion;
     ch().expression.reset();
     rt.stopMotion();
     for (let i = 0; i < 60; i++) rt.step(1 / 60);
+    // 程序生成的表演动作带着它该配的表情一起看
+    const face = isProceduralMotion(id) ? GESTURES[id].preview : undefined;
+    if (face) ch().expression.setBlend(face, 0.3);
     // talk = 按对话里自动触发时的那一段播；bust = 用主相机（用户看到的半身景别）
-    const range = opts.talk ? (MOTION_FILES[id].talk ?? {}) : {};
-    if (!(await m.play(id, range))) return `动作文件不在：${MOTION_FILES[id].file}`;
+    const range = opts.talk ? (motionTalk(id) ?? {}) : {};
+    if (!(await ch().playMotion(id, range))) return `动作文件不在：${motionSource(id)}`;
     const from = range.from ?? 0;
-    const duration = (m.current?.duration ?? 8) - from;
+    const duration = (ch().currentMotion?.duration ?? 8) - from;
     const tw = 300, th = 460, cols = count;
     const sheet = document.createElement('canvas');
     sheet.width = cols * tw;

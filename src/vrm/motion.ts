@@ -6,7 +6,13 @@ import {
   createVRMAnimationHumanoidTracks,
   type VRMAnimation,
 } from '@pixiv/three-vrm-animation';
-import { MOTIONS, type MotionId } from '../act/schema';
+import { GESTURES } from './gestures';
+import { MOTIONS, isProceduralMotion, type MotionId as AnyMotionId, type ProceduralMotionId } from '../act/schema';
+
+/** 动捕 .vrma 的动作 id（程序生成的在 gestures.ts） */
+export type ClipMotionId = Exclude<AnyMotionId, ProceduralMotionId>;
+type MotionId = ClipMotionId;
+const CLIP_MOTIONS = MOTIONS.filter((id): id is ClipMotionId => !isProceduralMotion(id));
 
 /**
  * 动作层：播放动捕的 .vrma（VRM Animation）。
@@ -92,6 +98,14 @@ export const MOTION_FILES: Record<MotionId, MotionEdit> = {
  * 文件不在时（新克隆的仓库）同样静默退回程序待机
  */
 export const IDLE_BASE: MotionId | null = 'idle_loop';
+
+/** 动作的中文名（两种动作统一入口） */
+export const motionLabel = (id: AnyMotionId) => (isProceduralMotion(id) ? GESTURES[id].label : MOTION_FILES[id].label);
+/** 动作从哪来（预览面板的提示） */
+export const motionSource = (id: AnyMotionId) =>
+  isProceduralMotion(id) ? '程序生成（vrm/gestures.ts）' : MOTION_FILES[id].file;
+/** 对话里自动触发时只播哪一段 */
+export const motionTalk = (id: AnyMotionId) => (isProceduralMotion(id) ? undefined : MOTION_FILES[id].talk);
 
 export const MOTION_CREDIT =
   'キャラクターアニメーション: ピクシブ株式会社 VRoidプロジェクト · 待机动作 idle_loop.vrma © pixiv Inc.（MIT）';
@@ -222,7 +236,7 @@ export class MotionLayer {
     this.clips.clear();
     this.playing = [];
     this.base = [];
-    for (const id of MOTIONS) void this.prepare(id);
+    for (const id of CLIP_MOTIONS) void this.prepare(id);
     if (this.baseId) void this.setBase(this.baseId);
   }
 

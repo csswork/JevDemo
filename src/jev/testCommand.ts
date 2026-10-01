@@ -74,6 +74,8 @@ const MOTION_ALIASES: Record<string, MotionId> = {
   摆姿势: 'model_pose',
   蹲下: 'squat',
   蹲: 'squat',
+  掩嘴笑: 'laugh_cover',
+  捂嘴笑: 'laugh_cover',
 };
 
 function toMotion(word: string): MotionId | null {

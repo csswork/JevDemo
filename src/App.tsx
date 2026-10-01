@@ -8,7 +8,7 @@ import { isTestCommand, parseTestCommand } from './jev/testCommand';
 import { probeVoice, type VoiceSession, type VoiceStatus } from './speech/voice';
 import { DEFAULT_TONE, toneFor } from './act/voiceStyle';
 import type { JevMeta as Meta } from './act/fromJev';
-import { MOTION_CREDIT, MOTION_FILES } from './vrm/motion';
+import { MOTION_CREDIT, motionLabel, motionSource } from './vrm/motion';
 import { isGreeting } from './act/motionRules';
 import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
 import { DEFAULT_MODEL, MODELS, modelUrl, probeModels } from './models';
@@ -949,10 +949,10 @@ export default function App() {
                 <button
                   key={id}
                   className={previewing === id ? 'on' : ''}
-                  title={`${id} · ${MOTION_FILES[id].file}`}
+                  title={`${id} · ${motionSource(id)}`}
                   onClick={() => previewMotion(id)}
                 >
-                  {MOTION_FILES[id].label}
+                  {motionLabel(id)}
                 </button>
               ))}
             </div>

@@ -5,7 +5,9 @@ import type { TimelineEvent } from '../act/timeline';
 import { PoseAccumulator, vrmMetaVersion } from './pose';
 import { IdleLayer } from './idle';
 import { HandLayer } from './hands';
-import { IDLE_BASE, MOTION_FILES, MotionLayer } from './motion';
+import { IDLE_BASE, MotionLayer, motionTalk } from './motion';
+import { GestureLayer } from './gestures';
+import { isProceduralMotion, type MotionId } from '../act/schema';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
 import { LipSyncLayer } from './lipsync';
@@ -14,12 +16,13 @@ import { LipSyncLayer } from './lipsync';
  * 角色控制器 —— Act IR 的消费端。
  *
  * 每帧的层叠顺序是固定的，也是这个 demo 的核心：
- *   resetNormalizedPose → motion → idle → hands → gaze → flush → expression → lipsync → vrm.update
+ *   resetNormalizedPose → motion → idle → gesture → hands → gaze → flush → gesture IK → expression → lipsync → vrm.update
  *
  * motion 写的是绝对姿势：底层是一直循环的动捕待机，对话触发的动作整体叠在它上面。
  * idle / gaze 是乘在上面的偏移：动作在播时按 (1 - 动作权重) 让出来；
  * 有动捕待机时 idle 只留姿态的微调（呼吸、重心、垂手都由动捕负责）。
  * 手指和说话时手上的小动作由 hands 层负责（动捕待机没有手指轨道）。
+ * 程序生成的表演动作（gestures.ts）：身体是叠加的偏移，手碰脸的那只胳膊在 flush 之后用 IK 覆盖。
  *
  * 换渲染引擎（Live2D / Unity / AnimeActEngine）时，需要重写的只有这个文件和 vrm/ 目录；
  * act/ 和 jev/ 两层原样保留。
@@ -30,6 +33,7 @@ export class Character {
   readonly idle = new IdleLayer();
   readonly hands = new HandLayer();
   readonly motion = new MotionLayer();
+  readonly gesture = new GestureLayer();
   readonly gaze: GazeLayer;
   readonly expression = new ExpressionLayer();
   readonly lipsync = new LipSyncLayer();
@@ -79,6 +83,7 @@ export class Character {
     this.expression.bind(vrm);
     this.lipsync.bind(vrm);
     this.motion.bind(vrm);
+    this.gesture.bind(vrm);
     // 有动捕待机就垫在最底下；没配（IDLE_BASE = null）或文件不在时用 idle 层的程序待机
     if (IDLE_BASE) void this.motion.setBase(IDLE_BASE);
 
@@ -124,8 +129,8 @@ export class Character {
       case 'motion':
         // 对话里只播适合半身景别的那一段（见 MOTION_FILES 的 talk）。
         // 同一个动作已经在播就不重来：Jev 的判断晚到时会把已经过去的节拍补一次
-        if (!this.motionsEnabled || this.motion.current?.id === ev.clip) break;
-        void this.motion.play(ev.clip, { speed: ev.speed, ...MOTION_FILES[ev.clip].talk });
+        if (!this.motionsEnabled || this.currentMotion?.id === ev.clip) break;
+        void this.playMotion(ev.clip, { speed: ev.speed, ...motionTalk(ev.clip) });
         break;
       case 'gaze':
         this.gaze.look(ev.target, ev.hold);
@@ -148,6 +153,44 @@ export class Character {
         this.setConversation('idle');
         break;
     }
+  }
+
+  /**
+   * 播一个动作（动捕的 .vrma 或程序生成的），另一种正在播的淡出。
+   * 返回 false = 动作文件不在
+   */
+  playMotion(id: MotionId, opts: { speed?: number; from?: number; to?: number } = {}): Promise<boolean> {
+    if (isProceduralMotion(id)) {
+      this.motion.stop();
+      return Promise.resolve(this.gesture.play(id, opts));
+    }
+    this.gesture.stop();
+    return this.motion.play(id, opts);
+  }
+
+  stopMotion() {
+    this.motion.stop();
+    this.gesture.stop();
+  }
+
+  setMotionSpeed(speed: number) {
+    this.motion.setSpeed(speed);
+    this.gesture.setSpeed(speed);
+  }
+
+  seekMotion(t: number) {
+    this.motion.seek(t);
+    this.gesture.seek(t);
+  }
+
+  /** 正在播的上层动作（两种都算） */
+  get currentMotion(): { id: MotionId; t: number; duration: number } | null {
+    return this.gesture.current ?? this.motion.current;
+  }
+
+  /** 正在播，或者正在加载准备播 */
+  get motionBusy(): boolean {
+    return this.motion.busy || this.gesture.current != null;
   }
 
   /**
@@ -186,11 +229,16 @@ export class Character {
       this.acc.scale = 1 - this.motion.weight;
       this.idle.setBaseWeight(this.motion.baseWeight);
       this.idle.update(dt, this.acc);
+      this.gesture.update(dt);
+      this.gesture.addOffsets(this.acc);
+      this.hands.setShape('left', this.gesture.handShape('left'));
+      this.hands.setShape('right', this.gesture.handShape('right'));
       // 说话时的节拍落在发声的音节上：口型此刻张多大（上一帧的，差一帧无所谓）
       this.hands.setVoice(this.lipsync.openness);
       this.hands.update(dt, this.acc);
       this.gaze.update(dt, vrm, this.acc);
       this.acc.flush(vrm);
+      this.gesture.solve(vrm);
     }
 
     this.expression.setMouthActivity(this.lipsync.openness);

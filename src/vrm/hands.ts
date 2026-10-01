@@ -1,6 +1,7 @@
 import type { VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { Cue, PostureId } from '../act/schema';
 import { PoseAccumulator, damp, deg, noise } from './pose';
+import type { HandShape } from './gestures';
 
 /**
  * 手的层 —— 待机时手指的自然弯曲和细微的随机变化，说话时手上的小动作。
@@ -49,6 +50,8 @@ const CURL: Record<Finger, [number, number, number]> = {
 };
 /** 近节的侧摆（度，正 = 往小指一侧）：并拢一点 —— 静止姿势的五指是张开的 */
 const SPREAD: Record<Finger, number> = { Index: 4, Middle: 0.5, Ring: -3, Little: -7 };
+/** 手形覆盖里"并拢"一项每根手指再往中间收多少（度） */
+const CLOSE: Record<Finger, number> = { Index: 3, Middle: 0.5, Ring: -2.5, Little: -5 };
 /** 弯曲往下两节传的比例：真手的指间关节是联动的，近节动，中节、远节跟着动 */
 const COUPLE = [1, 0.8, 0.5];
 
@@ -163,6 +166,8 @@ export class HandLayer {
   private talkBase: Record<Side, Talk> = { left: zeroTalk(), right: zeroTalk() };
   /** 基础姿势 + 此刻的手势，updateHand 用这个 */
   private talk: Record<Side, Talk> = { left: zeroTalk(), right: zeroTalk() };
+  /** 表演动作（gestures.ts）要的手形，比如掩嘴时手指并拢、拇指收起 */
+  private shapes: Record<Side, HandShape | null> = { left: null, right: null };
 
   setVrmVersion(metaVersion: string | undefined) {
     this.axisFlip = metaVersion === '0' ? -1 : 1;
@@ -183,6 +188,10 @@ export class HandLayer {
       this.nextBeat = 0.25 + this.rnd() * 0.4;
     }
     this.speaking = on;
+  }
+
+  setShape(side: Side, shape: HandShape | null) {
+    this.shapes[side] = shape;
   }
 
   setVoice(level: number) {
@@ -338,9 +347,11 @@ export class HandLayer {
     const t = this.t;
     const s = h.seed;
     const talk = this.talk[side];
+    const shape = this.shapes[side];
+    const sw = shape?.weight ?? 0;
 
-    // ---- 小动作（说话时不做）----
-    if (!h.fidget && this.speak < 0.3) {
+    // ---- 小动作（说话时、手在做表演动作时不做）----
+    if (!h.fidget && this.speak < 0.3 && sw < 0.1) {
       h.next -= dt;
       if (h.next <= 0) this.startFidget(h);
     }
@@ -368,7 +379,7 @@ export class HandLayer {
     }
 
     // ---- 整只手的松紧：姿态 + 缓慢漂移（~16s）+ 握一下 - 说话时松开 ----
-    const hand = this.tension + 4 * noise(t * 0.55, s) + 11 * grip - talk.open;
+    const hand = this.tension + 4 * noise(t * 0.55, s) + 11 * grip - talk.open + sw * (shape?.curl ?? 0);
 
     // ---- 四根手指 ----
     FINGERS.forEach((name, i) => {
@@ -376,7 +387,8 @@ export class HandLayer {
       let c = hand + 3.5 * noise(t * (0.85 + i * 0.12), s + i * 0.9);
       if (f?.kind === 'twitch' && name === f.finger) c -= 12 * twitch; // 抬一下再放回去
       if (name === 'Index') c += 7 * rub; // 拇指蹭的时候食指迎过来一点
-      const spread = SPREAD[name] - 0.15 * (c - this.tension) + 1.2 * noise(t * 0.7, s + 10 + i);
+      const spread =
+        SPREAD[name] - 0.15 * (c - this.tension) + 1.2 * noise(t * 0.7, s + 10 + i) + sw * (shape?.close ?? 0) * CLOSE[name];
       SEGS.forEach((seg, k) => {
         const curl = Math.max(k === 0 ? -4 : 0, CURL[name][k] + c * COUPLE[k]);
         this.bone(acc, side, `${name}${seg}`, 0, k === 0 ? spread : 0, -curl);
@@ -384,7 +396,7 @@ export class HandLayer {
     });
 
     // ---- 拇指：收在食指旁边，跟着手的松紧一起动；说话摊手时张开 ----
-    const th = 3 * noise(t * 0.8, s + 20) + 0.4 * (hand - this.tension) - talk.thumbOut;
+    const th = 3 * noise(t * 0.8, s + 20) + 0.4 * (hand - this.tension) - talk.thumbOut + sw * (shape?.thumb ?? 0);
     this.bone(acc, side, 'ThumbMetacarpal', 0, 22 + th + 6 * rubSwing, -(24 + 0.5 * th + 4 * rub));
     this.bone(acc, side, 'ThumbProximal', 0, 8 + 0.5 * th, 0);
     this.bone(acc, side, 'ThumbDistal', 0, 14 + 0.6 * th + 8 * rub, 0);

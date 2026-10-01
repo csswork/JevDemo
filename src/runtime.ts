@@ -4,7 +4,8 @@ import { createStage, type BackdropId } from './vrm/stage';
 import { Character } from './vrm/character';
 import { TimelinePlayer, compileAct, type CompiledAct } from './act/timeline';
 import { estimateDuration, makeMeasuredMapper, makeTimeToChar } from './act/anchors';
-import type { ActScript, Emotion, MotionId } from './act/schema';
+import { isProceduralMotion, type ActScript, type Emotion, type MotionId } from './act/schema';
+import { GESTURES } from './vrm/gestures';
 import { pickChineseVoice, speak, ttsAvailable, type SpeakHandle } from './speech/tts';
 import { VoiceSession } from './speech/voice';
 
@@ -331,21 +332,24 @@ export class Runtime {
 
   /** 预览一个动作：从当前姿势交叉淡入，可以慢放、循环 */
   playMotion(id: MotionId, speed = 1, loop = false) {
-    const m = this.character?.motion;
-    if (!m) return;
+    const ch = this.character;
+    if (!ch) return;
     this.preview = { id, speed, loop, paused: false };
-    void m.play(id, { speed });
+    // 程序生成的表演动作带着它该配的表情一起预览（只在开发面板；对话里的表情照常由 Jev 定）
+    const face = isProceduralMotion(id) ? GESTURES[id].preview : undefined;
+    if (face) ch.expression.setBlend(face, 0.3);
+    void ch.playMotion(id, { speed });
   }
 
   stopMotion() {
     this.preview = null;
-    this.character?.motion.stop();
+    this.character?.stopMotion();
   }
 
   setPreviewSpeed(speed: number) {
     if (!this.preview) return;
     this.preview.speed = speed;
-    if (!this.preview.paused) this.character?.motion.setSpeed(speed);
+    if (!this.preview.paused) this.character?.setMotionSpeed(speed);
   }
 
   setPreviewLoop(loop: boolean) {
@@ -353,28 +357,28 @@ export class Runtime {
   }
 
   setPreviewPaused(paused: boolean) {
-    const m = this.character?.motion;
-    if (!m || !this.preview) return;
+    const ch = this.character;
+    if (!ch || !this.preview) return;
     // 已经播完了再按播放：从头开始
-    if (!paused && !m.current) {
+    if (!paused && !ch.currentMotion) {
       this.playMotion(this.preview.id, this.preview.speed, this.preview.loop);
       return;
     }
     this.preview.paused = paused;
-    m.setSpeed(paused ? 0 : this.preview.speed);
+    ch.setMotionSpeed(paused ? 0 : this.preview.speed);
   }
 
   /** 拖时间轴：暂停并跳到指定时刻 */
   seekPreview(t: number) {
-    const m = this.character?.motion;
-    if (!m || !this.preview) return;
+    const ch = this.character;
+    if (!ch || !this.preview) return;
     this.preview.paused = true;
-    m.setSpeed(0);
-    m.seek(t);
+    ch.setMotionSpeed(0);
+    ch.seekMotion(t);
   }
 
   previewState() {
-    const cur = this.character?.motion.current ?? null;
+    const cur = this.character?.currentMotion ?? null;
     return { id: this.preview?.id ?? null, current: cur, paused: !!this.preview?.paused };
   }
 
@@ -443,8 +447,8 @@ export class Runtime {
       character.lipsync.follow(this.timeToChar(Math.max(0, session.time)), session.level());
     }
     // 预览循环：快放完（开始淡出）时从头再来，首尾交叉淡化
-    if (this.preview?.loop && !this.preview.paused && !character.motion.busy) {
-      void character.motion.play(this.preview.id, { speed: this.preview.speed });
+    if (this.preview?.loop && !this.preview.paused && !character.motionBusy) {
+      void character.playMotion(this.preview.id, { speed: this.preview.speed });
     }
     character.layersEnabled = this.layersEnabled;
     if (session) this.elapsed = Math.max(0, session.time);
