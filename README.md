@@ -590,6 +590,21 @@ Jev 判成 relaxed → neutral 0.87 → neutral 0.69，第一段只有 1.7s，�
 - 实测（詩乃）：头部左右 4.1cm、胯部 2.8cm、脚几乎不动（1.7cm）；VRM 0.x（詩乃、Vivi、Victoria）
   和 1.0（AvatarSample_B）上都验证过手不进裙子
 
+### 手指：待机时的自然弯曲和随机变化（`vrm/hands.ts`）
+
+idle_loop 只有手腕、没有手指轨道，VRM 的静止姿势又是 T-pose 的平手 —— 不管的话待机时手指一直绷得笔直、
+五指张开、拇指支棱在外面，像两块板子。手指层垫在待机下面，三部分叠在一起：
+
+- **自然弯曲**：放松垂手的样子，从食指到小指越来越弯（近节 14° → 26°，中节、远节跟着弯）、并拢一点，
+  拇指收在食指旁边。方向和量级参考 VRoid 官方动捕开头垂手那几帧的手指
+- **缓慢漂移**：每根手指各自的伪噪声（±3.5°，6~10s）+ 整只手的松紧（±4°，~16s），手腕再加一点不循环的漂移
+  —— 和身体的待机一样一直在微动，两只手各走各的
+- **小动作**：每只手隔 7~18 秒随机来一下：轻轻握一下（停一两秒再松开）、食指 / 中指抬一下、拇指在食指侧面蹭两下
+- 姿态（Jev 定的 posture）改变松紧：开心时更松更开，低落、警觉时更收；激动程度让漂移和小动作快一点、勤一点
+- 上层动作（VRoid 的 7 个动作都带完整的手指）在播时按 `(1 - 动作权重)` 让出来，比耶的 V 手势不受影响
+- 特写对比：`await __hands('hands.jpg', [0, 3, 6])`（每行一个时刻：左右手正面 + 外侧）。VRM 0.x（詩乃）
+  和 1.0（AvatarSample_B）上都验证过手指往掌心弯
+
 ### 试过、放弃了的：腾讯混元文生动作（HY-Motion）
 
 腾讯混元生 3D 的 `SubmitHunyuanTo3DMotionJob` 能用一句中文描述生成带骨骼动画的 FBX（约 15 秒出结果，
@@ -732,7 +747,7 @@ tts/.venv/bin/pip install mlx-audio
 每帧顺序固定（`vrm/character.ts`）：
 
 ```
-resetNormalizedPose → motion → idle → gaze → flush → expression → lipsync → vrm.update
+resetNormalizedPose → motion → idle → hands → gaze → flush → expression → lipsync → vrm.update
 ```
 
 motion 写绝对姿势（底层循环待机 + 上层对话触发的动作），其余各层只往 `PoseAccumulator` 里加偏移，

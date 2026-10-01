@@ -1,5 +1,5 @@
 import type { PostureId } from '../act/schema';
-import { PoseAccumulator, damp, deg } from './pose';
+import { PoseAccumulator, damp, deg, noise } from './pose';
 
 /**
  * Idle 层 —— 决定"这个角色是活的"的那一层。
@@ -71,15 +71,6 @@ const POSTURE_BIAS: Record<PostureId, PostureBias> = {
     breathScale: 1.05,
   },
 };
-
-/** 多频正弦叠加的伪噪声，取值约 [-1, 1]。比真 Perlin 便宜，肉眼无差别。 */
-function noise(t: number, seed: number): number {
-  return (
-    Math.sin(t * 0.73 + seed) * 0.6 +
-    Math.sin(t * 1.37 + seed * 2.1) * 0.28 +
-    Math.sin(t * 2.91 + seed * 3.7) * 0.12
-  );
-}
 
 export class IdleLayer {
   private t = 0;

@@ -4,6 +4,7 @@ import { VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import type { TimelineEvent } from '../act/timeline';
 import { PoseAccumulator, vrmMetaVersion } from './pose';
 import { IdleLayer } from './idle';
+import { HandLayer } from './hands';
 import { IDLE_BASE, MOTION_FILES, MotionLayer } from './motion';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
@@ -13,11 +14,12 @@ import { LipSyncLayer } from './lipsync';
  * 角色控制器 —— Act IR 的消费端。
  *
  * 每帧的层叠顺序是固定的，也是这个 demo 的核心：
- *   resetNormalizedPose → motion → idle → gaze → flush → expression → lipsync → vrm.update
+ *   resetNormalizedPose → motion → idle → hands → gaze → flush → expression → lipsync → vrm.update
  *
  * motion 写的是绝对姿势：底层是一直循环的动捕待机，对话触发的动作整体叠在它上面。
  * idle / gaze 是乘在上面的偏移：动作在播时按 (1 - 动作权重) 让出来；
  * 有动捕待机时 idle 只留姿态的微调（呼吸、重心、垂手都由动捕负责）。
+ * 手指由 hands 层负责（动捕待机没有手指轨道）。
  *
  * 换渲染引擎（Live2D / Unity / AnimeActEngine）时，需要重写的只有这个文件和 vrm/ 目录；
  * act/ 和 jev/ 两层原样保留。
@@ -26,6 +28,7 @@ export class Character {
   vrm: VRM | null = null;
 
   readonly idle = new IdleLayer();
+  readonly hands = new HandLayer();
   readonly motion = new MotionLayer();
   readonly gaze: GazeLayer;
   readonly expression = new ExpressionLayer();
@@ -70,6 +73,7 @@ export class Character {
 
     const metaVersion = vrmMetaVersion(vrm);
     this.idle.setVrmVersion(metaVersion);
+    this.hands.setVrmVersion(metaVersion);
     this.gaze.setVrmVersion(metaVersion);
 
     this.expression.bind(vrm);
@@ -110,6 +114,7 @@ export class Character {
     switch (ev.kind) {
       case 'posture':
         this.idle.setPosture(ev.posture);
+        this.hands.setPosture(ev.posture);
         break;
       case 'expression':
         // 整组一次性设定：给定的情绪按权重叠加，没给的淡出。
@@ -158,6 +163,7 @@ export class Character {
 
   setArousal(a: number) {
     this.idle.setArousal(a);
+    this.hands.setArousal(a);
     // 情绪越激动，待机的节奏越快一点（和 idle 层的呼吸节奏同一个道理）
     this.motion.setBaseSpeed(0.92 + Math.max(0, Math.min(1, a)) * 0.16);
   }
@@ -177,6 +183,7 @@ export class Character {
       this.acc.scale = 1 - this.motion.weight;
       this.idle.setBaseWeight(this.motion.baseWeight);
       this.idle.update(dt, this.acc);
+      this.hands.update(dt, this.acc);
       this.gaze.update(dt, vrm, this.acc);
       this.acc.flush(vrm);
     }

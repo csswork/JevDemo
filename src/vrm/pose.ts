@@ -66,6 +66,15 @@ export class PoseAccumulator {
 
 export const deg = (d: number) => (d * Math.PI) / 180;
 
+/** 多频正弦叠加的伪噪声，取值约 [-1, 1]。比真 Perlin 便宜，肉眼无差别。主周期约 8.6s / 速率 */
+export function noise(t: number, seed: number): number {
+  return (
+    Math.sin(t * 0.73 + seed) * 0.6 +
+    Math.sin(t * 1.37 + seed * 2.1) * 0.28 +
+    Math.sin(t * 2.91 + seed * 3.7) * 0.12
+  );
+}
+
 /** smoothstep 缓动，用于 clip 的进出淡化。 */
 export function smoothstep(t: number): number {
   const x = Math.max(0, Math.min(1, t));

@@ -15,6 +15,7 @@ import { parseTestCommand } from '../jev/testCommand';
  *   await __motionstrip('greeting')        一个动作按时间截全身，存到 dev-out/
  *   __closeup([x, y, z], fov) / __closeup(null)   替身相机特写 / 换回主相机
  *   await __views('cafe.jpg')              场景截图：几个固定机位（半身 / 全身 / 侧面 / 背后 / 俯视）拼一张图
+ *   await __hands('hands.jpg', [0, 3, 6])  双手特写：每一行一个时刻，左右手各一张正面、一张外侧
  *
  * 预览窗格被隐藏时浏览器会把 rAF 节流到几乎不动，这些函数都是同步逐帧推进的，不依赖 rAF。
  */
@@ -352,8 +353,59 @@ export function installAudit(rt: Runtime) {
     return res.json();
   };
 
+  /**
+   * 双手特写：从现在起逐帧推进，到 times 里的每个时刻（秒）截一行 —— 左手正面、右手正面、左手外侧、右手外侧。
+   * 看手指的自然弯曲和随机变化（hands.ts）。正面看到的是手指弯曲的侧影，外侧看到的是手背
+   */
+  const hands = async (name = 'hands.jpg', times = [0, 2, 4, 6], fov = 7) => {
+    const stage = rt.stage!;
+    const r = stage.renderer;
+    const cvs = r.domElement;
+    const tile = 360;
+    const pr = r.getPixelRatio();
+    r.setPixelRatio(1);
+    r.setSize(tile, tile, false);
+    stage.camera.aspect = 1;
+    stage.camera.updateProjectionMatrix();
+    const shots: Array<[string, 'left' | 'right', number]> = [
+      ['左手 正面', 'left', 0],
+      ['右手 正面', 'right', 0],
+      ['左手 外侧', 'left', 70],
+      ['右手 外侧', 'right', -70],
+    ];
+    const sheet = document.createElement('canvas');
+    sheet.width = tile * shots.length;
+    sheet.height = tile * times.length;
+    const g = sheet.getContext('2d')!;
+    const p = new THREE.Vector3();
+    let t = 0;
+    times.forEach((at, row) => {
+      while (t < at - 1e-6) {
+        rt.step(1 / 60);
+        t += 1 / 60;
+      }
+      shots.forEach(([label, side, az], col) => {
+        // 对准手掌中间：手腕和中指第二节的中点
+        const wrist = vrm().humanoid.getRawBoneNode(`${side}Hand`)!.getWorldPosition(new THREE.Vector3());
+        const mid = vrm().humanoid.getRawBoneNode(`${side}MiddleIntermediate`)?.getWorldPosition(p) ?? wrist;
+        closeup(wrist.lerp(mid, 0.5).toArray(), fov, az);
+        g.drawImage(cvs, col * tile, row * tile);
+        g.fillStyle = '#ff0';
+        g.font = 'bold 20px sans-serif';
+        g.fillText(`${label} ${at}s`, col * tile + 10, row * tile + 28);
+      });
+    });
+    closeup(null);
+    r.setPixelRatio(pr);
+    stage.resize();
+    const blob = await new Promise<Blob>((res) => sheet.toBlob((b) => res(b!), 'image/jpeg', 0.85));
+    const res = await fetch(`/__dev/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
+    return res.json();
+  };
+
   const w = window as unknown as Record<string, unknown>;
   w.__views = views;
+  w.__hands = hands;
   w.__faces = faces;
   w.__trace = trace;
   w.__filmstrip = filmstrip;
