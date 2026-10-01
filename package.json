@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "tts": "tts/.venv/bin/python tts/server.py"
+    "tts": "tts/.venv/bin/python tts/server.py",
+    "assets": "node scripts/fetch-scene-assets.mjs"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.5",

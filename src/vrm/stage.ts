@@ -1,11 +1,19 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
+import { createCafe, type Backdrop } from './scenes/cafe';
+
+/** 背景：none = 原来的纯色渐变（CSS 画的，画布透明）；cafe = 咖啡店店内（scenes/cafe.ts） */
+export type BackdropId = 'none' | 'cafe';
 
 /** three.js 场景骨架：相机、灯光、背景、resize。与 VRM 无关，便于单独调。 */
 export function createStage(canvas: HTMLCanvasElement) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // 软阴影一直开着；投不投影由主光的 castShadow 决定（只有背景场景里才投）
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
 
@@ -98,6 +106,11 @@ export function createStage(canvas: HTMLCanvasElement) {
   const key = new THREE.DirectionalLight(0xffffff, 1.5);
   key.position.set(1.2, 2.0, 1.6);
   scene.add(key);
+  // 主光的阴影：只算角色身边一小块（范围由场景给），2048 的阴影图在这个范围里足够清楚
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.bias = -0.0004;
+  key.shadow.normalBias = 0.02;
+  key.shadow.radius = 4;
 
   const fill = new THREE.DirectionalLight(0xdfe8ff, 0.55);
   fill.position.set(-1.6, 1.2, 1.0);
@@ -107,7 +120,54 @@ export function createStage(canvas: HTMLCanvasElement) {
   rim.position.set(-0.6, 1.6, -2.0);
   scene.add(rim);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.75));
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.75);
+  scene.add(hemi);
+  const hemiDefault = { sky: hemi.color.getHex(), ground: hemi.groundColor.getHex(), intensity: hemi.intensity };
+
+  // ---- 背景场景 ----
+  let backdrop: Backdrop | null = null;
+  let backdropId: BackdropId = 'none';
+  let envMap: THREE.Texture | null = null;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  /**
+   * 换背景。场景里的灯一起加进来；半球光换成店里的色调，角色的环境光和背景一致；
+   * 场景的 HDRI 转成环境光（IBL，只影响场景里的 PBR 材质，角色的 MToon 不吃环境贴图）；主光开始投影
+   */
+  function setBackdrop(id: BackdropId) {
+    if (id === backdropId) return;
+    if (backdrop) {
+      scene.remove(backdrop.group, ...backdrop.lights);
+      backdrop.dispose();
+      backdrop = null;
+    }
+    envMap?.dispose();
+    envMap = null;
+    scene.environment = null;
+    backdropId = id;
+    if (id === 'cafe') {
+      const b = createCafe();
+      backdrop = b;
+      scene.add(b.group, ...b.lights);
+      new HDRLoader().load(b.environment.url, (hdr) => {
+        if (backdrop !== b) return hdr.dispose();
+        envMap = pmrem.fromEquirectangular(hdr).texture;
+        hdr.dispose();
+        scene.environment = envMap;
+        scene.environmentIntensity = b.environment.intensity;
+      });
+    }
+    const look = backdrop?.hemisphere ?? hemiDefault;
+    hemi.color.setHex(look.sky);
+    hemi.groundColor.setHex(look.ground);
+    hemi.intensity = look.intensity;
+    scene.fog = backdrop?.fog ?? null;
+    key.castShadow = !!backdrop;
+    if (backdrop) {
+      const r = backdrop.shadowBounds;
+      Object.assign(key.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 0.5, far: 12 });
+      key.shadow.camera.updateProjectionMatrix();
+    }
+  }
 
   function resize() {
     const parent = canvas.parentElement;
@@ -127,16 +187,54 @@ export function createStage(canvas: HTMLCanvasElement) {
    */
   const view: { camera: THREE.PerspectiveCamera | null } = { camera: null };
 
+  // 防穿墙：转到背面时吧台、桌椅会挡在镜头和角色之间（最远能拉到 4.3m）。
+  // 从转轴往相机方向打一条射线，碰到东西就用一台替身相机放在障碍物前面渲染 ——
+  // 不改主相机：鼠标的距离不会被"吃掉"，转开之后自动回到原来的远近
+  const ray = new THREE.Raycaster();
+  const toCam = new THREE.Vector3();
+  const blocked = new THREE.PerspectiveCamera();
+  function renderCamera(): THREE.Camera {
+    if (view.camera) return view.camera;
+    if (!backdrop) return camera;
+    toCam.copy(camera.position).sub(controls.target);
+    const dist = toCam.length();
+    ray.set(controls.target, toCam.normalize());
+    ray.far = dist;
+    const hit = ray.intersectObjects(backdrop.colliders, false)[0];
+    if (!hit) return camera;
+    blocked.copy(camera);
+    blocked.position.copy(controls.target).addScaledVector(toCam, Math.max(0.35, hit.distance - 0.2));
+    return blocked;
+  }
+
   function render() {
     controls.update();
     followZoom();
-    renderer.render(scene, view.camera ?? camera);
+    renderer.render(scene, renderCamera());
   }
 
   function dispose() {
+    backdrop?.dispose();
+    envMap?.dispose();
+    pmrem.dispose();
     controls.dispose();
     renderer.dispose();
   }
 
-  return { renderer, scene, camera, controls, view, lookTarget, frame, resize, render, dispose };
+  return {
+    renderer,
+    scene,
+    camera,
+    controls,
+    view,
+    lookTarget,
+    frame,
+    resize,
+    render,
+    dispose,
+    setBackdrop,
+    get backdrop() {
+      return backdropId;
+    },
+  };
 }

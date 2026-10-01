@@ -58,9 +58,14 @@ export class Character {
     // 对单角色场景收益很小，这里直接不用。换模型时可以单独试，但务必肉眼验收。
     VRMUtils.rotateVRM0(vrm);
 
-    // 二次元模型不需要视锥剔除和阴影，关掉省事也避免手抬高时被裁掉
+    // 二次元模型不需要视锥剔除，关掉省事也避免手抬高时被裁掉。
+    // 投影到地板 / 吧台上（有背景场景时），但不接收阴影 —— 自身阴影在 MToon 的脸上会出条纹瑕疵
     vrm.scene.traverse((obj) => {
       obj.frustumCulled = false;
+      if ((obj as THREE.Mesh).isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = false;
+      }
     });
 
     const metaVersion = vrmMetaVersion(vrm);

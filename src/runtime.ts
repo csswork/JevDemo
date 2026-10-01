@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { VRMUtils } from '@pixiv/three-vrm';
-import { createStage } from './vrm/stage';
+import { createStage, type BackdropId } from './vrm/stage';
 import { Character } from './vrm/character';
 import { TimelinePlayer, compileAct, type CompiledAct } from './act/timeline';
 import { estimateDuration, makeMeasuredMapper, makeTimeToChar } from './act/anchors';
@@ -62,6 +62,7 @@ export class Runtime {
     const stage = createStage(canvas);
     this.stage = stage;
     stage.resize();
+    stage.setBackdrop(this.backdrop);
 
     const character = new Character(stage.camera.position);
     this.character = character;
@@ -397,6 +398,14 @@ export class Runtime {
 
   setBodyMotion(scale: number) {
     this.character?.idle.setBodyMotion(scale);
+  }
+
+  private backdrop: BackdropId = 'none';
+
+  /** 背景场景（mount 前后调用都行） */
+  setBackdrop(id: BackdropId) {
+    this.backdrop = id;
+    this.stage?.setBackdrop(id);
   }
 
   /** 待机时上臂额外外展（按模型的裙子定，见 models.ts 的 armOut）。mount / setModel 前后调用都行 */

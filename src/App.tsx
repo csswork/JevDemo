@@ -13,10 +13,26 @@ import { isGreeting } from './act/motionRules';
 import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
 import { DEFAULT_MODEL, MODELS, modelUrl, probeModels } from './models';
 import { appendChat, openChat, resetChat, type ChatSession } from './chat';
+import type { BackdropId } from './vrm/stage';
 import './App.css';
 
 /** 选过的模型存在这个 key 下（和音色一样，只是本机浏览器的偏好） */
 const MODEL_KEY = 'jev.model';
+/** 背景场景，同上 */
+const BACKDROP_KEY = 'jev.backdrop';
+const BACKDROPS: Array<{ id: BackdropId; label: string }> = [
+  { id: 'cafe', label: '咖啡店' },
+  { id: 'none', label: '纯色背景' },
+];
+function savedBackdrop(): BackdropId {
+  try {
+    const v = localStorage.getItem(BACKDROP_KEY);
+    if (BACKDROPS.some((b) => b.id === v)) return v as BackdropId;
+  } catch {
+    // 存不了就用默认
+  }
+  return 'cafe';
+}
 
 /**
  * 开始时用哪个模型。开发时可以用 ?model=candidates/Vita.vrm 直接指定文件（路径相对
@@ -114,6 +130,7 @@ export default function App() {
   const [modelLoading, setModelLoading] = useState<number | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const modelPick = useRef(0);
+  const [backdrop, setBackdropState] = useState<BackdropId>(savedBackdrop);
   // 聊天记录：每个模型一个 session（session id = 模型 id）
   const [persona, setPersona] = useState<ChatSession['persona'] | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -133,6 +150,7 @@ export default function App() {
 
     const rt = new Runtime();
     runtimeRef.current = rt;
+    rt.setBackdrop(savedBackdrop());
     rt.onState = setLive;
     rt.onSpeechText = setSubtitle;
 
@@ -314,6 +332,16 @@ export default function App() {
     setJevMeta(null);
     setJevError(null);
     await showChat(session, () => resetChat(session));
+  };
+
+  const pickBackdrop = (id: BackdropId) => {
+    setBackdropState(id);
+    runtimeRef.current?.setBackdrop(id);
+    try {
+      localStorage.setItem(BACKDROP_KEY, id);
+    } catch {
+      // 存不了：这次照样生效
+    }
   };
 
   /** 换模型：旧模型留在画面里直到新的加载好；选择记下来，下次打开默认用它 */
@@ -762,6 +790,16 @@ export default function App() {
               {modelError ?? `载入模型 ${Math.round((modelLoading ?? 0) * 100)}%`}
             </div>
           )}
+          <label className="voice-pick" title="选择会记住，下次打开默认用这个背景">
+            <span>背景</span>
+            <select value={backdrop} onChange={(e) => pickBackdrop(e.target.value as BackdropId)}>
+              {BACKDROPS.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label title={jev.endpoint ?? jev.backend ?? '在 .env.local 里配置后重启 dev server'}>
             <input
               type="checkbox"

@@ -14,6 +14,7 @@ import { parseTestCommand } from '../jev/testCommand';
  *   await __faces('faces_Vivi.jpg')        默认取景 + 六种表情，存到 dev-out/
  *   await __motionstrip('greeting')        一个动作按时间截全身，存到 dev-out/
  *   __closeup([x, y, z], fov) / __closeup(null)   替身相机特写 / 换回主相机
+ *   await __views('cafe.jpg')              场景截图：几个固定机位（半身 / 全身 / 侧面 / 背后 / 俯视）拼一张图
  *
  * 预览窗格被隐藏时浏览器会把 rAF 节流到几乎不动，这些函数都是同步逐帧推进的，不依赖 rAF。
  */
@@ -292,7 +293,67 @@ export function installAudit(rt: Runtime) {
     return { ...(await res.json()), duration: +duration.toFixed(2) };
   };
 
+  /**
+   * 场景截图：按 [标题, 距离, 水平转角°, 俯仰°] 依次摆主相机、渲染，拼成一张图存到 dev-out/。
+   * size 指定临时画布大小（默认 1280×720 横向 —— 大多数窗口是横的），截完还原
+   */
+  const views = async (
+    name: string,
+    list: Array<[string, number, number?, number?]> = [
+      ['默认半身', 1.58],
+      ['拉到最远', 99],
+      ['左侧', 3, -65],
+      ['右侧', 3, 65],
+      ['背后', 99, 180],
+      ['俯视', 3.5, 20, 25],
+    ],
+    size: [number, number] = [1280, 720],
+    cols = 2,
+  ) => {
+    const stage = rt.stage!;
+    const r = stage.renderer;
+    const cvs = r.domElement;
+    const cam = stage.camera;
+    const c = stage.controls;
+    const eye = vrm().humanoid.getRawBoneNode('leftEye') ?? vrm().humanoid.getRawBoneNode('head')!;
+    const eyeY = eye.getWorldPosition(new THREE.Vector3()).y + (vrm().humanoid.getRawBoneNode('leftEye') ? 0 : 0.06);
+    const pr = r.getPixelRatio();
+    r.setPixelRatio(1);
+    r.setSize(size[0], size[1], false);
+    cam.aspect = size[0] / size[1];
+    cam.updateProjectionMatrix();
+    const [tw, th] = size;
+    const sheet = document.createElement('canvas');
+    sheet.width = tw * cols;
+    sheet.height = th * Math.ceil(list.length / cols);
+    const g = sheet.getContext('2d')!;
+    list.forEach(([label, dist, az = 0, el = 0], k) => {
+      stage.frame(eyeY);
+      const sph = new THREE.Spherical().setFromVector3(cam.position.clone().sub(c.target));
+      sph.radius = Math.min(dist, c.maxDistance);
+      sph.theta += THREE.MathUtils.degToRad(az);
+      sph.phi -= THREE.MathUtils.degToRad(el);
+      cam.position.copy(c.target).add(new THREE.Vector3().setFromSpherical(sph));
+      for (let i = 0; i < 40; i++) {
+        rt.step(1 / 60);
+        stage.render();
+      }
+      stage.render();
+      g.drawImage(cvs, (k % cols) * tw, Math.floor(k / cols) * th);
+      g.fillStyle = '#ff0';
+      g.font = 'bold 26px sans-serif';
+      g.fillText(label, (k % cols) * tw + 12, Math.floor(k / cols) * th + 34);
+    });
+    stage.frame(eyeY);
+    r.setPixelRatio(pr);
+    stage.resize();
+    const blob = await new Promise<Blob>((res) => sheet.toBlob((b) => res(b!), 'image/jpeg', 0.85));
+    const res = await fetch(`/__dev/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
+    return res.json();
+  };
+
   const w = window as unknown as Record<string, unknown>;
+  w.__views = views;
   w.__faces = faces;
   w.__trace = trace;
   w.__filmstrip = filmstrip;
