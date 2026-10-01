@@ -15,7 +15,9 @@ import { parseTestCommand } from '../jev/testCommand';
  *   await __motionstrip('greeting')        一个动作按时间截全身，存到 dev-out/
  *   __closeup([x, y, z], fov) / __closeup(null)   替身相机特写 / 换回主相机
  *   await __views('cafe.jpg')              场景截图：几个固定机位（半身 / 全身 / 侧面 / 背后 / 俯视）拼一张图
- *   await __hands('hands.jpg', [0, 3, 6])  双手特写：每一行一个时刻，左右手各一张正面、一张外侧
+ *   await __hands('hands.jpg', [0, 3, 6])  双手特写：每一行一个时刻，左右手各一张正面、一张外侧、再加一张上半身
+ *   await __hands('talk.jpg', [1, 3, 6], '开心 40% | 我跟你说，今天店里来了一只小猫！它就坐在窗台上晒太阳，可爱吧？')
+ *                                          边说边截（测试指令语法，不花钱）。结果存成文件，屏幕上看不到变化
  *
  * 预览窗格被隐藏时浏览器会把 rAF 节流到几乎不动，这些函数都是同步逐帧推进的，不依赖 rAF。
  */
@@ -354,10 +356,23 @@ export function installAudit(rt: Runtime) {
   };
 
   /**
-   * 双手特写：从现在起逐帧推进，到 times 里的每个时刻（秒）截一行 —— 左手正面、右手正面、左手外侧、右手外侧。
-   * 看手指的自然弯曲和随机变化（hands.ts）。正面看到的是手指弯曲的侧影，外侧看到的是手背
+   * 双手特写：从现在起逐帧推进，到 times 里的每个时刻（秒）截一行 —— 左手正面、右手正面、左手外侧、右手外侧、上半身。
+   * 看手指的自然弯曲和随机变化（hands.ts）。正面看到的是手指弯曲的侧影，外侧看到的是手背。
+   * say = 测试指令（同 __trace），第 0 秒开口，看说话时手上的小动作
    */
-  const hands = async (name = 'hands.jpg', times = [0, 2, 4, 6], fov = 7) => {
+  const hands = async (name = 'hands.jpg', times = [0, 2, 4, 6], say?: string, fov = 7) => {
+    // 说话时：台词多长、有没有触发动作（动作自带手指和手臂，播的时候手的层让出来，截到的是动作）
+    let talk: { speech: number; motions: string[] } | null = null;
+    if (say) {
+      const parsed = parseTestCommand(say.startsWith('测试') ? say : `测试: ${say}`);
+      if (!parsed) return 'parse failed';
+      rt.stopMotion();
+      const compiled = rt.play(parsed.act);
+      talk = {
+        speech: +compiled.duration.toFixed(2),
+        motions: compiled.events.flatMap((e) => (e.kind === 'motion' ? [e.clip] : [])),
+      };
+    }
     const stage = rt.stage!;
     const r = stage.renderer;
     const cvs = r.domElement;
@@ -367,11 +382,12 @@ export function installAudit(rt: Runtime) {
     r.setSize(tile, tile, false);
     stage.camera.aspect = 1;
     stage.camera.updateProjectionMatrix();
-    const shots: Array<[string, 'left' | 'right', number]> = [
+    const shots: Array<[string, 'left' | 'right' | 'body', number]> = [
       ['左手 正面', 'left', 0],
       ['右手 正面', 'right', 0],
       ['左手 外侧', 'left', 70],
       ['右手 外侧', 'right', -70],
+      ['上半身', 'body', 35],
     ];
     const sheet = document.createElement('canvas');
     sheet.width = tile * shots.length;
@@ -385,6 +401,16 @@ export function installAudit(rt: Runtime) {
         t += 1 / 60;
       }
       shots.forEach(([label, side, az], col) => {
+        if (side === 'body') {
+          // 胯部往上一点，装得下两只小臂
+          const hips = node('hips').getWorldPosition(new THREE.Vector3());
+          closeup([hips.x, hips.y + 0.12, hips.z], 26, az);
+          g.drawImage(cvs, col * tile, row * tile);
+          g.fillStyle = '#ff0';
+          g.font = 'bold 20px sans-serif';
+          g.fillText(`${label} ${at}s`, col * tile + 10, row * tile + 28);
+          return;
+        }
         // 对准手掌中间：手腕和中指第二节的中点
         const wrist = vrm().humanoid.getRawBoneNode(`${side}Hand`)!.getWorldPosition(new THREE.Vector3());
         const mid = vrm().humanoid.getRawBoneNode(`${side}MiddleIntermediate`)?.getWorldPosition(p) ?? wrist;
@@ -400,7 +426,13 @@ export function installAudit(rt: Runtime) {
     stage.resize();
     const blob = await new Promise<Blob>((res) => sheet.toBlob((b) => res(b!), 'image/jpeg', 0.85));
     const res = await fetch(`/__dev/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
-    return res.json();
+    const saved = await res.json();
+    if (!talk) return saved;
+    const notes: string[] = [];
+    if (talk.motions.length) notes.push(`触发了动作 ${talk.motions.join('、')}：播的时候手的层让出来，截到的是动作本身`);
+    const late = times.filter((at) => at > talk.speech);
+    if (late.length) notes.push(`台词只有 ${talk.speech}s，${late.join('、')}s 已经说完了（回到待机）`);
+    return { ...saved, ...talk, notes };
   };
 
   const w = window as unknown as Record<string, unknown>;

@@ -19,7 +19,7 @@ import { LipSyncLayer } from './lipsync';
  * motion 写的是绝对姿势：底层是一直循环的动捕待机，对话触发的动作整体叠在它上面。
  * idle / gaze 是乘在上面的偏移：动作在播时按 (1 - 动作权重) 让出来；
  * 有动捕待机时 idle 只留姿态的微调（呼吸、重心、垂手都由动捕负责）。
- * 手指由 hands 层负责（动捕待机没有手指轨道）。
+ * 手指和说话时手上的小动作由 hands 层负责（动捕待机没有手指轨道）。
  *
  * 换渲染引擎（Live2D / Unity / AnimeActEngine）时，需要重写的只有这个文件和 vrm/ 目录；
  * act/ 和 jev/ 两层原样保留。
@@ -132,13 +132,16 @@ export class Character {
         break;
       case 'cue':
         this.expression.cue(ev.cue);
+        this.hands.cue(ev.cue);
         break;
       case 'speech_start':
         this.setConversation('speaking');
         this.expression.setSpeaking(true);
+        this.hands.setSpeaking(true);
         break;
       case 'speech_end':
         this.expression.setSpeaking(false);
+        this.hands.setSpeaking(false);
         this.lipsync.stop();
         // 说完不立刻回到面无表情，余韵见 ExpressionLayer.release
         this.expression.release();
@@ -183,6 +186,8 @@ export class Character {
       this.acc.scale = 1 - this.motion.weight;
       this.idle.setBaseWeight(this.motion.baseWeight);
       this.idle.update(dt, this.acc);
+      // 说话时的节拍落在发声的音节上：口型此刻张多大（上一帧的，差一帧无所谓）
+      this.hands.setVoice(this.lipsync.openness);
       this.hands.update(dt, this.acc);
       this.gaze.update(dt, vrm, this.acc);
       this.acc.flush(vrm);
