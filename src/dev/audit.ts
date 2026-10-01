@@ -395,11 +395,15 @@ export function installAudit(rt: Runtime) {
     const g = sheet.getContext('2d')!;
     const p = new THREE.Vector3();
     let t = 0;
+    // 截图那一刻有没有动作在播（不一定是这句台词触发的：预览面板、上一句对话留下的也算）
+    const playing = new Set<string>();
     times.forEach((at, row) => {
       while (t < at - 1e-6) {
         rt.step(1 / 60);
         t += 1 / 60;
       }
+      const cur = ch().motion.current;
+      if (cur) playing.add(`${at}s ${cur.id}`);
       shots.forEach(([label, side, az], col) => {
         if (side === 'body') {
           // 胯部往上一点，装得下两只小臂
@@ -427,9 +431,10 @@ export function installAudit(rt: Runtime) {
     const blob = await new Promise<Blob>((res) => sheet.toBlob((b) => res(b!), 'image/jpeg', 0.85));
     const res = await fetch(`/__dev/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
     const saved = await res.json();
-    if (!talk) return saved;
     const notes: string[] = [];
-    if (talk.motions.length) notes.push(`触发了动作 ${talk.motions.join('、')}：播的时候手的层让出来，截到的是动作本身`);
+    if (playing.size) notes.push(`截图时有动作在播（${[...playing].join('，')}）：动作自带手指和手臂，手的层让出来，截到的是动作本身`);
+    if (!talk) return notes.length ? { ...saved, notes } : saved;
+    if (talk.motions.length) notes.push(`这句台词触发了动作 ${talk.motions.join('、')}`);
     const late = times.filter((at) => at > talk.speech);
     if (late.length) notes.push(`台词只有 ${talk.speech}s，${late.join('、')}s 已经说完了（回到待机）`);
     return { ...saved, ...talk, notes };

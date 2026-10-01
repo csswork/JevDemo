@@ -16,7 +16,7 @@ import { PoseAccumulator, damp, deg, noise } from './pose';
  *
  * 说话（speech_start → speech_end），手不离开体侧，只做小幅度的"说话的手"：
  *   主手      每句话挑一只手（多半是右手）当主手：小臂抬起一点（12°）、掌心稍微转向前、手指松开一点
- *   节拍      落在发声的音节上（口型张开时），隔 0.7~1.7 秒一下：小臂轻轻一抬（再 +9°）、手指一松 ——
+ *   节拍      落在发声的音节上（口型张开时），隔 0.7~1.7 秒一下：小臂轻轻一抬（再 +11°）、手指一松 ——
  *            真人说话时的"节拍手势"（beat gesture），不表达内容，只跟着说话的节奏
  *   标点      问号 → 小臂往前送（+24°）、掌心转向对方、手指张开（交出话轮的"你说呢"）；
  *            叹号 → 更用力的一下，手指收紧；笑声 → 两下轻颤；句末 → 停一拍，有时换另一只手
@@ -271,6 +271,8 @@ export class HandLayer {
       const b = this.talkBase[side];
       b.elbow = damp(b.elbow, 12 * k * lead, 2, dt);
       b.forward = damp(b.forward, 3 * k * lead, 2, dt);
+      // 正面看，往前抬是纵深方向、几乎看不出来；带一点往外，正面才读得到
+      b.out = damp(b.out, 2 * k * lead, 2, dt);
       b.supinate = damp(b.supinate, 10 * k * lead, 2, dt);
       b.open = damp(b.open, 4 * k * lead, 2, dt);
       b.thumbOut = damp(b.thumbOut, 3 * k * lead, 2, dt);
@@ -288,8 +290,9 @@ export class HandLayer {
         const a = add[side];
         if (g.kind === 'beat') {
           const e = flick(u, 0.35) * w;
-          a.elbow += 9 * e;
+          a.elbow += 11 * e;
           a.forward += 2 * e;
+          a.out += 2 * e;
           a.flex += 5 * e;
           a.open += 5 * e;
         } else if (g.kind === 'offer') {
@@ -315,7 +318,7 @@ export class HandLayer {
       const e = offer[side];
       a.elbow += 24 * e;
       a.forward += 5 * e;
-      a.out += 3 * e;
+      a.out += 6 * e;
       a.supinate += 28 * e;
       a.open += 12 * e;
       a.thumbOut += 10 * e;
