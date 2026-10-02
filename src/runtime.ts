@@ -47,8 +47,6 @@ export class Runtime {
   private ambienceEnabled = true;
   /** 页面是不是在前台（可见 + 窗口有焦点） */
   private pageActive = true;
-  /** 这次挂起是我们主动做的；浏览器自己挂的要区分开，恢复时才由我们 resume */
-  private suspendedByPage = false;
   /** 此刻的秒 → 字符下标，给口型用 */
   private timeToChar: ((t: number) => number) | null = null;
   private elapsed = 0;
@@ -222,11 +220,12 @@ export class Runtime {
       this.ambience = new AmbiencePlayer(this.audio);
       this.applyAmbience();
       this.ambience.unlock();
+      // 浏览器自己把上下文挂起/打断时（换音频设备、休眠恢复）不声不响：人在前台就要回来
+      this.audio.onstatechange = () => {
+        if (this.pageActive && this.audio?.state === 'suspended') void this.audio.resume().catch(() => {});
+      };
       // 建的时候页面就不在前台（少见）：立刻挂起来，别出声
-      if (!this.pageActive) {
-        this.suspendedByPage = true;
-        void this.audio.suspend().catch(() => {});
-      }
+      if (!this.pageActive) void this.audio.suspend().catch(() => {});
     }
     if (this.audio.state === 'suspended' && this.pageActive) void this.audio.resume();
   }
@@ -259,19 +258,40 @@ export class Runtime {
     const ctx = this.audio;
     if (!ctx) return;
     if (active) {
-      if (this.suspendedByPage) {
-        this.suspendedByPage = false;
-        void ctx.resume().catch(() => {});
-      }
+      this.wakeAudio();
       this.speech?.resume();
     } else {
-      // 已经是 suspended（浏览器自己挂的）就别抢，只记下这次该由我们恢复
-      if (ctx.state === 'running') {
-        this.suspendedByPage = true;
-        void ctx.suspend().catch(() => {});
-      }
+      if (ctx.state === 'running') void ctx.suspend().catch(() => {});
       this.speech?.pause();
     }
+  }
+
+  /**
+   * 把声音要回来（长时间后台、系统休眠、切换音频输出设备之后）。
+   *
+   * 这里**不看"是不是我们挂起的"**：休眠/唤醒之后浏览器的音频状态我们并不掌握 ——
+   * 上下文可能是它自己挂起的，设备可能刚回来导致第一次 resume 空转，
+   * 最坏的情况是整条音频图已经作废。所以：
+   *   1. 只要不是 running 就无条件 resume；
+   *   2. 之后把背景音那条源重起一次（见 AmbiencePlayer.resumeFromBackground）；
+   *   3. 隔 400ms 再确认一次，兜住"设备还没回来"的那一次空转。
+   */
+  private wakeAudio() {
+    const ctx = this.audio;
+    if (!ctx) return;
+    const play = () => {
+      if (this.pageActive) this.ambience?.resumeFromBackground();
+    };
+    if (ctx.state === 'running') {
+      play();
+      return;
+    }
+    void ctx.resume().then(play, () => {});
+    setTimeout(() => {
+      const c = this.audio;
+      if (!this.pageActive || !c || c.state === 'running') return;
+      void c.resume().then(play, () => {});
+    }, 400);
   }
 
   /** 本地语音的音色（预设音色 id）；null = 用服务端默认音色 */

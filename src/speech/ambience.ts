@@ -129,6 +129,15 @@ export class AmbiencePlayer {
     g.linearRampToValueAtTime(v, t + Math.max(0.01, seconds));
   }
 
+  /** 从 0 淡到某个音量（新起一条源时用）。和 rampTo 的区别是先归零 */
+  private fadeInTo(v: number, seconds: number) {
+    const t = this.ctx.currentTime;
+    const g = this.master.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(0, t);
+    g.linearRampToValueAtTime(v, t + Math.max(0.01, seconds));
+  }
+
   private stopSource(after: number) {
     const s = this.src;
     this.src = null;
@@ -150,7 +159,33 @@ export class AmbiencePlayer {
 
     const buf = await this.load(url);
     if (!buf || seq !== this.seq || this.disposed) return;
+    this.startSource(buf, url, 1.2);
+  }
 
+  /**
+   * 页面回到前台时调：确认环境音还在出声。
+   *
+   * 为什么不能只靠 ctx.resume()：系统休眠 / 切换音频输出设备之后，浏览器可能已经把整条
+   * 音频图丢掉，而 **AudioBufferSourceNode 不能 start 第二次** —— 旧的循环源一旦被丢就是
+   * 永久静音，resume 也救不回来。缓冲区还在缓存里，重起一条是毫秒级的。
+   */
+  resumeFromBackground() {
+    if (!this.unlocked || !this.want || this.disposed) return;
+    const buf = this.buffers.get(this.want);
+    if (!buf) {
+      // 上一次加载没成功（切场景时断网之类），此时 master 已经被拉到 0：
+      // 不重试的话回来就是永久静音
+      void this.switchTo(this.want);
+      return;
+    }
+    this.stopSource(0);
+    this.startSource(buf, this.want, 0.35);
+  }
+
+  private startSource(buf: AudioBuffer, url: string, fadeIn: number) {
+    // 正常路径上调用方已经停过了（switchTo 是淡出后停）。这里再兜一次：
+    // 万一"回到前台重起"正好撞上一次还在加载的 switchTo，不会留下两条同时在放的源
+    this.stopSource(0);
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
@@ -158,7 +193,8 @@ export class AmbiencePlayer {
     src.start();
     this.src = src;
     this.playing = url;
-    this.rampTo(this.effectiveVolume(), 1.2);
+    // 从 0 淡入：旧的那条可能刚被停掉，直接给满音量会"啪"一下
+    this.fadeInTo(this.effectiveVolume(), fadeIn);
   }
 
   /** 取一次、解码一次就缓存住。文件不在 / 解码失败都返回 null，静默跳过 */

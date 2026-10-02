@@ -305,19 +305,29 @@ export default function App() {
   }, [tts, voice.ready]);
 
   // 切到别的 tab，或者浏览器/窗口失去焦点：把声音停掉，回来再恢复。
-  // 两个信号都要 —— document.hidden 管"tab 被切走"，hasFocus() 管"窗口还在但已经不是当前窗口"
-  // （另开一个窗口盖在上面、点了别的 App）。只想在 tab 真正隐藏时静音的话，
-  // 去掉 focus / blur 两个监听、只留 visibilitychange 即可。
+  //
+  // 每个事件各管一件事，**不要**把 document.hidden 和 hasFocus() 做与运算 ——
+  // 实测那样会卡死：休眠唤醒 / 浏览器恢复之后，标签页变可见的那一瞬间
+  // document.hasFocus() 可能还是 false（那次可见事件被判成"不在前台"，
+  // 状态没变化，直接 return），而随后的 focus 事件有时压根不来，于是永久静音。
+  // 所以除了三个主信号，还挂了两个兜底。
   useEffect(() => {
-    const sync = () => runtimeRef.current?.setPageActive(!document.hidden && document.hasFocus());
-    document.addEventListener('visibilitychange', sync);
-    window.addEventListener('focus', sync);
-    window.addEventListener('blur', sync);
-    sync();
+    const pause = () => runtimeRef.current?.setPageActive(false);
+    const resume = () => runtimeRef.current?.setPageActive(true);
+    const onVisibility = () => (document.hidden ? pause() : resume());
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('blur', pause);
+    window.addEventListener('focus', resume);
+    // 兜底：用户一动就说明页面在前台。setPageActive 只在状态真的变化时才做事，挂着没有开销
+    window.addEventListener('pointerdown', resume);
+    window.addEventListener('keydown', resume);
+    if (document.hidden) pause();
     return () => {
-      document.removeEventListener('visibilitychange', sync);
-      window.removeEventListener('focus', sync);
-      window.removeEventListener('blur', sync);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('blur', pause);
+      window.removeEventListener('focus', resume);
+      window.removeEventListener('pointerdown', resume);
+      window.removeEventListener('keydown', resume);
     };
   }, []);
 
