@@ -152,6 +152,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     envMap?.dispose();
     envMap = null;
     scene.environment = null;
+    scene.environmentRotation.set(0, 0, 0);
     backdropId = id;
     if (id !== 'none') {
       const b = BACKDROPS[id]();
@@ -160,6 +161,7 @@ export function createStage(canvas: HTMLCanvasElement) {
       const env = b.environment;
       scene.environmentIntensity = env.intensity;
       if ('url' in env) {
+        scene.environmentRotation.set(0, env.rotation ?? 0, 0);
         new HDRLoader().load(env.url, (hdr) => {
           if (backdrop !== b) return hdr.dispose();
           envMap = pmrem.fromEquirectangular(hdr).texture;

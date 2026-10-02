@@ -12,12 +12,14 @@ export interface Backdrop {
   colliders: THREE.Object3D[];
   /** 场景开着时半球光换成的颜色（让角色的环境光和场景的色调一致） */
   hemisphere: { sky: number; ground: number; intensity: number };
-  fog: THREE.Fog;
+  /** null = 不要雾（全景照片自己有空气感） */
+  fog: THREE.Fog | null;
   /**
    * 环境光（IBL），舞台负责转成 PMREM；intensity = scene.environmentIntensity。
-   * url = 一张 HDRI；scene = 一个小场景（比如天空球 + 草地），舞台直接拿它烘环境贴图，不用下载
+   * url = 一张 HDRI；scene = 一个小场景（比如天空球 + 草地），舞台直接拿它烘环境贴图，不用下载。
+   * rotation = 绕竖轴转多少（弧度），和场景里显示出来的全景对齐
    */
-  environment: { url: string; intensity: number } | { scene: THREE.Scene; intensity: number };
+  environment: { url: string; intensity: number; rotation?: number } | { scene: THREE.Scene; intensity: number };
   /** 投影的范围：舞台的主光只在这个盒子里算阴影（角色和身边的东西） */
   shadowBounds: number;
   /** 舞台的主光投不投影（默认投）。室外场景有自己的太阳投影，主光就不投了，免得一个人两个影子 */

@@ -1,6 +1,8 @@
 /**
- * 下载咖啡店场景打光用的 Poly Haven HDRI（CC0）到 public/scene/。
- * 场景本身是程序生成的；HDRI 只转成环境光（IBL），不显示出来。
+ * 下载背景场景用的 Poly Haven 素材（全部 CC0）到 public/scene/。
+ *   咖啡店  程序生成的，只有打光用的 HDRI（转成环境光，不显示）
+ *   公园    远景是一张公园全景图（backplates：投影到地面上，人站在里面），打光用同一张的 1k HDR，
+ *           近处是真实模型（路灯、石头）和木板材质
  *
  *   npm run assets
  *
@@ -12,17 +14,30 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 
 const RES = '1k';
 const OUT = path.resolve('public/scene');
 const UA = { 'User-Agent': 'JevDemo/0.1 (three-vrm cafe scene; asset fetch script)' };
 
 const MANIFEST = {
-  models: [],
+  models: [
+    'street_lamp_01', // 公园：欧式路灯
+    'rock_moss_set_01', // 公园：一组带青苔的石头
+  ],
   // diffuse + 法线（OpenGL）+ arm（R=AO G=粗糙度 B=金属度）
-  textures: [],
-  hdris: ['wooden_lounge'], // 只用来打光（环境光 / 反射），不显示
+  textures: [
+    'weathered_brown_planks', // 公园：木平台
+  ],
+  hdris: [
+    'wooden_lounge', // 咖啡店：只用来打光（环境光 / 反射），不显示
+    'nagoya_wall_path', // 公园：打光
+  ],
+  // 显示出来的全景背景：Poly Haven 的 tonemapped JPG（8k、12MB 左右），本地缩到 BACKPLATE_W 宽再存
+  backplates: ['nagoya_wall_path'],
 };
+const BACKPLATE_W = 4096;
 
 async function api(p) {
   const r = await fetch(`https://api.polyhaven.com/${p}`, { headers: UA });
@@ -75,9 +90,27 @@ async function main() {
     credits.push(`- HDRI [${info.name}](https://polyhaven.com/a/${id}) — ${Object.keys(info.authors ?? {}).join(', ')}`);
     console.log(`HDRI ${id}`);
   }
+  for (const id of MANIFEST.backplates) {
+    const [files, info] = await Promise.all([api(`files/${id}`), api(`info/${id}`)]);
+    const out = path.join(OUT, 'hdri', `${id}_${BACKPLATE_W / 1024}k.jpg`);
+    if (fs.existsSync(out)) skipped++;
+    else {
+      // 原图先下到系统临时目录，缩好了再存进仓库（macOS 自带的 sips；别的系统没有就原样存）
+      const tmp = path.join(os.tmpdir(), `${id}_tonemapped.jpg`);
+      await save(files.tonemapped.url, tmp);
+      try {
+        execFileSync('sips', ['-Z', String(BACKPLATE_W), '-s', 'formatOptions', '82', tmp, '--out', out], { stdio: 'ignore' });
+      } catch {
+        console.warn(`没有 sips，${id} 的全景图按原尺寸存（${(fs.statSync(tmp).size / 1e6).toFixed(1)}MB）`);
+        fs.copyFileSync(tmp, out);
+      }
+    }
+    credits.push(`- 全景背景 [${info.name}](https://polyhaven.com/a/${id}) — ${Object.keys(info.authors ?? {}).join(', ')}`);
+    console.log(`全景 ${id}`);
+  }
   fs.writeFileSync(
     path.join(OUT, 'CREDITS.md'),
-    `# 场景素材\n\n咖啡店场景本身是程序生成的（src/vrm/scenes/cafe.ts），这里只有打光用的素材。\n\n全部来自 [Poly Haven](https://polyhaven.com)，**CC0**（公有领域，可商用、可再分发、不要求署名）。\n` +
+    `# 场景素材\n\n咖啡店场景本身是程序生成的（src/vrm/scenes/cafe.ts），这里只有它打光用的 HDRI；\n公园（src/vrm/scenes/park.ts）用全景背景 + 真实模型。\n\n全部来自 [Poly Haven](https://polyhaven.com)，**CC0**（公有领域，可商用、可再分发、不要求署名）。\n` +
       `由 \`scripts/fetch-scene-assets.mjs\` 下载（${RES} 分辨率）。署名不是必须的，这里列出作者以示感谢：\n\n${credits.join('\n')}\n`,
   );
   console.log(`完成：新下载 ${downloaded} 个文件（${(bytes / 1e6).toFixed(1)}MB），跳过已有 ${skipped} 个`);
