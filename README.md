@@ -923,7 +923,7 @@ __jev.playMotion('spin', 0.5, true)               // 直接播动作（慢放、
 - 恢复在取景的同一帧里做（`runtime.pendingView`），不会先闪一下默认的半身机位；视线照样看默认机位
   （"对话的人"站的地方），转到侧面看时她还是在和正前方的你说话
 - 旧版全局的音色（`jev.voice.speaker`）和背景（`jev.backdrop`）第一次运行时交给当时选着的那个角色，之前的选择不丢
-开发时也可以直接在地址栏指定文件：`?model=candidates/Vita.vrm`（路径相对 `public/models/`）。
+开发时也可以直接在地址栏指定文件：`?model=Vita.vrm`（路径相对 `public/models/`，隐藏的模型也能这样载入）。
 
 ### QUAPPA-EL 的 MMD 模型（`public/models/quappa/`）
 
@@ -989,8 +989,10 @@ __jev.playMotion('spin', 0.5, true)               // 直接播动作（慢放、
     奏渚 汐藍 默认可见的 R18 部件（被泳衣和连衣裙盖着）
 - 有裙子的几个，待机垂手时手会陷进裙摆，按手部特写（`__hands`）逐个定了 `armOut`
 
-其余候选模型放在 `public/models/candidates/`（**gitignored**，新克隆的仓库里没有，
-下拉框里显示"未下载"）。清单和实测结果在 `src/models.ts`：
+其余 VRoid 系的模型也都入库了（`public/models/`，授权都允许再分发，见 `public/models/LICENSE.txt`）。
+浏览器**只下载当前选中的那一个**：启动时对下拉框里的模型各发一个 HEAD 看文件在不在（不下载内容），
+隐藏的模型连 HEAD 都不发。隐藏的 VRoid 素体、爱丽西亚留在 `public/models/candidates/`（**gitignored**）。
+清单和实测结果在 `src/models.ts`：
 
 | 模型 | 来源 | 授权 | 表情 |
 |---|---|---|---|

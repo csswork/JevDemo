@@ -16,3 +16,16 @@ VRoid 官方示例模型「AvatarSample_A」（下拉框里的「夏夏」，默
 作者 VRoid（pixiv Inc.）。VRM 元数据：allowedUserName = Everyone，commercialUssageName = Allow；
 可商用、可改、可再分发。
 取得来源: https://github.com/madjin/vrm-samples
+
+Vivi.vrm / Victoria_Rubin.vrm / Vita.vrm / HairSample_Female.vrm
+---------------------------------------------------------------
+VRoid 测试版官方示例模型（下拉框里的薇薇 / 维多利亚 / 维塔 / 小夜）。VRM 元数据 licenseName = CC0，
+allowedUserName = Everyone，commercialUssageName = Allow。
+取得来源: https://github.com/madjin/vrm-samples
+
+AvatarSample_B.vrm
+------------------
+VRoid Project 的示例模型（下拉框里的绮拉）。VRM 1.0 元数据：avatarPermission = everyone，
+commercialUsage = corporation，allowRedistribution = true，modification = allowModificationRedistribution。
+条款: https://vroid.pixiv.help/hc/ja/articles/4402394424089-AvatarSample-A-B-C
+取得来源: https://github.com/pixiv/ChatVRM

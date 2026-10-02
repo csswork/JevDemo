@@ -4,8 +4,9 @@
  * 下拉框按这里的顺序列，不分组；第一个是默认模型。名字用角色名（和 server/personas.ts 的人设一致），
  * desc 是「性格 · 装扮」，都写短。
  *
- * 入库的：AvatarSample_A、詩乃、quappa/ 下的模型。其余在 public/models/candidates/（gitignored，
- * 对比用下载下来的），新克隆的仓库里没有它们，下拉框里会显示成不可选，见 probeModels。
+ * 下拉框里的模型都入库（public/models/ 和 quappa/）。浏览器只下载当前选中的那一个，
+ * 其余只在启动时发一个 HEAD 探测文件在不在（不下载内容）；隐藏的连探测都不发。
+ * 隐藏的 VRoid 素体、爱丽西亚在 public/models/candidates/（gitignored，对比用下载下来的）。
  *
  * quappa/ 是从 QUAPPA-EL 的 MMD 模型（PMX）转出来的 VRM，加密成 .vrmx 入库（规约要求防再利用，
  * 见 vrm/protect.ts 和 public/models/quappa/README.txt）。转换脚本在 scripts/pmx2vrm/。
@@ -93,7 +94,7 @@ export const MODELS: ModelMeta[] = [
   {
     id: 'vivi',
     name: '薇薇',
-    file: 'candidates/Vivi.vrm',
+    file: 'Vivi.vrm',
     desc: '元气天然 · 围裙连衣裙',
     license: 'CC0',
     face: '分部位',
@@ -103,7 +104,7 @@ export const MODELS: ModelMeta[] = [
   {
     id: 'victoria',
     name: '维多利亚',
-    file: 'candidates/Victoria_Rubin.vrm',
+    file: 'Victoria_Rubin.vrm',
     desc: '傲娇大小姐 · 金粉侧马尾',
     license: 'CC0',
     face: '分部位',
@@ -113,7 +114,7 @@ export const MODELS: ModelMeta[] = [
   {
     id: 'vita',
     name: '维塔',
-    file: 'candidates/Vita.vrm',
+    file: 'Vita.vrm',
     desc: '理性仿生人 · 白发异瞳',
     license: 'CC0',
     face: '分部位',
@@ -122,7 +123,7 @@ export const MODELS: ModelMeta[] = [
   {
     id: 'hair_female',
     name: '小夜',
-    file: 'candidates/HairSample_Female.vrm',
+    file: 'HairSample_Female.vrm',
     desc: '嘴硬猫系 · 猫耳双马尾',
     license: 'CC0',
     face: '分部位',
@@ -131,7 +132,7 @@ export const MODELS: ModelMeta[] = [
   {
     id: 'avatar_b',
     name: '绮拉',
-    file: 'candidates/AvatarSample_B.vrm',
+    file: 'AvatarSample_B.vrm',
     desc: '直率辣妹 · 紫发挑染',
     license: 'VRM 许可：可商用、可改、可再分发',
     face: '分部位',
@@ -174,11 +175,12 @@ export const VISIBLE_MODELS = MODELS.filter((m) => !m.hidden);
 export const modelUrl = (m: ModelMeta) => `${import.meta.env.BASE_URL}models/${m.file}`;
 
 /**
- * 哪些模型文件真的在。Vite 对不存在的路径会回退成 index.html（200），所以要看类型
+ * 下拉框里的模型文件在不在（HEAD，不下载内容；隐藏的模型不探测）。
+ * Vite 对不存在的路径会回退成 index.html（200），所以要看类型
  */
 export async function probeModels(): Promise<Record<string, boolean>> {
   const entries = await Promise.all(
-    MODELS.map(async (m) => {
+    VISIBLE_MODELS.map(async (m) => {
       try {
         const r = await fetch(modelUrl(m), { method: 'HEAD' });
         return [m.id, r.ok && !(r.headers.get('content-type') ?? '').includes('text/html')] as const;

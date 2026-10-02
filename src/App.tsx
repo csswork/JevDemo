@@ -90,7 +90,7 @@ const backdropOf = (p: ModelPrefs): BackdropId => (BACKDROPS.some((b) => b.id ==
 const speakerOf = (id: string | null, p: ModelPrefs) => p.speaker ?? MODELS.find((m) => m.id === id)?.voice ?? null;
 
 /**
- * 开始时用哪个模型。开发时可以用 ?model=candidates/Vita.vrm 直接指定文件（路径相对
+ * 开始时用哪个模型。开发时可以用 ?model=Vita.vrm 直接指定文件（路径相对
  * public/models/，对比截图用）；否则用上次选的，文件不在（或已隐藏）就用默认模型
  */
 function initialModel(avail: Record<string, boolean>): { id: string | null; url: string } {
