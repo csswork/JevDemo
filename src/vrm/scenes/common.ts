@@ -26,6 +26,8 @@ export interface Backdrop {
   keyShadow?: boolean;
   /** 相机看多远（米，默认 20，室内够了；室外要看到远处的树和天空） */
   far?: number;
+  /** 每帧调一次（风吹树叶、草） */
+  update?(dt: number): void;
   dispose(): void;
 }
 

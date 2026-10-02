@@ -226,7 +226,9 @@ export function createStage(canvas: HTMLCanvasElement) {
     return blocked;
   }
 
+  const clock = new THREE.Clock();
   function render() {
+    backdrop?.update?.(Math.min(clock.getDelta(), 0.1));
     controls.update();
     followZoom();
     renderer.render(scene, renderCamera());

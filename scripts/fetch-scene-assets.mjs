@@ -1,8 +1,8 @@
 /**
  * 下载背景场景用的 Poly Haven 素材（全部 CC0）到 public/scene/。
  *   咖啡店  程序生成的，只有打光用的 HDRI（转成环境光，不显示）
- *   公园    远景是一张公园全景图（backplates：投影到地面上，人站在里面），打光用同一张的 1k HDR，
- *           近处是真实模型（路灯、石头）和木板材质
+ *   公园    树、灌木是 ez-tree 生成的（npm 包），草丛模型来自 ez-tree 的演示场景（public/scene/eztree/）；
+ *           这里下的是打光用的 HDR、路灯、石头、木板和草地材质
  *
  *   npm run assets
  *
@@ -28,14 +28,16 @@ const MANIFEST = {
   ],
   // diffuse + 法线（OpenGL）+ arm（R=AO G=粗糙度 B=金属度）
   textures: [
-    'weathered_brown_planks', // 公园：木平台
+    'weathered_brown_planks', // 公园：木平台、栈道
+    'aerial_grass_rock', // 公园：远处的草地（近处是一丛丛 3D 的草）
   ],
   hdris: [
     'wooden_lounge', // 咖啡店：只用来打光（环境光 / 反射），不显示
     'nagoya_wall_path', // 公园：打光
   ],
-  // 显示出来的全景背景：Poly Haven 的 tonemapped JPG（8k、12MB 左右），本地缩到 BACKPLATE_W 宽再存
-  backplates: ['nagoya_wall_path'],
+  // 显示出来的全景背景：Poly Haven 的 tonemapped JPG（8k、12MB 左右），本地缩到 BACKPLATE_W 宽再存。
+  // 公园试过用全景照片当背景（nagoya_wall_path），太糊，换成了 3D 的树和草，现在没有在用的
+  backplates: [],
 };
 const BACKPLATE_W = 4096;
 
@@ -111,7 +113,9 @@ async function main() {
   fs.writeFileSync(
     path.join(OUT, 'CREDITS.md'),
     `# 场景素材\n\n咖啡店场景本身是程序生成的（src/vrm/scenes/cafe.ts），这里只有它打光用的 HDRI；\n公园（src/vrm/scenes/park.ts）用全景背景 + 真实模型。\n\n全部来自 [Poly Haven](https://polyhaven.com)，**CC0**（公有领域，可商用、可再分发、不要求署名）。\n` +
-      `由 \`scripts/fetch-scene-assets.mjs\` 下载（${RES} 分辨率）。署名不是必须的，这里列出作者以示感谢：\n\n${credits.join('\n')}\n`,
+      `由 \`scripts/fetch-scene-assets.mjs\` 下载（${RES} 分辨率）。署名不是必须的，这里列出作者以示感谢：\n\n${credits.join('\n')}\n` +
+      `\n公园的树和灌木由 [ez-tree](https://github.com/dgreenheck/ez-tree)（npm \`@dgreenheck/ez-tree\`，© 2024 Daniel Greenheck，**MIT**）生成，` +
+      `树皮和树叶贴图打包在那个 npm 包里；\`eztree/grass.glb\`（草丛模型）来自 ez-tree 的演示场景，授权原文见 \`eztree/LICENSE\`。\n`,
   );
   console.log(`完成：新下载 ${downloaded} 个文件（${(bytes / 1e6).toFixed(1)}MB），跳过已有 ${skipped} 个`);
 }

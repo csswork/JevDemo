@@ -1,36 +1,100 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { GroundedSkybox } from 'three/examples/jsm/objects/GroundedSkybox.js';
 import { canvasTexture, rng, type Backdrop } from './common';
 
 /**
- * 背景场景：公园（名古屋的城墙公园小路）。用 Poly Haven 的素材（CC0，`npm run assets` 下载，来源见 public/scene/CREDITS.md）：
+ * 背景场景：城市公园里的木栈道（照着一张实拍的公园照片搭的），全 3D：
  *
- *   远景    一张公园的全景照片（nagoya_wall_path），用 GroundedSkybox 投影成"地面 + 天空"：
- *           近处的地面是平的，人站在上面不会飘着，远处的树、栏杆、小路都是照片本身
- *   打光    同一张全景的 1k HDR 转成环境光（IBL）；一盏从身后照过来的太阳（全景里太阳的方向，
- *           穿过树冠、离地 25° 左右）投软阴影 —— 逆光，脸靠舞台的主光和补光打亮
- *   近处    一块旧木平台（weathered_brown_planks）、两盏欧式路灯（street_lamp_01）、几块青苔石头
- *           （rock_moss_set_01 里挑几块缩小）、平台上的树桩凳和石板长凳、落叶
+ *   树 / 灌木  ez-tree（npm @dgreenheck/ez-tree，MIT）程序生成：真实的树皮贴图、一片片的叶子卡片、自然分叉，
+ *             叶子随风轻轻摆。一棵大树 1.4 万~2.2 万个三角形、生成 6~30ms。生成几个变体，几十棵树共用几何体。
+ *             模块 4MB（树皮和树叶贴图打包在里面），只在选了公园时才动态加载
+ *   草坪      近处是一丛丛 3D 的草（ez-tree 演示场景里的草丛模型，public/scene/eztree/，MIT），也随风摆；
+ *             远处铺 Poly Haven 的草地材质（aerial_grass_rock）
+ *   近处      旧木平台和栈道（Poly Haven weathered_brown_planks）、欧式路灯（street_lamp_01）、青苔石头
+ *             （rock_moss_set_01 里挑几块缩小）、树桩凳和长凳、落叶
+ *   天空      平滑的渐变（天空球），远处一层淡淡的雾接上地平线
  *
- * 第一版是全程序生成的（几何体 + canvas 画的树叶），树冠一团一团的，看着很假，换成了这样。
+ * 试过的另外两版：全程序生成（几何体 + canvas 画的叶子，树冠一团一团的，很假）；
+ * Poly Haven 的公园全景照片投影成地面和天空（远景一张图，太糊）。
  *
- * 全景图的朝向：原图横向 0.6 处是那条往远处延伸的石板小路，太阳也在那个方向。转 126° 让它落在角色身后（-Z）——
- * 半身景别里看到的就是她身后那条小路和逆光的树。
- * 照片投到地面上只是一张图，接不住影子：地面上另铺一层只显示阴影的透明平面（ShadowMaterial），
- * 人、路灯、石头的影子落在照片的地面上。
+ * 坐标和舞台一致：角色站在原点、面朝 +Z，主相机在 +Z 方向往 -Z 看，所以半身景别里看到的是她身后：
+ * 木栈道从平台后沿出发，先往左、再往右弯着伸进远处，两边草坪、树、灌木、路灯。
+ * 头后面不放竖着的东西（树干、灯杆）：头在远处背景上的投影随距离变宽，树和灯都避开这条"视线走廊"。
+ *
+ * 灯光：一盏从左后上方照下来的太阳（投软阴影，范围覆盖身边 ±18m —— 树冠的影子就是斑驳的光影），
+ * 半球光换成天蓝 / 草绿（树和草是 Phong 材质，环境光主要靠它），环境光（IBL）用名古屋公园那张全景的 1k HDR
+ * （只用来打光，不显示）。舞台的主光照常照着角色、但不投影（太阳投）。
  */
 
 const BASE = `${import.meta.env.BASE_URL}scene/`;
-const ROTATION = THREE.MathUtils.degToRad(126);
-/** 拍全景时相机离地多高（米）：决定地面投影的比例 */
-const CAPTURE_HEIGHT = 1.7;
-/** 照片地面的高度：木平台面在 0，平台比地面高 10cm */
-const GROUND_Y = -0.1;
-/** 平台 */
-const DECK = { x0: -2.4, x1: 2.3, z0: -2.0, z1: 2.0 };
-/** 太阳的方向（指向太阳）：身后、离地 25° */
-const SUN_DIR = new THREE.Vector3(0, Math.sin(THREE.MathUtils.degToRad(25)), -Math.cos(THREE.MathUtils.degToRad(25)));
+
+type V2 = [number, number];
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+// ---- 布局 ----
+
+/** 主栈道（从平台后沿往远处）、左边的岔路 */
+const MAIN_PATH: V2[] = [
+  [-0.4, -1.2],
+  [-1.6, -5],
+  [-0.6, -8.6],
+  [2.2, -11.2],
+  [3.2, -15],
+  [1.4, -20],
+  [-1.2, -26],
+  [-2.5, -34],
+  [-2, -46],
+];
+const BRANCH_PATH: V2[] = [
+  [-2.6, -0.6],
+  [-5.5, -1.6],
+  [-8.5, -4],
+  [-12, -5],
+  [-16, -4.4],
+  [-21, -6],
+  [-28, -5],
+];
+const PATH_W = 2.3;
+/** 角色脚下的平台（面高 0，地面在 -0.1） */
+const DECK = { x0: -3.2, x1: 2.8, z0: -2.2, z1: 2.2 };
+/** 主相机（舞台的默认机位）z，用来算"头后面的视线走廊" */
+const CAM_Z = 1.58;
+/** 木板贴图一张 1.8m 见方 */
+const TILE = 1.8;
+/** 太阳的方向（指向太阳）：左后上方 */
+const SUN_DIR = new THREE.Vector3(-0.5, 1.0, -0.62).normalize();
+
+/**
+ * 树的变体：ez-tree 的预设 + 种子 + 真实高度（米）+ 叶子多几倍。
+ * 只用白蜡（Ash）和橡树（Oak）：照片里是阔叶树；Aspen 是白桦树皮，第一版混进来几棵白树干，不像
+ */
+const TREE_VARIANTS = [
+  { preset: 'Ash Large', seed: 11, height: 15, leaves: 1.5 },
+  { preset: 'Oak Large', seed: 23, height: 13, leaves: 1.5 },
+  { preset: 'Ash Medium', seed: 37, height: 12, leaves: 1.4 },
+  { preset: 'Oak Medium', seed: 41, height: 10.5, leaves: 1.4 },
+  { preset: 'Ash Large', seed: 97, height: 16, leaves: 1.5 },
+] as const;
+/** 远处那一圈树：中等大小的两种，叶子不加，省三角形 */
+const FAR_VARIANTS = [2, 3] as const;
+const BUSH_VARIANTS = [
+  { preset: 'Bush 1', seed: 61, height: 1.3, tint: null },
+  { preset: 'Bush 1', seed: 67, height: 1.1, tint: null },
+  // 红叶灌木（照片中间那丛）：叶子染成红褐色
+  { preset: 'Bush 1', seed: 71, height: 0.95, tint: 0xd0604a },
+] as const;
+/** 叶子的颜色：照片里是逆光下发亮的黄绿色（Phong 的颜色可以超过 1） */
+const LEAF_TINT = new THREE.Color(1.25, 1.35, 0.95);
+
+const curveOf = (pts: V2[]) =>
+  new THREE.CatmullRomCurve3(
+    pts.map(([x, z]) => new THREE.Vector3(x, 0, z)),
+    false,
+    'centripetal',
+  );
 
 /** 一片落叶（白色剪影，颜色由 instanceColor 染） */
 function fallenLeaf() {
@@ -53,23 +117,54 @@ function fallenLeaf() {
   });
 }
 
+/**
+ * 草随风摆：每丛草的顶端按位置错开相位地晃（根部不动）。
+ * 思路来自 ez-tree 演示场景的 grass.js（MIT），简化过
+ */
+function windShader(mat: THREE.Material, uniforms: { uTime: { value: number } }) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = uniforms.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'uniform float uTime;\nvoid main() {')
+      .replace(
+        '#include <project_vertex>',
+        `
+        vec4 mvPosition = vec4( transformed, 1.0 );
+        #ifdef USE_INSTANCING
+          mvPosition = instanceMatrix * mvPosition;
+        #endif
+        // 草丛模型 2 个单位高：k = 0 根部，1 顶端
+        float k = clamp( position.y / 2.0, 0.0, 1.0 );
+        float ph = uTime * 1.6 + mvPosition.x * 0.45 + mvPosition.z * 0.31;
+        mvPosition.xz += k * k * vec2( sin( ph ), 0.6 * cos( ph * 0.83 + 1.3 ) ) * 0.045;
+        mvPosition = modelViewMatrix * mvPosition;
+        gl_Position = projectionMatrix * mvPosition;
+        `,
+      );
+  };
+}
+
 export function createPark(): Backdrop {
   const group = new THREE.Group();
   group.name = 'park';
   const disposables: Array<{ dispose(): void }> = [];
   let disposed = false;
-  // 模型是异步加载的：换走场景之后才到的，直接释放
+  // 树和模型是异步加载的：换走场景之后才到的，直接释放
   const keep = <T extends { dispose(): void }>(x: T) => {
     if (disposed) x.dispose();
     else disposables.push(x);
     return x;
   };
   const r = rng(2026);
-  const add = <T extends THREE.Mesh>(mesh: T, cast = true) => {
-    mesh.castShadow = cast;
-    mesh.receiveShadow = true;
-    group.add(mesh);
-    return mesh;
+  const add = <T extends THREE.Object3D>(o: T, cast = true) => {
+    o.traverse((c) => {
+      if ((c as THREE.Mesh).isMesh) {
+        c.castShadow = cast;
+        c.receiveShadow = true;
+      }
+    });
+    group.add(o);
+    return o;
   };
   const colliders: THREE.Object3D[] = [];
   /** 不加进场景、只给防穿墙用的简化形状 */
@@ -80,58 +175,99 @@ export function createPark(): Backdrop {
     colliders.push(m);
   };
 
-  // ---- 全景背景（投影到地面）----
-  const tl = new THREE.TextureLoader();
-  const plate = keep(tl.load(`${BASE}hdri/nagoya_wall_path_4k.jpg`));
-  plate.colorSpace = THREE.SRGBColorSpace;
-  plate.anisotropy = 8;
-  const sky = new GroundedSkybox(plate, CAPTURE_HEIGHT, 60, 96);
-  keep(sky.geometry);
-  keep(sky.material as THREE.Material);
-  sky.position.y = CAPTURE_HEIGHT + GROUND_Y;
-  sky.rotation.y = ROTATION;
-  sky.renderOrder = -1;
-  group.add(sky);
+  // ---- 路：离路多远（放树、草、地面起伏都要用）----
+  const main = curveOf(MAIN_PATH);
+  const branch = curveOf(BRANCH_PATH);
+  const samples: V2[] = [];
+  for (const c of [main, branch]) {
+    const n = Math.ceil(c.getLength() / 0.3);
+    for (const p of c.getSpacedPoints(n)) samples.push([p.x, p.z]);
+  }
+  const nearestPath = (x: number, z: number) => {
+    let best = Infinity;
+    let bx = 0;
+    let bz = 0;
+    for (const [sx, sz] of samples) {
+      const d = (sx - x) ** 2 + (sz - z) ** 2;
+      if (d < best) {
+        best = d;
+        bx = sx;
+        bz = sz;
+      }
+    }
+    return { d: Math.sqrt(best), x: bx, z: bz };
+  };
+  const deckDist = (x: number, z: number) =>
+    Math.hypot(Math.max(DECK.x0 - x, 0, x - DECK.x1), Math.max(DECK.z0 - z, 0, z - DECK.z1));
+  /** 离路面 / 平台边缘还有多远（在路上、平台上为 ≤ 0） */
+  const clearance = (x: number, z: number) => Math.min(nearestPath(x, z).d - PATH_W / 2, deckDist(x, z));
+  /** 把一个点从路上 / 平台上推开，直到留出 gap 的距离 */
+  const pushClear = (x: number, z: number, gap: number): V2 => {
+    for (let i = 0; i < 12; i++) {
+      const c = clearance(x, z);
+      if (c >= gap) break;
+      const np = nearestPath(x, z);
+      let dx = x - np.x;
+      let dz = z - np.z;
+      if (deckDist(x, z) < np.d - PATH_W / 2) {
+        dx = x - (DECK.x0 + DECK.x1) / 2;
+        dz = z - (DECK.z0 + DECK.z1) / 2;
+      }
+      const l = Math.hypot(dx, dz) || 1;
+      x += (dx / l) * (gap - c + 0.05);
+      z += (dz / l) * (gap - c + 0.05);
+    }
+    return [x, z];
+  };
+  /** 头后面的视线走廊：竖着的东西（树干、灯杆）不进去 */
+  const inHeadCorridor = (x: number, z: number) => z < 0.5 && Math.abs(x) < 0.15 * ((CAM_Z - z) / CAM_Z) + 0.6;
+  /** 地面高度：路边是平的（-0.1，比木栈道低 10cm），离路越远越起伏，左边是个缓坡 */
+  const groundY = (x: number, z: number, clear = clearance(x, z)) => {
+    const m =
+      0.22 * (1 + Math.sin(x * 0.21 + 0.5) * Math.cos(z * 0.17 - 0.3)) +
+      0.12 * Math.sin(x * 0.09 - z * 0.07 + 2) +
+      0.12 +
+      0.9 * smoothstep(-5, -16, x) * (0.6 + 0.4 * Math.sin(z * 0.12));
+    return -0.1 + m * smoothstep(1.2, 5, clear);
+  };
 
-  // 照片的地面接不住影子：铺一层只画阴影的透明平面
+  // ---- 材质 ----
+  const tl = new THREE.TextureLoader();
+  const pbr = (dir: string, repeat = 1) => {
+    const t = (file: string, color = false) => {
+      const x = keep(tl.load(`${BASE}textures/${dir}/${file}`));
+      if (color) x.colorSpace = THREE.SRGBColorSpace;
+      x.wrapS = x.wrapT = THREE.RepeatWrapping;
+      x.repeat.set(repeat, repeat);
+      x.anisotropy = 8;
+      return x;
+    };
+    const arm = t('arm.jpg');
+    return { map: t('diffuse.jpg', true), normalMap: t('nor_gl.jpg'), aoMap: arm, roughnessMap: arm, metalnessMap: arm };
+  };
+  const deckMat = keep(new THREE.MeshStandardMaterial(pbr('weathered_brown_planks')));
+  const sideMat = keep(deckMat.clone());
+  sideMat.color.setScalar(0.7);
+
+  // ---- 天空 ----
   {
-    const g = keep(new THREE.PlaneGeometry(24, 24));
-    g.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(g, keep(new THREE.ShadowMaterial({ opacity: 0.32 })));
-    m.position.y = GROUND_Y + 0.002;
-    m.receiveShadow = true;
-    group.add(m);
+    const SKY_TOP = new THREE.Color(0x8fc1ea);
+    const HORIZON = new THREE.Color(0xd3e3c6);
+    const g = keep(new THREE.SphereGeometry(150, 32, 16));
+    const p = g.attributes.position;
+    const col: number[] = [];
+    const c = new THREE.Color();
+    for (let i = 0; i < p.count; i++) {
+      c.copy(HORIZON).lerp(SKY_TOP, smoothstep(0, 0.55, p.getY(i) / 150));
+      col.push(c.r, c.g, c.b);
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const sky = new THREE.Mesh(g, keep(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
+    sky.renderOrder = -1;
+    group.add(sky);
   }
 
-  // ---- 木平台 ----
-  const planks = (file: string, color = false) => {
-    const t = keep(tl.load(`${BASE}textures/weathered_brown_planks/${file}`));
-    if (color) t.colorSpace = THREE.SRGBColorSpace;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.anisotropy = 8;
-    return t;
-  };
-  const arm = planks('arm.jpg');
-  const deckMat = keep(
-    new THREE.MeshStandardMaterial({
-      map: planks('diffuse.jpg', true),
-      normalMap: planks('nor_gl.jpg'),
-      aoMap: arm,
-      roughnessMap: arm,
-      metalnessMap: arm,
-    }),
-  );
-  /** 贴图一张 1.8m 见方；按世界坐标铺，木板横着（沿 x） */
-  const TILE = 1.8;
-  const worldUV = (g: THREE.BufferGeometry, axes: 'xz' | 'xy' | 'zy') => {
-    const p = g.attributes.position;
-    const uv = g.attributes.uv;
-    for (let i = 0; i < p.count; i++) {
-      const [a, b] = axes === 'xz' ? [p.getX(i), p.getZ(i)] : axes === 'xy' ? [p.getX(i), p.getY(i)] : [p.getZ(i), p.getY(i)];
-      uv.setXY(i, a / TILE, b / TILE);
-    }
-    return g;
-  };
+  // ---- 平台 + 栈道 ----
   {
     const w = DECK.x1 - DECK.x0;
     const d = DECK.z1 - DECK.z0;
@@ -140,29 +276,182 @@ export function createPark(): Backdrop {
     const top = keep(new THREE.PlaneGeometry(w, d));
     top.rotateX(-Math.PI / 2);
     top.translate(cx, 0, cz);
-    add(new THREE.Mesh(worldUV(top, 'xz'), deckMat), false);
-    // 四边的边板（比平台面低一点点，到地面以下）
-    const sideMat = keep(deckMat.clone());
-    sideMat.color.setScalar(0.72);
-    const edge = (sx: number, sz: number, x: number, z: number, axes: 'xy' | 'zy') => {
-      const g = keep(new THREE.BoxGeometry(sx, 0.16, sz));
-      g.translate(x, -0.08 - 0.003, z);
-      add(new THREE.Mesh(worldUV(g, axes), sideMat));
-    };
-    edge(w + 0.08, 0.08, cx, DECK.z1, 'xy');
-    edge(w + 0.08, 0.08, cx, DECK.z0, 'xy');
-    edge(0.08, d, DECK.x0, cz, 'zy');
-    edge(0.08, d, DECK.x1, cz, 'zy');
+    // 按世界坐标铺：木板横着（沿 x）
+    const uv = top.attributes.uv;
+    const pos = top.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / TILE, pos.getZ(i) / TILE);
+    add(new THREE.Mesh(top, deckMat), false);
+    const edge = (sx: number, sz: number, x: number, z: number) => add(new THREE.Mesh(keep(new THREE.BoxGeometry(sx, 0.18, sz)), sideMat)).position.set(x, -0.093, z);
+    edge(w + 0.08, 0.08, cx, DECK.z1);
+    edge(w + 0.08, 0.08, cx, DECK.z0);
+    edge(0.08, d, DECK.x0, cz);
+    edge(0.08, d, DECK.x1, cz);
     collider(new THREE.BoxGeometry(w, 0.2, d), cx, -0.1, cz);
   }
-  // 地面（防穿墙）
+  /** 一条栈道：沿曲线铺一条带子，木板横着（垂直于路），两边各一条边板 */
+  const boardwalk = (curve: THREE.CatmullRomCurve3) => {
+    const len = curve.getLength();
+    const n = Math.ceil(len / 0.25);
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const idx: number[] = [];
+    const skirt: number[] = [];
+    const skirtUv: number[] = [];
+    const skirtIdx: number[] = [];
+    // 比平台低 2mm：和平台搭接的那一段被平台盖住
+    const y = -0.002;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const p = curve.getPointAt(t);
+      const tan = curve.getTangentAt(t);
+      const l = Math.hypot(tan.x, tan.z) || 1;
+      const ox = (-tan.z / l) * (PATH_W / 2);
+      const oz = (tan.x / l) * (PATH_W / 2);
+      pos.push(p.x + ox, y, p.z + oz, p.x - ox, y, p.z - oz);
+      const v = (t * len) / TILE;
+      uv.push(0, v, PATH_W / TILE, v);
+      for (const s of [1, -1]) {
+        skirt.push(p.x + s * ox, y, p.z + s * oz, p.x + s * ox, y - 0.2, p.z + s * oz);
+        skirtUv.push(v, 0, v, 0.2 / TILE);
+      }
+      if (i < n) {
+        const a = i * 2;
+        idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        const b = i * 4;
+        skirtIdx.push(b, b + 1, b + 4, b + 1, b + 5, b + 4, b + 2, b + 3, b + 6, b + 3, b + 7, b + 6);
+      }
+    }
+    const g = keep(new THREE.BufferGeometry());
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    // 法线朝下就翻一下绕序（曲线方向不同，左右会反）
+    if (g.attributes.normal.getY(0) < 0) {
+      g.setIndex(idx.map((_, k) => idx[k - (k % 3) + 2 - (k % 3)]));
+      g.computeVertexNormals();
+    }
+    const top = add(new THREE.Mesh(g, deckMat), false);
+    const sg = keep(new THREE.BufferGeometry());
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(skirt, 3));
+    sg.setAttribute('uv', new THREE.Float32BufferAttribute(skirtUv, 2));
+    sg.setIndex(skirtIdx);
+    sg.computeVertexNormals();
+    const skirtMat = keep(sideMat.clone());
+    skirtMat.side = THREE.DoubleSide;
+    add(new THREE.Mesh(sg, skirtMat), false);
+    colliders.push(top);
+  };
+  boardwalk(main);
+  boardwalk(branch);
+
+  // ---- 树的位置（树本身等 ez-tree 加载完再放）----
+  interface Spot {
+    x: number;
+    z: number;
+    variant: number;
+    scale: number;
+    ry: number;
+  }
+  const trees: Spot[] = [];
+  const tryTree = (x0: number, z0: number, variant: number, force = false) => {
+    const [x, z] = pushClear(x0, z0, 1.2);
+    if (!force && inHeadCorridor(x, z)) return;
+    if (trees.some((o) => Math.hypot(o.x - x, o.z - z) < 4.2)) return;
+    trees.push({ x, z, variant, scale: 0.88 + r() * 0.24, ry: r() * Math.PI * 2 });
+  };
+  // 构图里重要的几棵（照片左边那棵老树、右边几棵），再随机补满
+  for (const [x, z, v] of [
+    [-4.8, -4.2, 0],
+    [3.9, -4.6, 4],
+    [-4.4, -10.8, 1],
+    [6.3, -9.6, 2],
+    [5.6, -16.5, 0],
+    [-5.2, -17.8, 3],
+    [-5.2, 4.6, 1],
+    [4.6, 5.6, 2],
+  ] as const)
+    tryTree(x, z, v);
+  for (let i = 0; i < 500 && trees.length < 58; i++) {
+    const x = (r() - 0.5) * 80;
+    const z = -50 + r() * 74;
+    if (Math.hypot(x, z) < 7 || clearance(x, z) < 1.4 || inHeadCorridor(x, z)) continue;
+    tryTree(x, z, Math.floor(r() * TREE_VARIANTS.length));
+  }
+  // 远处一圈（离角色 38~75m）：把地平线和雾挡住，看上去是一大片树林
+  const far: Spot[] = [];
+  for (let i = 0; i < 400 && far.length < 70; i++) {
+    const a = r() * Math.PI * 2;
+    const d = 38 + r() * 37;
+    const x = Math.cos(a) * d;
+    const z = -8 + Math.sin(a) * d;
+    if (clearance(x, z) < 1.4 || far.some((o) => Math.hypot(o.x - x, o.z - z) < 6)) continue;
+    far.push({ x, z, variant: FAR_VARIANTS[Math.floor(r() * FAR_VARIANTS.length)], scale: 0.9 + r() * 0.35, ry: r() * Math.PI * 2 });
+  }
+  const bushes: Spot[] = [];
+  const bush = (x0: number, z0: number, variant: number) => {
+    const [x, z] = pushClear(x0, z0, 0.7);
+    bushes.push({ x, z, variant, scale: 0.85 + r() * 0.3, ry: r() * Math.PI * 2 });
+  };
+  // 红叶灌木一排（照片中间）、圆灌木散在路边
+  for (let k = 0; k < 4; k++) bush(-1.9 + k * 0.85, -13.5 + (r() - 0.5) * 0.4, 2);
+  for (const [x, z] of [
+    [3.6, -7.8],
+    [4.9, -11.8],
+    [-3.4, -5.8],
+    [5.8, -3.6],
+    [-6.4, -8.0],
+    [2.6, -18.2],
+    [-3.8, 3.0],
+    [-2.8, -12.4],
+    [-7.5, -2.6],
+    [6.8, 1.5],
+  ] as const)
+    bush(x, z, Math.floor(r() * 2));
+
+  // ---- 地面（草地材质）----
+  const shadeNear = (x: number, z: number) => {
+    let s = 0;
+    for (const t of trees) {
+      const d = Math.hypot(t.x - x, t.z - z);
+      if (d < 7) s = Math.max(s, 1 - smoothstep(1.5, 7, d));
+    }
+    return s;
+  };
   {
-    const g = new THREE.PlaneGeometry(40, 40);
+    const g = keep(new THREE.PlaneGeometry(170, 170, 136, 136));
     g.rotateX(-Math.PI / 2);
-    collider(g, 0, GROUND_Y, 0);
+    g.translate(0, 0, -12);
+    const p = g.attributes.position;
+    const uv = g.attributes.uv;
+    const col: number[] = [];
+    const c = new THREE.Color();
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i);
+      const z = p.getZ(i);
+      const clear = Math.abs(x) > 40 || z < -60 ? 10 : clearance(x, z);
+      p.setY(i, groundY(x, z, clear));
+      uv.setXY(i, x / 3.2, z / 3.2);
+      // 大块的明暗斑 + 树下暗一点
+      const patch = 0.5 + 0.5 * Math.sin(x * 0.31 + Math.sin(z * 0.23) * 2) * Math.cos(z * 0.27 - x * 0.05);
+      c.setRGB(0.78 + patch * 0.2, 0.86 + patch * 0.14, 0.62 + patch * 0.12).multiplyScalar(1 - 0.3 * shadeNear(x, z));
+      col.push(c.r, c.g, c.b);
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    const mat = keep(new THREE.MeshStandardMaterial({ ...pbr('aerial_grass_rock'), vertexColors: true }));
+    // 原图是带石头的野草地，偏黄：往照片里那种鲜绿的草坪拉一点
+    mat.color.set(0x9fcf6a);
+    add(new THREE.Mesh(g, mat), false);
+    // 防穿墙：身边一小块（按真实起伏）
+    const cg = new THREE.PlaneGeometry(14, 14, 28, 28);
+    cg.rotateX(-Math.PI / 2);
+    const cp = cg.attributes.position;
+    for (let i = 0; i < cp.count; i++) cp.setY(i, Math.max(groundY(cp.getX(i), cp.getZ(i)), -0.1));
+    collider(cg, 0, 0, 0);
   }
 
-  // ---- 平台上的座位：树桩凳、石板长凳 ----
+  // ---- 平台上的座位：树桩凳、长凳 ----
   {
     const stumpMat = keep(deckMat.clone());
     stumpMat.color.set(0xd8c2a8);
@@ -173,31 +462,44 @@ export function createPark(): Backdrop {
       m.updateMatrixWorld();
       colliders.push(m);
     };
-    seat(new THREE.CylinderGeometry(0.17, 0.19, 0.42, 16), stumpMat, 1.2, 0.21, -1.3);
-    seat(new THREE.BoxGeometry(0.44, 0.07, 0.38), deckMat, 1.2, 0.455, -1.3, 0.15);
-    const bx = 1.75;
-    const bz = 0.55;
-    const ry = -0.3;
+    seat(new THREE.CylinderGeometry(0.17, 0.19, 0.42, 16), stumpMat, 1.2, 0.21, -1.25);
+    seat(new THREE.BoxGeometry(0.44, 0.07, 0.38), deckMat, 1.2, 0.455, -1.25, 0.15);
+    const bx = 2.15;
+    const bz = 0.45;
+    const ry = -0.25;
     for (const dx of [-0.42, 0.42])
       seat(new THREE.BoxGeometry(0.26, 0.4, 0.32), stumpMat, bx + dx * Math.cos(ry), 0.2, bz - dx * Math.sin(ry), ry);
     seat(new THREE.BoxGeometry(1.3, 0.09, 0.5), deckMat, bx, 0.445, bz, ry);
   }
 
-  // ---- 落叶 ----
+  // ---- 落叶（平台和栈道上）----
   {
     const mat = keep(new THREE.MeshStandardMaterial({ map: keep(fallenLeaf()), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 }));
     const geo = keep(new THREE.PlaneGeometry(1, 1));
     geo.rotateX(-Math.PI / 2);
-    const n = 160;
-    const im = new THREE.InstancedMesh(geo, mat, n);
+    const spots: THREE.Vector3[] = [];
+    for (let i = 0; i < 200; i++) spots.push(new THREE.Vector3(DECK.x0 + r() * (DECK.x1 - DECK.x0), 0.004, DECK.z0 + r() * (DECK.z1 - DECK.z0)));
+    for (const [c, count] of [
+      [main, 240],
+      [branch, 110],
+    ] as const) {
+      for (let i = 0; i < count; i++) {
+        const t = r();
+        const p = c.getPointAt(t);
+        const tan = c.getTangentAt(t);
+        const side = (r() - 0.5) * PATH_W * 0.95;
+        spots.push(new THREE.Vector3(p.x - tan.z * side, 0.003, p.z + tan.x * side));
+      }
+    }
+    const im = new THREE.InstancedMesh(geo, mat, spots.length);
     const colors = [0xe9c64b, 0xd9b23a, 0xc98f3a, 0xb7a14a, 0xa8b452, 0x8e7a3a];
     const s = new THREE.Vector3();
-    for (let i = 0; i < n; i++) {
+    const up = new THREE.Vector3(0, 1, 0);
+    spots.forEach((p, i) => {
       const k = 0.05 + r() * 0.04;
-      const p = new THREE.Vector3(DECK.x0 + r() * (DECK.x1 - DECK.x0), 0.003, DECK.z0 + r() * (DECK.z1 - DECK.z0));
-      im.setMatrixAt(i, new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * Math.PI * 2), s.set(k, 1, k)));
+      im.setMatrixAt(i, new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromAxisAngle(up, r() * Math.PI * 2), s.set(k, 1, k)));
       im.setColorAt(i, new THREE.Color(colors[Math.floor(r() * colors.length)]));
-    }
+    });
     im.computeBoundingSphere();
     im.receiveShadow = true;
     group.add(im);
@@ -220,7 +522,11 @@ export function createPark(): Backdrop {
     group.add(m);
   }
 
-  // ---- 模型：路灯、石头（异步加载，到了再放进来）----
+  // ---- 风 ----
+  const wind = { uTime: { value: 0 } };
+  const windTrees: Array<{ update(t: number): void }> = [];
+
+  // ---- 草丛（3D）----
   const loader = new GLTFLoader();
   const own = (root: THREE.Object3D) =>
     root.traverse((o) => {
@@ -232,7 +538,107 @@ export function createPark(): Backdrop {
         for (const v of Object.values(m)) if (v instanceof THREE.Texture) keep(v);
       }
     });
-  const place = (src: THREE.Object3D, x: number, y: number, z: number, scale = 1, ry = 0) => {
+  loader.load(`${BASE}eztree/grass.glb`, (gltf) => {
+    own(gltf.scene);
+    if (disposed) return;
+    const src = gltf.scene.getObjectByProperty('isMesh', true) as THREE.Mesh | undefined;
+    if (!src) return;
+    const mat = keep(
+      new THREE.MeshPhongMaterial({
+        map: (src.material as THREE.MeshStandardMaterial).map,
+        alphaTest: 0.5,
+        side: THREE.DoubleSide,
+        emissive: new THREE.Color(0x308040),
+        emissiveIntensity: 0.06,
+      }),
+    );
+    windShader(mat, wind);
+    // 越靠近角色越密：在平台前后 30m 内撒，跳过路面和平台
+    const max = 16000;
+    const im = new THREE.InstancedMesh(src.geometry, mat, max);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    const p = new THREE.Vector3();
+    const c = new THREE.Color();
+    const up = new THREE.Vector3(0, 1, 0);
+    let n = 0;
+    for (let i = 0; i < max * 3 && n < max; i++) {
+      const rad = 1 + Math.pow(r(), 1.6) * 30;
+      const a = r() * Math.PI * 2;
+      const x = Math.cos(a) * rad;
+      const z = -4 + Math.sin(a) * rad;
+      const clear = clearance(x, z);
+      if (clear < 0.08) continue;
+      p.set(x, groundY(x, z, clear) - 0.02, z);
+      q.setFromAxisAngle(up, r() * Math.PI * 2);
+      const k = 0.15 + r() * 0.1;
+      s.set(k, 0.11 + r() * 0.09, k);
+      im.setMatrixAt(n, m.compose(p, q, s));
+      im.setColorAt(n, c.setRGB(0.42 + r() * 0.12, 0.62 + r() * 0.2, 0.2 + r() * 0.08));
+      n++;
+    }
+    im.count = n;
+    im.computeBoundingSphere();
+    im.receiveShadow = true;
+    im.castShadow = false;
+    group.add(im);
+  });
+
+  // ---- 树、灌木（ez-tree，动态加载）----
+  void import('@dgreenheck/ez-tree').then(({ Tree }) => {
+    if (disposed) return;
+    const make = (preset: string, seed: number, height: number, tint: number | null, leaves = 1) => {
+      const t = new Tree();
+      t.loadPreset(preset);
+      t.options.seed = seed;
+      t.options.leaves.count = Math.round(t.options.leaves.count * leaves);
+      if (tint != null) t.options.leaves.tint = tint;
+      t.generate();
+      const leafMat = t.leavesMesh.material as THREE.MeshPhongMaterial;
+      if (tint == null) leafMat.color.multiply(LEAF_TINT);
+      // 逆光下的树叶是透光发亮的（Phong 没有透光），补一点自发光：看到的大多是背光面，不补就是一片暗橄榄绿
+      leafMat.emissive.set(tint == null ? 0x4a6a14 : 0x5a1a0a);
+      leafMat.emissiveIntensity = 0.35;
+      leafMat.emissiveMap = leafMat.map;
+      for (const mesh of [t.branchesMesh, t.leavesMesh]) {
+        keep(mesh.geometry);
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mm of mats) keep(mm);
+      }
+      const box = new THREE.Box3().setFromObject(t);
+      windTrees.push(t);
+      return { tree: t, scale: height / Math.max(1e-3, box.max.y - box.min.y), trunk: (t.options.branch.radius as Record<string, number>)['0'] ?? 1 };
+    };
+    const place = (v: ReturnType<typeof make>, spot: Spot, solid: boolean) => {
+      const o = new THREE.Group();
+      for (const mesh of [v.tree.branchesMesh, v.tree.leavesMesh]) o.add(new THREE.Mesh(mesh.geometry, mesh.material));
+      const s = v.scale * spot.scale;
+      o.scale.setScalar(s);
+      o.position.set(spot.x, groundY(spot.x, spot.z) - 0.05, spot.z);
+      o.rotation.y = spot.ry;
+      add(o);
+      // 近处的树干挡镜头
+      if (solid && Math.hypot(spot.x, spot.z) < 10) {
+        const rr = Math.max(0.2, v.trunk * s * 1.3);
+        collider(new THREE.CylinderGeometry(rr, rr, 6, 8), spot.x, 3, spot.z);
+      }
+      return o;
+    };
+    const tv = TREE_VARIANTS.map((v) => make(v.preset, v.seed, v.height, null, v.leaves));
+    for (const spot of trees) place(tv[spot.variant], spot, true);
+    // 远处的树用不加叶子的版本（看不清，省三角形）
+    const fv = new Map(FAR_VARIANTS.map((i) => [i, make(TREE_VARIANTS[i].preset, TREE_VARIANTS[i].seed + 1000, TREE_VARIANTS[i].height, null)]));
+    for (const spot of far) {
+      const o = place(fv.get(spot.variant as (typeof FAR_VARIANTS)[number])!, spot, false);
+      o.traverse((c) => (c.castShadow = false));
+    }
+    const bv = BUSH_VARIANTS.map((v) => make(v.preset, v.seed, v.height, v.tint));
+    for (const spot of bushes) place(bv[spot.variant], spot, false);
+  });
+
+  // ---- 模型：路灯、石头 ----
+  const placeModel = (src: THREE.Object3D, x: number, y: number, z: number, scale = 1, ry = 0) => {
     const o = src.clone();
     o.position.set(x, y, z);
     o.scale.setScalar(scale);
@@ -240,9 +646,7 @@ export function createPark(): Backdrop {
     o.traverse((c) => {
       const mesh = c as THREE.Mesh;
       if (!mesh.isMesh) return;
-      // 玻璃灯罩不投影
-      const glass = (mesh.material as THREE.Material).transparent;
-      mesh.castShadow = !glass;
+      mesh.castShadow = !(mesh.material as THREE.Material).transparent; // 玻璃灯罩不投影
       mesh.receiveShadow = true;
     });
     group.add(o);
@@ -251,62 +655,77 @@ export function createPark(): Backdrop {
   loader.load(`${BASE}models/street_lamp_01/street_lamp_01.gltf`, (gltf) => {
     own(gltf.scene);
     if (disposed) return;
-    // 一盏在平台右后角外（照片里最近的那盏），一盏在左后方远一点 —— 都不在头后面
-    for (const [x, z, ry] of [
-      [2.05, -2.45, 0.4],
-      [-3.4, -4.6, -0.3],
+    for (const [x0, z0, ry] of [
+      [2.3, -2.7, 0.4],
+      [-3.1, -7.4, -0.3],
+      [4.6, -13.2, 1.1],
+      [-3.0, -22, 0.2],
+      [-8, -1.6, 0.8],
+      [5.2, 3.4, -0.6],
     ]) {
-      place(gltf.scene, x, GROUND_Y, z, 1, ry);
-      collider(new THREE.CylinderGeometry(0.12, 0.12, 3.9, 6), x, GROUND_Y + 1.95, z);
+      const [x, z] = pushClear(x0, z0, 0.35);
+      const y = groundY(x, z);
+      placeModel(gltf.scene, x, y, z, 1, ry);
+      collider(new THREE.CylinderGeometry(0.12, 0.12, 3.9, 6), x, y + 1.95, z);
     }
   });
   loader.load(`${BASE}models/rock_moss_set_01/rock_moss_set_01.gltf`, (gltf) => {
     own(gltf.scene);
     if (disposed) return;
     const rocks = gltf.scene.children;
-    // 原尺寸是 2~3m 的大石头，缩到半米到一米，沿着平台边上和小路两侧放；一半埋在土里
-    const spots: Array<[number, number, number, number, number]> = [
-      // 第几块, x, z, 缩放, 转角
-      [1, -3.1, -1.0, 0.26, 0.6],
-      [4, 3.1, 0.9, 0.22, 2.1],
-      [0, -1.9, -4.4, 0.3, 1.2],
-      [5, 2.6, -4.8, 0.24, -0.8],
-      [2, -3.6, 2.2, 0.28, 0.3],
+    // 原尺寸是 2~3m 的大石头，缩到半米到一米，沿着路边放；一半埋在土里
+    const spots: Array<[number, number, number]> = [
+      [-2.4, -9.6, 0.24],
+      [2.1, -8.4, 0.22],
+      [-3.4, -3.0, 0.18],
+      [4.7, -6.8, 0.26],
+      [0.6, -12.3, 0.2],
+      [0.4, -16.6, 0.3],
+      [-3.3, -16.2, 0.22],
+      [5.3, -17.6, 0.2],
+      [-1.9, 3.2, 0.22],
+      [3.4, -12.6, 0.18],
+      [-7.2, -2.8, 0.24],
     ];
-    for (const [k, x, z, s, ry] of spots) {
-      const src = rocks[k % rocks.length];
-      if (!src) continue;
-      const o = place(src, x, GROUND_Y + 0.02, z, s, ry);
+    spots.forEach(([x0, z0, s], i) => {
+      const src = rocks[i % rocks.length];
+      if (!src) return;
+      const [x, z] = pushClear(x0, z0, s * 3);
+      const o = placeModel(src, x, groundY(x, z) + 0.02, z, s, i * 1.9);
       o.updateMatrixWorld(true);
-      o.traverse((c) => {
-        if ((c as THREE.Mesh).isMesh) colliders.push(c);
-      });
-    }
+      if (Math.hypot(x, z) < 8) o.traverse((c) => (c as THREE.Mesh).isMesh && colliders.push(c));
+    });
   });
 
   // ---- 太阳 ----
-  const sun = new THREE.DirectionalLight(0xfff2dc, 1.4);
-  sun.target.position.set(0, 0, -0.5);
-  sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 20);
+  const sun = new THREE.DirectionalLight(0xfff1dc, 2.2);
+  sun.target.position.set(0, 0, -5);
+  sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 40);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 2, far: 40 });
+  Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 5, far: 80 });
   sun.shadow.camera.updateProjectionMatrix();
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.03;
-  sun.shadow.radius = 4;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.04;
+  sun.shadow.radius = 3;
   group.add(sun.target);
 
+  let time = 0;
   return {
     group,
     lights: [sun],
     colliders,
-    hemisphere: { sky: 0xdcebd2, ground: 0x6e5c44, intensity: 0.8 },
-    fog: null,
-    environment: { url: `${BASE}hdri/nagoya_wall_path_1k.hdr`, intensity: 1, rotation: ROTATION },
+    hemisphere: { sky: 0xe2f0ff, ground: 0x6a8a48, intensity: 0.95 },
+    fog: new THREE.Fog(0xd3e3c6, 30, 120),
+    environment: { url: `${BASE}hdri/nagoya_wall_path_1k.hdr`, intensity: 0.8, rotation: THREE.MathUtils.degToRad(126) },
     shadowBounds: 3,
     keyShadow: false,
     far: 170,
+    update(dt: number) {
+      time += dt;
+      wind.uTime.value = time;
+      for (const t of windTrees) t.update(time);
+    },
     dispose() {
       disposed = true;
       for (const d of disposables) d.dispose();

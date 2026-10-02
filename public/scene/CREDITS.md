@@ -9,6 +9,8 @@
 - 模型 [Street Lamp 01](https://polyhaven.com/a/street_lamp_01) — Josh Dean
 - 模型 [Rock Moss Set 01](https://polyhaven.com/a/rock_moss_set_01) — Kless Gyzen
 - 材质 [Weathered Brown Planks](https://polyhaven.com/a/weathered_brown_planks) — Dimitrios Savva, Rico Cilliers
+- 材质 [Aerial Grass Rock](https://polyhaven.com/a/aerial_grass_rock) — Rob Tuytel
 - HDRI [Wooden Lounge](https://polyhaven.com/a/wooden_lounge) — Greg Zaal
 - HDRI [Nagoya Wall Path](https://polyhaven.com/a/nagoya_wall_path) — Greg Zaal
-- 全景背景 [Nagoya Wall Path](https://polyhaven.com/a/nagoya_wall_path) — Greg Zaal
+
+公园的树和灌木由 [ez-tree](https://github.com/dgreenheck/ez-tree)（npm `@dgreenheck/ez-tree`，© 2024 Daniel Greenheck，**MIT**）生成，树皮和树叶贴图打包在那个 npm 包里；`eztree/grass.glb`（草丛模型）来自 ez-tree 的演示场景，授权原文见 `eztree/LICENSE`。
