@@ -1,10 +1,14 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { canvasTexture, rng, type Backdrop } from './common';
 
 export type { Backdrop };
 
 /**
- * 背景场景：一家小咖啡店的店内。全部程序生成（几何体 + canvas 画的贴图），没有外部模型和材质素材。
+ * 背景场景：一家小咖啡店的店内。房间本身（墙、地板、窗、黑板、店招、吧台、置物架）是程序生成的（几何体 + canvas 画的贴图）；
+ * 店里的小物件是 Poly Pizza 上的低多边形模型（public/scene/polypizza/，来源和授权见 public/scene/CREDITS.md）：
+ * 意式咖啡机（Zsky，CC-BY）、杯子、甜点、圆桌木椅、吧台凳、吊灯、绿植、地毯、台灯（Kenney / Quaternius，CC0）。
+ * 平涂的低多边形和动漫角色放在一起比写实模型协调（Poly Haven 的写实模型试过，很突兀）。
  * 唯一的外部文件是打光用的室内 HDRI（public/scene/hdri/，Poly Haven，CC0）：舞台把它转成环境光（IBL），
  * 只用来照亮场景里的 PBR 材质，不显示出来。
  *
@@ -32,6 +36,35 @@ const D = 10; // 房间深（z）
 const H = 3.2; // 层高
 const BACK = -5; // 后墙 z
 const FRONT = BACK + D; // 前墙 z
+/** Poly Pizza 的模型 */
+const PP = `${import.meta.env.BASE_URL}scene/polypizza/`;
+/** 椅子模型默认面朝 -Z（实测），转到面朝桌子时补半圈 */
+const CHAIR_FACING = Math.PI;
+/** 其余模型的朝向（绕竖轴，弧度）：让正面朝向店里。逐个从店里拍过（__views 的特写）确认的 */
+const WINDOW_RY = Math.PI / 2;
+const WINDOW_SMALL_RY = Math.PI;
+const DOOR_RY = Math.PI;
+const PAINTING_1_RY = Math.PI / 2;
+const PAINTING_2_RY = Math.PI;
+const CLOCK_RY = Math.PI;
+const BOOKCASE_RY = -Math.PI / 2;
+const COUCH_RY = Math.PI / 2;
+const LOUNGE_RY = -Math.PI / 2;
+
+/** 窗户模型里的玻璃是不透明的：改成半透明、不挡阴影，窗外才看得见 */
+function glassy(o: THREE.Object3D | null) {
+  o?.traverse((c) => {
+    const mesh = c as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (!/glass/i.test(m.name)) continue;
+      m.transparent = true;
+      m.opacity = 0.15;
+      m.depthWrite = false;
+      mesh.castShadow = false;
+    }
+  });
+}
 
 function woodFloor() {
   const r = rng(7);
@@ -219,25 +252,93 @@ function shopSign() {
   });
 }
 
-function painting(seed: number) {
-  const r = rng(seed);
-  return canvasTexture(256, 320, (g) => {
-    g.fillStyle = `hsl(${30 + r() * 30}, 35%, 82%)`;
-    g.fillRect(0, 0, 256, 320);
-    for (let i = 0; i < 5; i++) {
-      g.fillStyle = `hsla(${r() * 360}, 40%, ${45 + r() * 25}%, 0.8)`;
-      g.beginPath();
-      g.arc(40 + r() * 176, 50 + r() * 220, 20 + r() * 60, 0, Math.PI * 2);
-      g.fill();
-    }
-  });
-}
-
 export function createCafe(): Backdrop {
   const group = new THREE.Group();
   group.name = 'cafe';
   const disposables: Array<{ dispose(): void }> = [];
-  const keep = <T extends { dispose(): void }>(x: T) => (disposables.push(x), x);
+  let disposed = false;
+  // 模型是异步加载的：换走场景之后才到的，直接释放
+  const keep = <T extends { dispose(): void }>(x: T) => {
+    if (disposed) x.dispose();
+    else disposables.push(x);
+    return x;
+  };
+  /** 防穿墙（最后把程序生成的实体也加进来）。模型到了再往里加包围盒 */
+  const colliders: THREE.Object3D[] = [];
+
+  // ---- Poly Pizza 的模型 ----
+  const loader = new GLTFLoader();
+  const sources = new Map<string, Promise<THREE.Object3D | null>>();
+  const load = (file: string) => {
+    let p = sources.get(file);
+    if (!p) {
+      p = loader
+        .loadAsync(`${PP}${file}.glb`)
+        .then((gltf) => {
+          gltf.scene.traverse((o) => {
+            const mesh = o as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            keep(mesh.geometry);
+            for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+              keep(m);
+              for (const v of Object.values(m)) if (v instanceof THREE.Texture) keep(v);
+            }
+          });
+          return gltf.scene;
+        })
+        .catch(() => null);
+      sources.set(file, p);
+    }
+    return p;
+  };
+  /**
+   * 放一个模型：先绕竖轴转 ry，再按包围盒缩放到 h 米高，底部落在 y、水平中心在 (x, z)。
+   * solid = 挡镜头（包围盒当碰撞体）。
+   * wall = 贴墙放：包围盒的这一边贴到这个坐标上（minX 左墙、maxX 右墙、maxZ 前墙），对应的 x / z 不用；
+   * centerY = y 是包围盒中心的高度（挂在墙上的东西）
+   */
+  const place = (
+    file: string,
+    x: number,
+    y: number,
+    z: number,
+    h: number,
+    ry = 0,
+    solid = false,
+    opts: { minX?: number; maxX?: number; maxZ?: number; centerY?: boolean } = {},
+  ) =>
+    load(file).then((src) => {
+      if (!src || disposed) return null;
+      const o = src.clone(true);
+      o.rotation.y = ry;
+      o.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(o);
+      o.scale.setScalar(h / Math.max(1e-6, box.max.y - box.min.y));
+      o.updateMatrixWorld(true);
+      box.setFromObject(o);
+      const px =
+        opts.minX != null ? opts.minX - box.min.x : opts.maxX != null ? opts.maxX - box.max.x : x - (box.min.x + box.max.x) / 2;
+      const pz = opts.maxZ != null ? opts.maxZ - box.max.z : z - (box.min.z + box.max.z) / 2;
+      const py = opts.centerY ? y - (box.min.y + box.max.y) / 2 : y - box.min.y;
+      o.position.set(px, py, pz);
+      o.traverse((c) => {
+        if ((c as THREE.Mesh).isMesh) {
+          c.castShadow = true;
+          c.receiveShadow = true;
+        }
+      });
+      group.add(o);
+      if (solid) {
+        o.updateMatrixWorld(true);
+        box.setFromObject(o);
+        const size = box.getSize(new THREE.Vector3());
+        const c = new THREE.Mesh(keep(new THREE.BoxGeometry(size.x, size.y, size.z)));
+        box.getCenter(c.position);
+        c.updateMatrixWorld();
+        colliders.push(c);
+      }
+      return o;
+    });
 
   // 所有面都接收阴影，实心的东西也投影（主光的软阴影，见 stage.ts）
   const shaded = <T extends THREE.Mesh>(mesh: T) => {
@@ -266,16 +367,49 @@ export function createCafe(): Backdrop {
   const darkWood = mat({ color: 0x4a2f1d, roughness: 0.55 });
   const lightWood = mat({ color: 0xb98a5e, roughness: 0.5 });
   const ceilingMat = mat({ color: 0x3b2a1f, roughness: 0.9 });
-  const metal = mat({ color: 0xc9c9cc, metalness: 0.9, roughness: 0.28 });
-  const blackMetal = mat({ color: 0x1d1d1f, metalness: 0.6, roughness: 0.45 });
   const ceramic = mat({ color: 0xf7f3ec, roughness: 0.35 });
-  const leaf = mat({ color: 0x4f7a3f, roughness: 0.85 });
-  const pot = mat({ color: 0xb9653f, roughness: 0.75 });
 
   // ---- 房间 ----
+  // 地板：Quaternius 的木地板块（1m 一块）铺满 10m × 10m，隔一块转半圈打散重复感。
+  // 块到了之前先用 canvas 画的木地板顶着；到了以后它只留着当防穿墙的碰撞面
   const floor = shaded(new THREE.Mesh(keep(new THREE.PlaneGeometry(W, D)), floorMat));
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, 0, BACK + D / 2);
+  void load('wood_floor').then((src) => {
+    if (!src || disposed) return;
+    src.updateMatrixWorld(true);
+    // 把块里的网格烘成一个几何体（带上节点自己的变换），缩到 1m 见方、顶面在 y = 0
+    const parts: Array<{ geo: THREE.BufferGeometry; mat: THREE.Material }> = [];
+    src.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      // 原色是很亮的浅橙木色，和深色墙裙、暖光的店不搭：压暗一点
+      const mat = keep((mesh.material as THREE.MeshStandardMaterial).clone());
+      mat.color.multiplyScalar(0.72);
+      parts.push({ geo: keep(mesh.geometry.clone().applyMatrix4(mesh.matrixWorld)), mat });
+    });
+    const box = new THREE.Box3();
+    for (const p of parts) box.union(new THREE.Box3().setFromBufferAttribute(p.geo.attributes.position as THREE.BufferAttribute));
+    const k = 1 / Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const p of parts) {
+      p.geo.translate(-(box.min.x + box.max.x) / 2, -box.max.y, -(box.min.z + box.max.z) / 2);
+      p.geo.scale(k, k, k);
+      const im = new THREE.InstancedMesh(p.geo, p.mat, W * D);
+      let i = 0;
+      for (let ix = 0; ix < W; ix++)
+        for (let iz = 0; iz < D; iz++) {
+          q.setFromAxisAngle(up, ((ix + iz) % 2) * Math.PI);
+          im.setMatrixAt(i++, m.compose(new THREE.Vector3(-W / 2 + ix + 0.5, 0, BACK + iz + 0.5), q, new THREE.Vector3(1, 1, 1)));
+        }
+      im.receiveShadow = true;
+      im.computeBoundingSphere();
+      group.add(im);
+    }
+    floor.visible = false;
+  });
   const ceiling = shaded(new THREE.Mesh(keep(new THREE.PlaneGeometry(W, D)), ceilingMat));
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.set(0, H, BACK + D / 2);
@@ -302,19 +436,13 @@ export function createCafe(): Backdrop {
   box(5.35, 0.05, 0.74, lightWood, 0, 1.0, counterZ); // 台面
   box(5.2, 0.06, 0.05, darkWood, 0, 0.06, counterZ + 0.3); // 踢脚
 
-  // 咖啡机（右边，不在头后面）
+  // 咖啡机（右边，不在头后面）：意式咖啡机，旁边一排咖啡杯、一杯星冰乐
   const mx = 1.75;
-  box(0.62, 0.42, 0.42, metal, mx, 1.24, counterZ - 0.05);
-  box(0.66, 0.06, 0.46, blackMetal, mx, 1.48, counterZ - 0.05);
-  for (const dx of [-0.15, 0.15]) {
-    cyl(0.035, 0.035, 0.08, blackMetal, mx + dx, 1.08, counterZ + 0.12, 12);
-    cyl(0.04, 0.034, 0.07, ceramic, mx + dx, 1.06, counterZ + 0.14, 16); // 杯子
-  }
-  // 一摞杯子
-  for (let i = 0; i < 4; i++) cyl(0.045, 0.036, 0.065, ceramic, mx + 0.42, 1.06 + i * 0.062, counterZ - 0.1, 16);
-  // 磨豆机
-  cyl(0.07, 0.08, 0.26, blackMetal, mx - 0.48, 1.16, counterZ - 0.12, 16);
-  cyl(0.06, 0.03, 0.12, mat({ color: 0x6b4226, transparent: true, opacity: 0.85 }), mx - 0.48, 1.35, counterZ - 0.12, 16);
+  const counterTop = 1.025;
+  // 模型的正面（冲煮头、旋钮）默认朝 -Z（实测），转半圈朝向店里
+  void place('espresso_machine', mx, counterTop, counterZ - 0.06, 0.46, Math.PI);
+  for (let i = 0; i < 3; i++) void place('cup_tea', mx + 0.42 + i * 0.13, counterTop, counterZ + 0.08 - (i % 2) * 0.06, 0.075, 0.6 + i * 1.3);
+  void place('frappe', mx - 0.52, counterTop, counterZ + 0.05, 0.2);
 
   // 蛋糕罩
   const glass = mat({ color: 0xffffff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1 });
@@ -324,8 +452,14 @@ export function createCafe(): Backdrop {
   dome.castShadow = false; // 玻璃不投影
   dome.position.set(cx, 1.05, counterZ);
   dome.scale.y = 1.3;
-  cyl(0.15, 0.15, 0.1, mat({ color: 0xead2a8 }), cx, 1.1, counterZ, 24);
-  cyl(0.15, 0.15, 0.025, mat({ color: 0x5a2f1c }), cx, 1.165, counterZ, 24);
+  void place('cake', cx, 1.053, counterZ, 0.13, 0.4);
+  // 一盘甜点：可颂、玛芬、甜甜圈、纸杯蛋糕
+  const px = cx + 0.62;
+  cyl(0.2, 0.2, 0.015, ceramic, px, counterTop + 0.008, counterZ + 0.04, 32);
+  void place('croissant', px - 0.08, counterTop + 0.016, counterZ - 0.02, 0.05, 0.5);
+  void place('muffin', px + 0.09, counterTop + 0.016, counterZ - 0.03, 0.075);
+  void place('donut_sprinkles', px - 0.06, counterTop + 0.016, counterZ + 0.11, 0.035, 1.2);
+  void place('cupcake', px + 0.08, counterTop + 0.016, counterZ + 0.12, 0.09);
 
   // ---- 后墙：置物架 + 黑板菜单 ----
   const shelfX = 2.35;
@@ -341,13 +475,11 @@ export function createCafe(): Backdrop {
         cyl(0.05, 0.05, h, mat({ color: jarColors[Math.floor(r() * jarColors.length)], roughness: 0.4 }), x, y + 0.02 + h / 2, BACK + 0.14, 16);
         x += 0.14;
       } else if (kind < 0.75) {
-        cyl(0.045, 0.036, 0.065, ceramic, x, y + 0.055, BACK + 0.14, 16);
+        void place('cup', x, y + 0.02, BACK + 0.14, 0.075, r() * 6);
         x += 0.12;
       } else {
         // 一小盆绿植
-        cyl(0.05, 0.04, 0.08, pot, x, y + 0.06, BACK + 0.14, 12);
-        const s = shaded(new THREE.Mesh(keep(new THREE.IcosahedronGeometry(0.08, 0)), leaf));
-        s.position.set(x, y + 0.16, BACK + 0.14);
+        void place(r() < 0.5 ? 'houseplant_3' : 'houseplant_2', x, y + 0.02, BACK + 0.14, 0.2, r() * 6);
         x += 0.18;
       }
     }
@@ -365,15 +497,12 @@ export function createCafe(): Backdrop {
   // ---- 吊灯（吧台上方）----
   const lights: THREE.Light[] = [];
   const bulbMat = keep(new THREE.MeshBasicMaterial({ color: 0xffe2a8 }));
-  const shadeMat = mat({ color: 0x2c4a3e, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide });
-  // 两盏，分在店招两侧（第一版正中那盏正好挡住店招）
+  // 两盏，分在店招两侧（第一版正中那盏正好挡住店招）。灯罩是模型，从天花板吊下来，底边在 2.3m
   for (const lx of [-1.25, 1.25]) {
     const ly = 2.35;
     const lz = counterZ;
-    cyl(0.004, 0.004, H - ly - 0.1, blackMetal, lx, (H + ly) / 2 + 0.05, lz, 6); // 吊线
-    const shade = shaded(new THREE.Mesh(keep(new THREE.ConeGeometry(0.17, 0.18, 24, 1, true)), shadeMat));
-    shade.position.set(lx, ly + 0.05, lz);
-    const bulb = new THREE.Mesh(keep(new THREE.SphereGeometry(0.05, 16, 8)), bulbMat);
+    void place('light_ceiling', lx, ly - 0.06, lz, H - (ly - 0.06));
+    const bulb = new THREE.Mesh(keep(new THREE.SphereGeometry(0.045, 16, 8)), bulbMat);
     bulb.position.set(lx, ly - 0.03, lz);
     group.add(bulb);
     const p = new THREE.PointLight(0xffc98a, 2.8, 6, 2);
@@ -390,88 +519,75 @@ export function createCafe(): Backdrop {
     view.position.set(-W / 2 + 0.03, 1.75, wz);
     view.rotation.y = Math.PI / 2;
     group.add(view);
-    // 窗框和窗格
+    // 窗框：Quaternius 的白色格子窗（模型里的玻璃是不透明的，改成半透明才看得见窗外）；窗台保留
     const fx = -W / 2 + 0.06;
-    box(0.08, 0.08, 2.12, darkWood, fx, 2.64, wz);
+    void place('window_large', 0, 1.75, wz, 1.85, WINDOW_RY, false, { minX: -W / 2 + 0.005, centerY: true }).then(glassy);
     box(0.12, 0.08, 2.2, lightWood, fx + 0.03, 0.88, wz); // 窗台
-    box(0.08, 1.8, 0.08, darkWood, fx, 1.75, wz - 1.04);
-    box(0.08, 1.8, 0.08, darkWood, fx, 1.75, wz + 1.04);
-    box(0.06, 1.7, 0.05, darkWood, fx, 1.75, wz);
-    box(0.06, 0.05, 2.0, darkWood, fx, 1.85, wz);
     // 窗台上的小盆栽
-    for (const dz of [-0.6, 0.5]) {
-      cyl(0.08, 0.06, 0.12, pot, fx + 0.08, 0.99, wz + dz, 12);
-      const s = shaded(new THREE.Mesh(keep(new THREE.IcosahedronGeometry(0.12, 0)), leaf));
-      s.position.set(fx + 0.08, 1.14, wz + dz);
-    }
+    for (const [dz, file] of [
+      [-0.6, 'houseplant_1'],
+      [0.5, 'houseplant_3'],
+    ] as const)
+      void place(file, fx + 0.09, 0.92, wz + dz, 0.34, dz * 3);
   }
   const windowLight = new THREE.DirectionalLight(0xe4eeff, 0.45);
   windowLight.position.set(-4, 2.2, 0.2);
   lights.push(windowLight);
 
-  // ---- 右墙：挂画 + 挂钟 ----
-  for (const [pz, seed] of [
-    [-1.6, 31],
-    [-0.4, 47],
-  ] as const) {
-    const pic = shaded(new THREE.Mesh(keep(new THREE.PlaneGeometry(0.7, 0.88)), mat({ map: keep(painting(seed)) })));
-    pic.position.set(W / 2 - 0.04, 1.8, pz);
-    pic.rotation.y = -Math.PI / 2;
-    box(0.03, 0.96, 0.78, darkWood, W / 2 - 0.02, 1.8, pz);
-  }
-  const clock = cyl(0.22, 0.22, 0.04, ceramic, W / 2 - 0.04, 2.15, 1.6, 32);
-  clock.rotation.z = Math.PI / 2;
+  // ---- 右墙：两幅挂画、挂钟（CC-BY，署名在 CREDITS.md）、一个书架 ----
+  void place('wall_painting_1', 0, 1.8, -1.6, 0.95, PAINTING_1_RY, false, { maxX: W / 2 - 0.01, centerY: true });
+  void place('wall_painting_2', 0, 1.8, -0.4, 0.8, PAINTING_2_RY, false, { maxX: W / 2 - 0.01, centerY: true });
+  void place('analog_clock', 0, 2.15, 1.6, 0.42, CLOCK_RY, false, { maxX: W / 2 - 0.01, centerY: true });
+  void place('bookcase_books', 0, 0, 3.4, 1.9, BOOKCASE_RY, true, { maxX: W / 2 - 0.02 });
 
-  // ---- 前墙：门 + 小窗 ----
-  box(1.0, 2.2, 0.06, darkWood, 1.8, 1.1, FRONT - 0.04);
-  cyl(0.025, 0.025, 0.12, metal, 1.42, 1.05, FRONT - 0.1, 8).rotation.x = Math.PI / 2;
+  // ---- 前墙：双开木门 + 小窗，门边一个衣帽架 ----
+  void place('door_double', 1.8, 0, 0, 2.3, DOOR_RY, true, { maxZ: FRONT - 0.01 });
+  void place('window_small', -1.8, 1.7, 0, 1.3, WINDOW_SMALL_RY, false, { maxZ: FRONT - 0.005, centerY: true }).then(glassy);
+  void place('coat_rack_standing', 0.35, 0, FRONT - 0.45, 1.75, 0.4, true);
   const fview = new THREE.Mesh(keep(new THREE.PlaneGeometry(1.6, 1.2)), keep(new THREE.MeshBasicMaterial({ map: keep(windowView(77)) })));
   fview.position.set(-1.8, 1.7, FRONT - 0.03);
   fview.rotation.y = Math.PI;
   group.add(fview);
 
   // ---- 桌椅（不挡在镜头和角色之间：都在两侧和身后两侧）----
-  const table = (x: number, z: number) => {
-    cyl(0.38, 0.38, 0.04, lightWood, x, 0.74, z, 32);
-    cyl(0.03, 0.03, 0.72, blackMetal, x, 0.37, z, 12);
-    cyl(0.2, 0.22, 0.03, blackMetal, x, 0.015, z, 24);
-    cyl(0.045, 0.036, 0.065, ceramic, x + 0.1, 0.79, z - 0.05, 16);
-    for (const a of [0.4, Math.PI + 0.4]) {
-      const ccx = x + Math.cos(a) * 0.62;
-      const ccz = z + Math.sin(a) * 0.62;
-      cyl(0.2, 0.2, 0.04, darkWood, ccx, 0.46, ccz, 24);
-      for (const [lx, lz] of [
-        [-0.12, -0.12],
-        [0.12, -0.12],
-        [-0.12, 0.12],
-        [0.12, 0.12],
-      ]) {
-        cyl(0.015, 0.015, 0.46, blackMetal, ccx + lx, 0.23, ccz + lz, 6);
-      }
-      const back = box(0.36, 0.34, 0.03, darkWood, ccx, 0.68, ccz);
-      back.position.x += Math.cos(a) * 0.18;
-      back.position.z += Math.sin(a) * 0.18;
-      back.lookAt(x, 0.68, z);
+  // 圆桌 + 两把椅子（椅子面朝桌子），桌上一杯咖啡或星冰乐；一张桌子底下铺圆地毯
+  const table = (x: number, z: number, k: number) => {
+    void place('round_table', x, 0, z, 0.74, k, true);
+    void place(k % 2 ? 'frappe' : 'cup_tea', x + 0.08, 0.74, z - 0.05, k % 2 ? 0.2 : 0.075, k);
+    for (const a of [0.4 + k * 0.3, Math.PI + 0.4 + k * 0.3]) {
+      const ccx = x + Math.cos(a) * 0.68;
+      const ccz = z + Math.sin(a) * 0.68;
+      void place('chair', ccx, 0, ccz, 0.95, Math.atan2(x - ccx, z - ccz) + CHAIR_FACING, true);
     }
   };
-  table(-2.6, -1.4);
-  table(2.9, -0.6);
-  table(-2.9, 2.0);
-  table(2.6, 2.9);
+  table(-2.6, -1.4, 0);
+  table(2.9, -0.6, 1);
+  table(2.6, 2.9, 3);
+  // 窗边的沙发角（左前方）：沙发靠墙、茶几上一本书、对面一把休闲椅，底下圆地毯
+  void place('couch_medium', 0, 0, 2.0, 0.85, COUCH_RY, true, { minX: -W / 2 + 0.08 });
+  void place('rug_round', -3.4, 0.003, 2.0, 0.02);
+  void place('coffee_table', -3.35, 0, 2.0, 0.42, Math.PI / 2, true);
+  void place('book', -3.3, 0.42, 1.85, 0.05, 0.5);
+  void place('cup_tea', -3.4, 0.42, 2.25, 0.075, 2.0);
+  void place('lounge_chair', -2.15, 0, 2.15, 0.85, LOUNGE_RY, true);
+  // 吧台前两把吧台凳（都在头后面那块的两边）
+  for (const [x, ry] of [
+    [-2.15, 0.3],
+    [2.35, -0.5],
+  ] as const)
+    void place('bar_stool', x, 0, counterZ + 0.62, 0.78, ry, true);
+  // 吧台左边一组花瓶（CC-BY）
+  void place('vase', -1.95, counterTop, counterZ - 0.08, 0.22, 0);
+  // 吧台左端一盏小台灯
+  void place('lamp_round_table', -2.35, counterTop, counterZ - 0.05, 0.36, 0.3);
 
   // ---- 角落的大盆栽 ----
-  for (const [x, z] of [
-    [-4.4, BACK + 0.6],
-    [4.4, BACK + 0.6],
-    [4.3, FRONT - 0.7],
-  ]) {
-    cyl(0.22, 0.17, 0.42, pot, x, 0.21, z, 16);
-    for (let i = 0; i < 5; i++) {
-      const s = shaded(new THREE.Mesh(keep(new THREE.IcosahedronGeometry(0.26 - i * 0.025, 0)), leaf));
-      s.position.set(x + Math.sin(i * 2.1) * 0.12, 0.62 + i * 0.22, z + Math.cos(i * 2.1) * 0.12);
-      s.rotation.set(i, i * 0.7, 0);
-    }
-  }
+  for (const [x, z, file, h] of [
+    [-4.4, BACK + 0.6, 'houseplant_1', 1.25],
+    [4.4, BACK + 0.6, 'houseplant_2', 1.1],
+    [4.3, FRONT - 0.7, 'houseplant_3', 1.2],
+  ] as const)
+    void place(file, x, 0, z, h, x * 0.7, true);
 
   // ---- 脚下的接触阴影：主光的投影之外，脚底和地面接触处再压暗一点，人才"站在地上" ----
   const shadowTex = keep(
@@ -491,8 +607,7 @@ export function createCafe(): Backdrop {
   shadow.position.set(0, 0.002, 0);
   group.add(shadow);
 
-  // 防穿墙：除了脚下阴影、灯泡这类没有实体的，其余都挡镜头
-  const colliders: THREE.Object3D[] = [];
+  // 防穿墙：除了脚下阴影、灯泡这类没有实体的，其余都挡镜头（模型的包围盒在加载完时加进来）
   group.traverse((o) => {
     if ((o as THREE.Mesh).isMesh && o !== shadow && (o as THREE.Mesh).material !== bulbMat) colliders.push(o);
   });
@@ -507,6 +622,7 @@ export function createCafe(): Backdrop {
     environment: { url: `${import.meta.env.BASE_URL}scene/hdri/wooden_lounge_1k.hdr`, intensity: 0.5 },
     shadowBounds: 3,
     dispose() {
+      disposed = true;
       for (const d of disposables) d.dispose();
     },
   };

@@ -36,10 +36,52 @@ const MANIFEST = {
     'nagoya_wall_path', // 公园：打光
   ],
   // 显示出来的全景背景：Poly Haven 的 tonemapped JPG（8k、12MB 左右），本地缩到 BACKPLATE_W 宽再存。
-  // 公园试过用全景照片当背景（nagoya_wall_path），太糊，换成了 3D 的树和草，现在没有在用的
+  // 现在没有在用的：公园试过用全景照片当背景（nagoya_wall_path），太糊，换成了 3D 的树和草；
+  // 咖啡店的窗外试过一张街景全景（venetian_crossroads，按视线方向取景），效果不好，换回了 canvas 画的
   backplates: [],
 };
 const BACKPLATE_W = 4096;
+
+/**
+ * 咖啡店的小物件：Poly Pizza（https://poly.pizza）上的低多边形模型，GLB 直接从 static.poly.pizza 下。
+ * 风格统一用 Kenney 和 Quaternius（都是 CC0）；咖啡机 Kenney 只有家用滴漏式，用了 Zsky 的意式咖啡机（CC-BY，要署名）。
+ * [文件名, 模型页 id, 文件 uuid, 名字, 作者, 授权]
+ */
+const POLY_PIZZA = [
+  ['espresso_machine', 'kRpKjpQsEd', '607b3787-f8b7-4e68-a8ee-71d34cd91ced', 'Coffee Machine', 'Zsky', 'CC-BY 3.0'],
+  ['cup_tea', 'M2sVC8jbmi', '1a3b3f0c-c4af-464f-9cfa-de5117a615c4', 'Cup Tea', 'Kenney', 'CC0'],
+  ['cup', 'aSF8ANEIsX', '2b259313-45e2-405f-9b86-18d4ca25a785', 'Cup', 'Kenney', 'CC0'],
+  ['frappe', 'ZvYPiZeN0V', 'a3c0d8bc-884d-41b1-a0b3-1c2c01b65286', 'Frappe', 'Kenney', 'CC0'],
+  ['cake', 'KGFyP16ebH', 'f61250a2-8e56-4424-81f3-6a73a1549811', 'Cake', 'Kenney', 'CC0'],
+  ['cupcake', 'txZDsDca1L', '7b2e3b72-8ffd-4920-9134-c1b60e5ffe91', 'Cupcake', 'Kenney', 'CC0'],
+  ['muffin', 'YZWplO0tzB', '920e6336-6a29-4291-8d00-356d423c1230', 'Muffin', 'Kenney', 'CC0'],
+  ['donut_sprinkles', 'RnPNAFyKtY', '569364fd-8397-4e26-9ff5-2c4909fc6e27', 'Donut Sprinkles', 'Kenney', 'CC0'],
+  ['croissant', 'JDy2TUxcV2', 'b80d6d54-e846-41eb-8155-f84aeaccbcb1', 'Croissant', 'Kenney', 'CC0'],
+  ['bar_stool', '2do92chR2k', '92b747ab-ed11-47f4-bcfb-a218b0b7e439', 'Bar Stool', 'Kenney', 'CC0'],
+  ['round_table', 'AXbvcMDC8j', 'edb7217c-389f-4233-bfa5-aca3fe649e7c', 'Round Table', 'Kenney', 'CC0'],
+  ['chair', 'vHyrBYPBum', 'fca1766a-cc7b-4e22-a60f-49689446bd46', 'Chair', 'Kenney', 'CC0'],
+  ['light_ceiling', 'S3HkX8iTl2', '9c07c95e-c245-4db4-80eb-702fef5045ae', 'Light Ceiling', 'Quaternius', 'CC0'],
+  ['houseplant_1', 'bfLOqIV5uP', '1683c0b1-4dd9-4d45-910e-cf3e46f163f5', 'Houseplant', 'Quaternius', 'CC0'],
+  ['houseplant_2', 'Kr4kr7OCCQ', 'c087694b-eda0-426e-a5d6-a1f9b9d57a28', 'Houseplant', 'Quaternius', 'CC0'],
+  ['houseplant_3', 'VtJh4Irl4w', '6e6e6b19-011d-4b1d-9cc0-07269adec9fa', 'Houseplant', 'Quaternius', 'CC0'],
+  ['rug_round', 'jeDDiN69Ze', '06a5cc94-d146-4ee6-8506-1be516dc4dbd', 'Rug Round', 'Kenney', 'CC0'],
+  ['lamp_round_table', 'auXnXwXD7S', 'a9a2edf1-20f0-4069-846a-f1fc4717c2e8', 'Lamp Round Table', 'Kenney', 'CC0'],
+  // 第二批：地板、门窗、沙发角、书架、衣帽架和墙上的摆件（挂画、挂钟、花瓶只有 CC-BY 的）
+  ['wood_floor', 'Jw4zM0TcVo', '83f10b45-848d-42cc-bad6-75cb4c532176', 'Wood Floor', 'Quaternius', 'CC0'],
+  ['door_double', 'blrNJIEdns', '8e8d87b7-3a2a-4236-90ab-929ea78a10a0', 'Door Double', 'Quaternius', 'CC0'],
+  ['window_large', 'EipzkrS9nG', '23e1676f-9152-4fe9-917c-6b98aa66cbe0', 'Window Large', 'Quaternius', 'CC0'],
+  ['window_small', 'n88WAcjzTv', '0ab1cc08-63fe-4b22-a166-ea8ac20ae307', 'Window Small', 'Quaternius', 'CC0'],
+  ['couch_medium', 'mWgQ94zhDZ', '92a2404e-10d5-4c6a-a188-18b556474f8f', 'Couch Medium', 'Quaternius', 'CC0'],
+  ['lounge_chair', 'RY93lbAIFg', '21d3c956-0747-422c-b06d-6d4392380384', 'Lounge Chair', 'Kenney', 'CC0'],
+  ['coffee_table', 'y4ZU5S7RuD', '68c4bcbd-0c5d-42ee-ab91-4cce6672fa18', 'Coffee Table', 'Kenney', 'CC0'],
+  ['bookcase_books', 'tACDGJ4CGW', '7d59d0aa-6447-4bbb-afc7-0452e9a34353', 'Bookcase with Books', 'Quaternius', 'CC0'],
+  ['coat_rack_standing', '8jXUm32dKW', '04ca32d8-db2f-475b-b424-78c5a7e1c3e3', 'Coat Rack Standing', 'Kenney', 'CC0'],
+  ['book', 'h3Wh4fxSQX', 'e31bd2aa-b898-47a1-9480-9903fc207111', 'Book', 'Quaternius', 'CC0'],
+  ['wall_painting_1', '62zn39CRkbG', 'cd0af234-561a-461c-a048-0e0c58d96ac5', 'Wall painting', 'jeremy', 'CC-BY 3.0'],
+  ['wall_painting_2', '0CiZ4f1cZaF', '8b546a02-3167-4183-a4d8-6b6db5c65574', 'Wall painting', 'jeremy', 'CC-BY 3.0'],
+  ['analog_clock', '5gAoMR2YHs3', '83ac02a5-b467-464a-b874-17317b9e5dac', 'Analog clock', 'Poly by Google', 'CC-BY 3.0'],
+  ['vase', '7img3RnfCzZ', 'aa2dc7de-d0cc-4c4f-bdae-e702effbd553', 'Vase', 'Poly by Google', 'CC-BY 3.0'],
+];
 
 async function api(p) {
   const r = await fetch(`https://api.polyhaven.com/${p}`, { headers: UA });
@@ -110,12 +152,20 @@ async function main() {
     credits.push(`- 全景背景 [${info.name}](https://polyhaven.com/a/${id}) — ${Object.keys(info.authors ?? {}).join(', ')}`);
     console.log(`全景 ${id}`);
   }
+  const ppCredits = [];
+  for (const [file, id, uuid, name, author, licence] of POLY_PIZZA) {
+    await save(`https://static.poly.pizza/${uuid}.glb`, path.join(OUT, 'polypizza', `${file}.glb`));
+    ppCredits.push(`- [${name}](https://poly.pizza/m/${id}) — ${author}，${licence}`);
+  }
+  console.log(`Poly Pizza ${POLY_PIZZA.length} 个模型`);
   fs.writeFileSync(
     path.join(OUT, 'CREDITS.md'),
     `# 场景素材\n\n咖啡店场景本身是程序生成的（src/vrm/scenes/cafe.ts），这里只有它打光用的 HDRI；\n公园（src/vrm/scenes/park.ts）用全景背景 + 真实模型。\n\n全部来自 [Poly Haven](https://polyhaven.com)，**CC0**（公有领域，可商用、可再分发、不要求署名）。\n` +
       `由 \`scripts/fetch-scene-assets.mjs\` 下载（${RES} 分辨率）。署名不是必须的，这里列出作者以示感谢：\n\n${credits.join('\n')}\n` +
       `\n公园的树和灌木由 [ez-tree](https://github.com/dgreenheck/ez-tree)（npm \`@dgreenheck/ez-tree\`，© 2024 Daniel Greenheck，**MIT**）生成，` +
-      `树皮和树叶贴图打包在那个 npm 包里；\`eztree/grass.glb\`（草丛模型）来自 ez-tree 的演示场景，授权原文见 \`eztree/LICENSE\`。\n`,
+      `树皮和树叶贴图打包在那个 npm 包里；\`eztree/grass.glb\`（草丛模型）来自 ez-tree 的演示场景，授权原文见 \`eztree/LICENSE\`。\n` +
+      `\n## 咖啡店的小物件（\`polypizza/\`）\n\n来自 [Poly Pizza](https://poly.pizza)。CC0 的不要求署名；` +
+      `CC-BY（[Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/)）的必须署名，就是下面这样：\n\n${ppCredits.join('\n')}\n`,
   );
   console.log(`完成：新下载 ${downloaded} 个文件（${(bytes / 1e6).toFixed(1)}MB），跳过已有 ${skipped} 个`);
 }

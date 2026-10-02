@@ -22,8 +22,26 @@ export interface Backdrop {
   environment: { url: string; intensity: number; rotation?: number } | { scene: THREE.Scene; intensity: number };
   /** 投影的范围：舞台的主光只在这个盒子里算阴影（角色和身边的东西） */
   shadowBounds: number;
-  /** 舞台的主光投不投影（默认投）。室外场景有自己的太阳投影，主光就不投了，免得一个人两个影子 */
+  /** 舞台的主光投不投影（默认投） */
   keyShadow?: boolean;
+  /**
+   * 室外：舞台的主光当太阳用 —— 换成太阳的颜色、亮度和方向（position = 灯相对角色的位置），
+   * 阴影范围扩大到 ±bounds 米（树冠的影子、人的影子都由它投）。
+   * 为什么不另加一盏太阳：three.js 的灯没法只照场景、不照角色。另加的太阳照在脸上会把五官的明暗冲平；
+   * 主光不投影、太阳投影的话，主光又把地上的影子全冲淡了
+   */
+  sun?: {
+    color: number;
+    intensity: number;
+    bounds: number;
+    position?: [number, number, number];
+    /**
+     * 补光、轮廓光的亮度。它们是给室内人像定的（0.55 / 0.7），也照在地上、而且不投影 ——
+     * 晴天户外这两盏太亮，会把太阳的影子从别的方向照平（实测平台上的影子只比旁边暗一成多）
+     */
+    fill?: number;
+    rim?: number;
+  };
   /** 相机看多远（米，默认 20，室内够了；室外要看到远处的树和天空） */
   far?: number;
   /** 每帧调一次（风吹树叶、草） */

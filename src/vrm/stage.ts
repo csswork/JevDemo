@@ -119,6 +119,7 @@ export function createStage(canvas: HTMLCanvasElement) {
   key.shadow.bias = -0.0004;
   key.shadow.normalBias = 0.02;
   key.shadow.radius = 4;
+  const keyDefault = { color: key.color.getHex(), intensity: key.intensity, position: key.position.clone() };
 
   const fill = new THREE.DirectionalLight(0xdfe8ff, 0.55);
   fill.position.set(-1.6, 1.2, 1.0);
@@ -127,6 +128,8 @@ export function createStage(canvas: HTMLCanvasElement) {
   const rim = new THREE.DirectionalLight(0xffe9d6, 0.7);
   rim.position.set(-0.6, 1.6, -2.0);
   scene.add(rim);
+  const fillDefault = fill.intensity;
+  const rimDefault = rim.intensity;
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.75);
   scene.add(hemi);
@@ -180,11 +183,21 @@ export function createStage(canvas: HTMLCanvasElement) {
     hemi.groundColor.setHex(look.ground);
     hemi.intensity = look.intensity;
     scene.fog = backdrop?.fog ?? null;
-    key.castShadow = !!backdrop && backdrop.keyShadow !== false;
+    key.castShadow = !!backdrop && (backdrop.keyShadow !== false || !!backdrop.sun);
+    const sun = backdrop?.sun;
+    key.color.setHex(sun?.color ?? keyDefault.color);
+    key.intensity = sun?.intensity ?? keyDefault.intensity;
+    if (sun?.position) key.position.set(...sun.position);
+    else key.position.copy(keyDefault.position);
+    fill.intensity = sun?.fill ?? fillDefault;
+    rim.intensity = sun?.rim ?? rimDefault;
     if (backdrop) {
-      const r = backdrop.shadowBounds;
-      Object.assign(key.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 0.5, far: 12 });
+      // 当太阳用时阴影范围大：灯离目标只有 2.8m，近平面要放到灯"身后"，远处的树冠才进得了阴影
+      const r = sun?.bounds ?? backdrop.shadowBounds;
+      Object.assign(key.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: sun ? -40 : 0.5, far: sun ? 40 : 12 });
       key.shadow.camera.updateProjectionMatrix();
+      key.shadow.normalBias = sun ? 0.04 : 0.02;
+      key.shadow.radius = sun ? 3 : 4;
     }
   }
 
