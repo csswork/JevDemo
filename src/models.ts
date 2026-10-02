@@ -28,16 +28,37 @@ export interface ModelMeta {
   armOut?: number;
 }
 
+/** QUAPPA-EL 转换的模型（加密的 .vrmx），分部位表情都按语义形状名认 */
+function quappa(
+  id: string,
+  name: string,
+  code: string,
+  desc: string,
+  opts: { editor?: string; armOut?: number } = {},
+): ModelMeta {
+  return {
+    id,
+    name,
+    file: `quappa/${code}.vrmx`,
+    desc,
+    license: `©QUAPPA-ELの巣処${opts.editor ? `（${opts.editor}）` : ''} · 个人非商用`,
+    face: '分部位',
+    armOut: opts.armOut,
+  };
+}
+
 export const MODELS: ModelMeta[] = [
   { id: 'shino', name: '千駄ヶ谷 詩乃', file: 'Sendagaya_Shino.vrm', desc: '黑长直 · 制服', license: 'CC0', face: '分部位' },
-  {
-    id: 'himekawa',
-    name: '姫川 茶菰',
-    file: 'quappa/EL-Pr231_HIMEKAWA.vrmx',
-    desc: '黑发双马尾 · 衬衫',
-    license: '©QUAPPA-ELの巣処 · 个人非商用',
-    face: '分部位',
-  },
+  quappa('himekawa', '姫川 茶菰', 'EL-Pr231_HIMEKAWA', '黑发双马尾 · 衬衫'),
+  quappa('quelle', 'クウェレ', 'EL-F3U_Quelle', '猫耳银发双马尾 · 女仆装', { editor: 'Edit by SirAyane', armOut: 8 }),
+  quappa('menabell', 'メナベル・シーウィンド', 'EL-Pr236_Menabell', '粉金短发眼镜 · 红色连衣裙', { armOut: 8 }),
+  quappa('kuromatsu', '黒松 沙瑠紗', 'EL-Pr238_KUROMATSU', '黑发麻花辫眼镜 · 水手服开衫', { armOut: 4 }),
+  quappa('kananagi', '奏渚 汐藍', 'EL-Pr242_KANANAGI', '银发卷双马尾 · 白色吊带裙'),
+  quappa('fukuharae', '伏祓 七々春', 'EL-Pr243M1_FUKUHARAE', '紫发猫耳 · 朋克短上衣'),
+  quappa('inahade', '稲葉出ルエカ', 'EL-Pr250_INAHADE', '黑发卷双马尾眼镜 · T 恤短裤'),
+  quappa('rosastout', 'ローザスタウト', 'EL-Pr251_Rosastout', '粉红卷双马尾 · 朋克夹克'),
+  quappa('kotora', '小寅 百合ヰ', 'EL-Pr252_KOTORA', '橙发麻花辫 · 白衬衫蓝裙', { armOut: 5 }),
+  quappa('kotora_gym', '小寅 百合ヰ（体操服）', 'EL-Pr252_KOTORA_gym', '橙发麻花辫 · 体操服'),
   {
     id: 'vivi',
     name: 'Vivi',

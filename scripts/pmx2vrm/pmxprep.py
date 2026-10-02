@@ -17,8 +17,10 @@ def objects():
 
 
 def delete_hidden_materials(mesh, extra=()):
+    """extra：材质名里含这些子串的也删（默认可见但不该出现的：藏在头里靠变形弹出来的漫符 / 眼泪、恶搞部件…）"""
     slots = mesh.material_slots
-    hidden = {i for i, s in enumerate(slots) if s.material.mmd_material.alpha < 0.01 or s.material.name in extra}
+    hidden = {i for i, s in enumerate(slots)
+              if s.material.mmd_material.alpha < 0.01 or any(x in s.material.name for x in extra)}
     names = sorted(slots[i].material.name for i in hidden)
     bm = bmesh.new()
     bm.from_mesh(mesh.data)
@@ -267,3 +269,185 @@ def delete_mmd_extras(root, arm):
     arm.parent = None
     arm.matrix_world = mw
     bpy.data.objects.remove(root, do_unlink=True)
+
+
+# ---------------------------------------------------------------- 付与骨的跟随测试
+
+LIMB_ORDER = ['spine', 'chest', 'upper_chest', 'neck', 'head'] + [
+    f'{side}_{b}' for side in ('left', 'right')
+    for b in ('shoulder', 'upper_arm', 'lower_arm', 'hand', 'upper_leg', 'lower_leg', 'foot')]
+
+
+def fix_followers(arm, meshes, human, threshold=0.6):
+    """MMD 里靠付与 / IK 跟着某根人形骨转、层级上却不在它下面的骨（膝捩、D 骨…），VRM 里不会再跟着转，
+    蒙皮会被撕开。在还带着 mmd_tools 约束的骨架上逐根转一下人形骨，看哪些有权重的骨跟着转了
+    （≥ threshold 倍），挂到「最深的那根」人形骨下面。只跟一部分的（付与 0.5 之类）不动。
+    挂在根上的脚 IK 控制器测试时关掉，否则会把腿拽回原位。返回 {骨: 新父骨}"""
+    from mathutils import Quaternion, Vector
+    pbs, bones = arm.pose.bones, arm.data.bones
+    hum = set(human.values())
+
+    def under(name, roots):
+        b = bones.get(name)
+        while b:
+            if b.name in roots:
+                return True
+            b = b.parent
+        return False
+
+    muted = []
+    for pb in pbs:
+        for c in pb.constraints:
+            if c.type == 'IK' and not c.mute and not under(getattr(c, 'subtarget', '') or '', hum):
+                c.mute = True
+                muted.append(c)
+    weighted = sorted(n for n in weighted_bones(meshes) - hum if n in pbs)  # 顶点组里还有 mmd_edge_scale 之类不是骨骼的
+    ctx = bpy.context
+
+    def snap():
+        ctx.view_layer.update()
+        return {n: pbs[n].matrix.to_quaternion() for n in weighted}
+
+    rest = snap()
+    angle = 0.6
+    test = Quaternion(Vector((1, 1, 1)).normalized(), angle)
+    follow = {}
+    for key in LIMB_ORDER:
+        h = human.get(key)
+        if not h or h not in pbs:
+            continue
+        pb = pbs[h]
+        mode, oldq = pb.rotation_mode, pb.rotation_quaternion.copy()
+        pb.rotation_mode = 'QUATERNION'
+        pb.rotation_quaternion = test
+        now = snap()
+        for n in weighted:
+            if rest[n].rotation_difference(now[n]).angle >= threshold * angle:
+                follow[n] = h  # LIMB_ORDER 由根到梢，后面的（更深的）覆盖前面的
+        pb.rotation_quaternion = oldq
+        pb.rotation_mode = mode
+    for c in muted:
+        c.mute = False
+    ctx.view_layer.update()
+    moves = {n: h for n, h in follow.items() if not under(n, {h})}
+    if moves:
+        ctx.view_layer.objects.active = arm
+        bpy.ops.object.mode_set(mode='EDIT')
+        eb = arm.data.edit_bones
+        for n, h in moves.items():
+            eb[n].use_connect = False
+            eb[n].parent = eb[h]
+        bpy.ops.object.mode_set(mode='OBJECT')
+    return moves
+
+
+# ---------------------------------------------------------------- 材质的透明度（按材质实际用到的 UV 区域采样）
+
+def material_alpha(mesh):
+    """{材质名: (完全透明的比例, 半透明的比例)}。贴图常常几个材质共用，所以只看这个材质的面用到的那块"""
+    import numpy as np
+    me = mesh.data
+    uv = me.uv_layers.active
+    if not uv:
+        return {}
+    uvs = np.empty(len(me.loops) * 2, dtype=np.float32)
+    uv.data.foreach_get('uv', uvs)
+    uvs = uvs.reshape(-1, 2)
+    mi = np.empty(len(me.polygons), dtype=np.int32)
+    me.polygons.foreach_get('material_index', mi)
+    ls = np.empty(len(me.polygons), dtype=np.int32)
+    me.polygons.foreach_get('loop_start', ls)
+    lt = np.empty(len(me.polygons), dtype=np.int32)
+    me.polygons.foreach_get('loop_total', lt)
+    cache, out = {}, {}
+    for i, slot in enumerate(mesh.material_slots):
+        mat = slot.material
+        node = mat.node_tree.nodes.get('mmd_base_tex') if mat.node_tree else None
+        img = node.image if node else None
+        if not img or not img.size[0]:
+            continue
+        if img.name not in cache:
+            w, h = img.size
+            px = np.empty(w * h * 4, dtype=np.float32)
+            img.pixels.foreach_get(px)
+            cache[img.name] = px.reshape(h, w, 4)[:, :, 3]
+        a = cache[img.name]
+        polys = np.nonzero(mi == i)[0]
+        if not len(polys):
+            continue
+        idx = np.concatenate([np.arange(ls[p], ls[p] + lt[p]) for p in polys[:: max(1, len(polys) // 4000)]])
+        # 面中心也采一下（三角形的顶点常落在不透明的边上）
+        u = uvs[idx]
+        h, w = a.shape
+        x = (np.mod(u[:, 0], 1) * (w - 1)).astype(int)
+        y = (np.mod(u[:, 1], 1) * (h - 1)).astype(int)
+        s = a[y, x]
+        out[mat.name] = (float((s < 0.1).mean()), float(((s >= 0.1) & (s < 0.95)).mean()))
+    return out
+
+
+# ---------------------------------------------------------------- 形状对照表
+
+def render_sheet(mesh, arm, keys, out, eye_l='目.L', eye_r='目.R', head='頭', cols=7):
+    """每个形状键单独拉满，正交相机拍脸，拼成一张图（Workbench，贴图色）。第一格是中性脸"""
+    import math
+    import numpy as np
+    sc = bpy.context.scene
+    bones = arm.data.bones
+    eye = (bones[eye_l].head_local + bones[eye_r].head_local) / 2
+    hz = bones[head].head_local.z
+    eh = max(0.04, eye.z - hz)
+    for s in mesh.material_slots:
+        nt = s.material.node_tree
+        if nt and 'mmd_base_tex' in nt.nodes:
+            nt.nodes.active = nt.nodes['mmd_base_tex']
+    sc.render.engine = 'BLENDER_WORKBENCH'
+    sc.display.shading.light = 'FLAT'
+    sc.display.shading.color_type = 'TEXTURE'
+    res = 300
+    sc.render.resolution_x = sc.render.resolution_y = res
+    cam = bpy.data.objects.new('_sheet_cam', bpy.data.cameras.new('_sheet_cam'))
+    sc.collection.objects.link(cam)
+    sc.camera = cam
+    cam.data.type = 'ORTHO'
+    cam.data.ortho_scale = eh * 2.3
+    cam.location = (eye.x, eye.y - 1.0, eye.z - eh * 0.45)
+    cam.rotation_euler = (math.pi / 2, 0, 0)
+    hidden = []
+    for o in bpy.data.objects:
+        if o.type == 'MESH' and o != mesh and not o.hide_render:
+            o.hide_render = True
+            hidden.append(o)
+    kb = mesh.data.shape_keys.key_blocks
+    names = ['-'] + list(keys)
+    tiles = []
+    tmp = out + '.tile.png'
+    for n in names:
+        for k in kb:
+            k.value = 0
+        if n != '-':
+            kb[n].value = 1
+        bpy.ops.render.render(write_still=False)
+        bpy.data.images['Render Result'].save_render(tmp)
+        t = bpy.data.images.load(tmp)
+        tiles.append(np.array(t.pixels[:], dtype=np.float32).reshape(res, res, 4))
+        bpy.data.images.remove(t)
+    for k in kb:
+        k.value = 0
+    rows = math.ceil(len(tiles) / cols)
+    sheet = np.ones((rows * res, cols * res, 4), dtype=np.float32)
+    for i, a in enumerate(tiles):
+        r, c = divmod(i, cols)
+        sheet[(rows - 1 - r) * res:(rows - r) * res, c * res:(c + 1) * res] = a
+    im = bpy.data.images.new('_sheet', cols * res, rows * res)
+    im.pixels = sheet.ravel()
+    im.filepath_raw = out
+    im.file_format = 'JPEG'
+    im.save()
+    bpy.data.images.remove(im)
+    bpy.data.objects.remove(cam, do_unlink=True)
+    for o in hidden:
+        o.hide_render = False
+    import os
+    os.remove(tmp)
+    return names
