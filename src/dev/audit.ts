@@ -15,6 +15,8 @@ import { parseTestCommand } from '../jev/testCommand';
  *   __filmstrip('惊讶 80%', [0.3, 1, 2])   指定时刻的脸部特写拼图
  *   await __faces('faces_Vivi.jpg')        默认取景 + 六种表情，存到 dev-out/
  *   await __motionstrip('greeting')        一个动作按时间截全身，存到 dev-out/
+ *   await __motionstrip('laugh_cover', 8, 'x.jpg', { face: 35 })   脸部特写（水平转角 35°）
+ *   __clip('laugh_cover')                  穿模检测：手指有没有插进脸里（逐帧，按脸表面算深度）
  *   __closeup([x, y, z], fov) / __closeup(null)   替身相机特写 / 换回主相机
  *   await __views('cafe.jpg')              场景截图：几个固定机位（半身 / 全身 / 侧面 / 背后 / 俯视）拼一张图
  *   await __hands('hands.jpg', [0, 3, 6])  双手特写：每一行一个时刻，左右手各一张正面、一张外侧、再加一张上半身
@@ -251,7 +253,7 @@ export function installAudit(rt: Runtime) {
     id: MotionId,
     count = 8,
     name = `motion_${id}.jpg`,
-    opts: { bust?: boolean; talk?: boolean } = {},
+    opts: { bust?: boolean; talk?: boolean; face?: number } = {},
   ) => {
     if (!(MOTIONS as readonly string[]).includes(id)) return `没有这个动作：${id}`;
     const stage = rt.stage!;
@@ -283,7 +285,11 @@ export function installAudit(rt: Runtime) {
         rt.step(1 / 60);
         t += 1 / 60;
       }
-      if (opts.bust) {
+      if (opts.face != null) {
+        // face = 脸部特写，数值是水平转角（0 = 正面，35 = 从角色左前方看）
+        const head = node('head').getWorldPosition(new THREE.Vector3());
+        closeup([head.x, head.y - 0.02, head.z], 22, opts.face);
+      } else if (opts.bust) {
         stage.view.camera = null;
         stage.render();
       } else closeup([0, hips.y + 0.05, 0], 56);
@@ -444,9 +450,74 @@ export function installAudit(rt: Runtime) {
     return { ...saved, ...talk, notes };
   };
 
+  /**
+   * 穿模检测：播一个动作，逐帧看右手每根手指的指尖和中节在不在脸表面后面（插进脸里）。
+   * 从手指正前方（按头的朝向）朝脸打射线，只认脸部的网格（名字里带 face），
+   * 手指比脸表面更靠里就是穿模，记下最深的一次。截图斜着看分不清手指在脸前面还是脸里面，靠这个
+   */
+  const clip = async (id: MotionId = 'laugh_cover', side: 'left' | 'right' = 'right', every = 4) => {
+    const c = ch();
+    const H = vrm().humanoid;
+    rt.stopMotion();
+    for (let i = 0; i < 60; i++) rt.step(1 / 60);
+    if (!(await c.playMotion(id))) return `动作不在：${id}`;
+    // 蒙皮网格的射线检测很慢（每个顶点都要算骨骼变换）：只测脸部皮肤那一块（材质名带 skin），没有再退回所有脸部网格
+    const all: THREE.Mesh[] = [];
+    vrm().scene.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && /face/i.test(o.name)) all.push(o as THREE.Mesh);
+    });
+    const mats = (m: THREE.Mesh) => (Array.isArray(m.material) ? m.material : [m.material]);
+    const skin = all.filter((m) => mats(m).some((x) => /skin/i.test(x.name)));
+    const faces = skin.length ? skin : all;
+    if (!faces.length) return '这个模型找不到脸部网格（名字里带 face 的），没法检测';
+    const head = H.getNormalizedBoneNode('head')!;
+    const flip = (vrm().meta as { metaVersion?: string }).metaVersion === '0' ? -1 : 1;
+    const ray = new THREE.Raycaster();
+    const worst: Record<string, { depth: number; t: number }> = {};
+    const fingers = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
+    let t = 0;
+    let frame = 0;
+    const dur = c.currentMotion?.duration ?? 4;
+    while (t < dur) {
+      rt.step(1 / 60);
+      t += 1 / 60;
+      if (frame++ % every) continue;
+      vrm().scene.updateMatrixWorld(true);
+      const fwd = new THREE.Vector3(0, 0, flip).applyQuaternion(head.getWorldQuaternion(new THREE.Quaternion()));
+      for (const f of fingers) {
+        const mid = H.getRawBoneNode(`${side}${f}${f === 'Thumb' ? 'Proximal' : 'Intermediate'}` as VRMHumanBoneName);
+        const dist = H.getRawBoneNode(`${side}${f}Distal` as VRMHumanBoneName);
+        if (!mid || !dist) continue;
+        const a = mid.getWorldPosition(new THREE.Vector3());
+        const b = dist.getWorldPosition(new THREE.Vector3());
+        // 指尖：远节骨骼的起点再顺着手指往外一节
+        const tip = b.clone().add(b.clone().sub(a).multiplyScalar(0.8));
+        for (const [label, p] of [
+          [`${f} 指尖`, tip],
+          [`${f} 中节`, b],
+        ] as const) {
+          ray.set(p.clone().addScaledVector(fwd, 0.25), fwd.clone().negate());
+          ray.far = 0.5;
+          const hit = ray.intersectObjects(faces, false)[0];
+          if (!hit) continue;
+          // 正 = 在脸表面后面（插进去了）多少米
+          const depth = hit.point.clone().sub(p).dot(fwd);
+          if (depth > (worst[label]?.depth ?? 0)) worst[label] = { depth, t };
+        }
+      }
+    }
+    rt.stopMotion();
+    const rows = Object.entries(worst)
+      .filter(([, v]) => v.depth > 0.001)
+      .sort((x, y) => y[1].depth - x[1].depth)
+      .map(([k, v]) => `${k} 插进去 ${(v.depth * 100).toFixed(1)}cm（${v.t.toFixed(2)}s）`);
+    return rows.length ? rows.join('\n') : '没有穿模（手指都在脸表面前面）';
+  };
+
   const w = window as unknown as Record<string, unknown>;
   w.__views = views;
   w.__hands = hands;
+  w.__clip = clip;
   w.__faces = faces;
   w.__trace = trace;
   w.__filmstrip = filmstrip;

@@ -230,6 +230,7 @@ export class Character {
       this.idle.setBaseWeight(this.motion.baseWeight);
       this.idle.update(dt, this.acc);
       this.gesture.update(dt);
+      for (const cue of this.gesture.takeCues()) this.expression.cue(cue);
       this.gesture.addOffsets(this.acc);
       this.hands.setShape('left', this.gesture.handShape('left'));
       this.hands.setShape('right', this.gesture.handShape('right'));

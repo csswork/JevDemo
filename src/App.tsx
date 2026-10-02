@@ -938,7 +938,8 @@ export default function App() {
             </summary>
             <div className="hint">
               只在开发环境出现，不进生产构建。动作是 VRoid 官方的动捕（.vrma），
-              从当前姿势交叉淡入；对话里只有打招呼、比耶、转圈会自动触发（act/motionRules.ts）。
+              从当前姿势交叉淡入；「掩嘴笑」是程序生成的（vrm/gestures.ts），预览时带着开心的表情。
+              对话里只有打招呼、比耶、转圈会自动触发（act/motionRules.ts）。
             </div>
 
             <div className="preview-row">

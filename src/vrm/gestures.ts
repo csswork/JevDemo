@@ -61,6 +61,8 @@ export class GestureLayer {
   private vrm: VRM | null = null;
   private flip = 1;
   private playing: Playing | null = null;
+  /** 这一帧到点的节奏信号（Character 转给表情层：笑声的起伏只叠在已经带笑的脸上，不设定情绪） */
+  private cues: Array<'laugh'> = [];
   /** 嘴（脸表面）在头部局部坐标里的位置，按模型缓存 */
   private mouthLocal: THREE.Vector3 | null = null;
 
@@ -105,16 +107,27 @@ export class GestureLayer {
     return p && p.leaving == null ? { id: p.id, t: p.t, duration: GESTURES[p.id].duration } : null;
   }
 
+  takeCues() {
+    const c = this.cues;
+    this.cues = [];
+    return c;
+  }
+
   /** 掩嘴的那只手的手形 */
   handShape(side: Side): HandShape | null {
     if (!this.playing || side !== 'right') return null;
+    // 手指并拢、基本伸直（比放松时还直一点），拇指收在食指旁边。
+    // 试过让手指弯起来：掌心朝着脸，手指一弯指尖就折进嘴唇和脸颊里（穿模）
     return { weight: this.reach, curl: -5, close: 1, thumb: 8 };
   }
 
   update(dt: number) {
     const p = this.playing;
     if (!p) return;
+    const before = p.t;
     p.t += dt * p.speed;
+    // 两声笑：开始耸肩的时候、中间再一次
+    for (const at of [0.55, 1.3]) if (before < at && p.t >= at && p.leaving == null) this.cues.push('laugh');
     const dur = GESTURES[p.id].duration;
     let k = 1;
     if (p.leaving != null) {
@@ -129,10 +142,12 @@ export class GestureLayer {
     }
     const t = Math.min(p.t, dur);
     // ---- 掩嘴笑 ----
-    // 手：0.12s 起手，0.72s 到嘴边；停到 2.45s，2.45~3.25s 放下
-    this.reach = rise(t, 0.12, 0.72) * (1 - rise(t, 2.45, 3.25)) * k;
-    // IK 在起手的前四分之一就完全接管，之后靠路径控制手怎么走
-    this.armW = Math.min(1, smoother(this.reach * 4)) * k;
+    // 手：0.12s 起手，0.78s 到嘴边；停到 2.45s，2.45~3.25s 放下
+    this.reach = rise(t, 0.12, 0.78) * (1 - rise(t, 2.45, 3.25)) * k;
+    // IK 的接管和交还按时间慢慢来（各 0.25s）。起手和放下时 IK 的肘部方向跟着 FK 走（见 solve），
+    // 两边的姿势本来就几乎一样，混起来不会"抽一下"。第一版按进度的前四分之一就接管，
+    // 实测起手那一下手臂转得有 976°/s
+    this.armW = rise(t, 0, 0.25) * (1 - rise(t, 3.12, 3.38)) * k;
     // 身体：先吸一口气，再往前倾、低头、歪头；手放下时回正
     const lean = rise(t, 0.2, 0.8) * (1 - rise(t, 2.5, 3.35));
     const inhale = bump(t / 0.45);
@@ -200,7 +215,9 @@ export class GestureLayer {
     right.set(-m, 0, 0).applyQuaternion(qHead);
     head.localToWorld(M.copy(this.mouthLocal));
 
-    // 掌心朝着嘴，手指往上、往脸的另一侧斜（45° 左右），并拢的手指盖在嘴前面
+    // 掌心朝着嘴，手指往上、往脸的另一侧斜，并拢的手指盖在嘴前面。
+    // 试过把手往下、往侧边挪、手指斜得更平（想让鼻子露出来）：嘴和下巴那一带的脸是往前凸的，
+    // 手指伸到脸中间就插进去了。这一版（第一版）的位置是看过之后定下来的，改之前先跑穿模检测
     const fingers = new THREE.Vector3().copy(up).multiplyScalar(0.78).addScaledVector(right, -0.55).addScaledVector(fwd, 0.12).normalize();
     const palm = new THREE.Vector3().copy(fwd).negate();
     palm.addScaledVector(fingers, -palm.dot(fingers)).normalize();
@@ -208,9 +225,9 @@ export class GestureLayer {
     const knuckles = tmp.copy(M).addScaledVector(fwd, 0.03).addScaledVector(up, -0.018).addScaledVector(right, 0.012);
     const goal = new THREE.Vector3().copy(knuckles).addScaledVector(fingers, -reachLen);
 
-    // 路径：从这一帧 FK 的手腕位置出发，往前鼓一个弧再到嘴边 —— 不贴着胸口往上蹭
+    // 路径：从这一帧 FK 的手腕位置出发，往前鼓一个弧再到嘴边 —— 不贴着胸口往上蹭（0.13 时放下来那一段手掌还会碰到胸口）
     const s = this.reach;
-    const ctrl = new THREE.Vector3().copy(W0).lerp(goal, 0.5).addScaledVector(fwd, 0.13);
+    const ctrl = new THREE.Vector3().copy(W0).lerp(goal, 0.5).addScaledVector(fwd, 0.17);
     const T = new THREE.Vector3()
       .copy(W0)
       .multiplyScalar((1 - s) * (1 - s))
@@ -223,6 +240,13 @@ export class GestureLayer {
     toT.normalize();
     const pole = new THREE.Vector3().copy(up).negate().addScaledVector(right, 0.35).addScaledVector(fwd, 0.15);
     pole.addScaledVector(toT, -pole.dot(toT)).normalize();
+    // 起手时肘部的方向从 FK 的肘出发，随着抬手慢慢转到目标方向：手还在体侧时 IK 的解就是 FK 的姿势
+    const fkPole = new THREE.Vector3().subVectors(E0, S);
+    fkPole.addScaledVector(toT, -fkPole.dot(toT));
+    if (fkPole.lengthSq() > 1e-8) {
+      fkPole.normalize();
+      pole.lerp(fkPole, 1 - smoother(s * 1.6)).normalize();
+    }
     const cosA = (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d);
     const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
     const E1 = new THREE.Vector3().copy(S).addScaledVector(toT, L1 * cosA).addScaledVector(pole, L1 * sinA);
