@@ -1,15 +1,12 @@
 QUAPPA-EL 模型（MMD / PMX → VRM 转换）   製作者：quappael   ©QUAPPA-ELの巣処
 
-  EL-Pr231_HIMEKAWA        姫川 茶菰
   EL-F3U_Quelle            クウェレ（Edit by SirAyane）
   EL-Pr236_Menabell        メナベル・シーウィンド
   EL-Pr238_KUROMATSU       黒松 沙瑠紗
-  EL-Pr242_KANANAGI        奏渚 汐藍
   EL-Pr243M1_FUKUHARAE     伏祓 七々春（カジュアルパンク）
   EL-Pr250_INAHADE         稲葉出ルエカ
   EL-Pr251_Rosastout       ローザスタウト
   EL-Pr252_KOTORA          小寅 百合ヰ
-  EL-Pr252_KOTORA_gym      小寅 百合ヰ（体操服）
 
 规约：https://www.quappael.com/license （配布モデルライセンス規約）
 

@@ -313,30 +313,33 @@ export default function App() {
     if (runtimeRef.current) runtimeRef.current.ttsEnabled = tts && !voice.ready;
   }, [tts, voice.ready]);
 
-  // 切到别的 tab，或者浏览器/窗口失去焦点：把声音停掉，回来再恢复。
+  // 只有「这个窗口在前台，并且这个 tab 是当前 tab」时才出声：切到别的 tab、别的窗口都停，两样都回来才恢复。
   //
-  // 每个事件各管一件事，**不要**把 document.hidden 和 hasFocus() 做与运算 ——
-  // 实测那样会卡死：休眠唤醒 / 浏览器恢复之后，标签页变可见的那一瞬间
-  // document.hasFocus() 可能还是 false（那次可见事件被判成"不在前台"，
-  // 状态没变化，直接 return），而随后的 focus 事件有时压根不来，于是永久静音。
-  // 所以除了三个主信号，还挂了两个兜底。
+  // 每次有事件都按当前状态重新判一遍，而不是一个事件管一件事 —— 后者会漏：从别的窗口直接点回
+  // 这个窗口里的另一个 tab 时，这个页面先变成隐藏，随后还会收到一个迟到的 focus，按"focus 就恢复"
+  // 的写法，声音就在后台的 tab 里响起来了。
+  //
+  // 以前不敢把 document.hidden 和 hasFocus() 合起来判断：休眠唤醒 / 浏览器恢复之后，标签页变可见的
+  // 那一瞬间 hasFocus() 可能还是 false，随后的 focus 事件有时压根不来，于是永久静音。
+  // 现在加了每秒一次的复查兜住这种情况（setPageActive 只在状态真的变化时才做事，平时没有开销；
+  // 后台 tab 的定时器被浏览器节流，本来也该是静音的）。
   useEffect(() => {
-    const pause = () => runtimeRef.current?.setPageActive(false);
-    const resume = () => runtimeRef.current?.setPageActive(true);
-    const onVisibility = () => (document.hidden ? pause() : resume());
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('blur', pause);
-    window.addEventListener('focus', resume);
-    // 兜底：用户一动就说明页面在前台。setPageActive 只在状态真的变化时才做事，挂着没有开销
-    window.addEventListener('pointerdown', resume);
-    window.addEventListener('keydown', resume);
-    if (document.hidden) pause();
+    const evaluate = () => runtimeRef.current?.setPageActive(!document.hidden && document.hasFocus());
+    const events: Array<[EventTarget, string]> = [
+      [document, 'visibilitychange'],
+      [window, 'blur'],
+      [window, 'focus'],
+      [window, 'pageshow'],
+      // 兜底：用户一动就说明页面在前台
+      [window, 'pointerdown'],
+      [window, 'keydown'],
+    ];
+    for (const [t, e] of events) t.addEventListener(e, evaluate);
+    const timer = window.setInterval(evaluate, 1000);
+    evaluate();
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('blur', pause);
-      window.removeEventListener('focus', resume);
-      window.removeEventListener('pointerdown', resume);
-      window.removeEventListener('keydown', resume);
+      for (const [t, e] of events) t.removeEventListener(e, evaluate);
+      clearInterval(timer);
     };
   }, []);
 

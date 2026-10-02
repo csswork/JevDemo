@@ -139,9 +139,6 @@ export const MODELS: ModelMeta[] = [
     voice: 'Bellona',
   },
   // 下面的不在下拉框里
-  quappa('himekawa', '茶菰', 'EL-Pr231_HIMEKAWA', '沉稳吧台手 · 双马尾衬衫', { voice: 'Maia', hidden: true }),
-  quappa('kananagi', '汐蓝', 'EL-Pr242_KANANAGI', '悠闲海边少女 · 白色吊带裙', { voice: 'Serena', hidden: true }),
-  quappa('kotora_gym', '莉莉（体操服）', 'EL-Pr252_KOTORA_gym', '元气短跑少女 · 体操服', { voice: 'Bella', hidden: true }),
   {
     id: 'perfect_sync',
     name: '素',
