@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { canvasTexture, rng, type Backdrop } from './common';
 import { AMBIENCE_VOLUME } from '../../speech/ambience';
+import { createDust, createLightShafts, type Shaft } from './sunlight';
 
 /**
  * 背景场景：城市公园里的木栈道（照着一张实拍的公园照片搭的），全 3D：
@@ -14,7 +15,8 @@ import { AMBIENCE_VOLUME } from '../../speech/ambience';
  *   鲜花      近景一簇一簇的白、蓝、黄小花（同样来自 ez-tree 的演示场景），平台四周、栈道两侧、灌木前面
  *   近处      旧木平台和栈道（Poly Haven weathered_brown_planks）、欧式路灯（street_lamp_01）、青苔石头
  *             （rock_moss_set_01 里挑几块缩小）、树桩凳和长凳、落叶
- *   天空      平滑的渐变（天空球），远处一层淡淡的雾接上地平线
+ *   天空      平滑的渐变（天空球，太阳那一侧发亮），雾从 20m 开始、和地平线同色，远处的树一层比一层淡
+ *   阳光      树冠里斜着漏下来的光柱（丁达尔效应）和光里飘的尘埃，见 sunlight.ts
  *
  * 试过的另外两版：全程序生成（几何体 + canvas 画的叶子，树冠一团一团的，很假）；
  * Poly Haven 的公园全景照片投影成地面和天空（远景一张图，太糊）。
@@ -92,6 +94,33 @@ const TILE = 1.8;
  */
 const SUN_POS: [number, number, number] = [2.1, 2.0, 0.5];
 const SUN_AZ = new THREE.Vector2(SUN_POS[0], SUN_POS[2]).normalize();
+const SUN_DIR = new THREE.Vector3(...SUN_POS).normalize();
+
+/**
+ * 树冠里漏下来的光柱：[落地点 x, z, 宽度, 亮度]。光柱从落地点往太阳方向（右上）斜着伸进树冠。
+ * 半身景别看到的是她身后很窄的一条（长焦 24°），光柱要落在画面里才看得到：近处的放在两侧，
+ * 中景、远景的才往中间放 —— 头后面那块不放亮的，脸的对比要留着。
+ */
+const SHAFTS: Array<[number, number, number, number]> = [
+  // 平台边：右后方从树冠空隙照到平台上的那一束，左边一束细的
+  [1.6, -1.4, 1.2, 0.65],
+  [-2.7, -3.2, 0.9, 0.75],
+  // 中景：画面两侧（中间那两根穿过头后面，压暗）
+  [-3.8, -4.6, 1.0, 0.8],
+  [3.0, -5.5, 1.1, 0.75],
+  [-4.6, -6.4, 1.7, 0.9],
+  [0.9, -7.8, 1.0, 0.36],
+  [-2.0, -10.2, 2.2, 0.5],
+  [2.6, -12.2, 1.4, 0.75],
+  [-6.8, -13.0, 2.6, 0.85],
+  [-1.2, -14.5, 1.6, 0.6],
+  // 远景：粗一些，被雾吃掉一半
+  [-3.2, -17.5, 3.0, 0.65],
+  [1.4, -21.0, 2.4, 0.55],
+  [-8.5, -22.0, 3.6, 0.62],
+  [-2.2, -28.0, 4.2, 0.52],
+  [4.2, -30.0, 3.4, 0.45],
+];
 
 /**
  * 树的变体：ez-tree 的预设 + 种子 + 真实高度（米）+ 叶子多几倍。
@@ -290,14 +319,20 @@ export function createPark(): Backdrop {
 
   // ---- 天空 ----
   {
-    const SKY_TOP = new THREE.Color(0x8fc1ea);
-    const HORIZON = new THREE.Color(0xd3e3c6);
-    const g = keep(new THREE.SphereGeometry(150, 32, 16));
+    const SKY_TOP = new THREE.Color(0x86bff0);
+    // 地平线和雾同色（雾接得上），偏暖：晴天午后的薄雾
+    const HORIZON = new THREE.Color(0xd8e3c6);
+    // 太阳那一侧的天空发亮（光晕），转到侧面、背面时看得到
+    const GLOW = new THREE.Color(0xfff3d6);
+    const g = keep(new THREE.SphereGeometry(150, 48, 24));
     const p = g.attributes.position;
     const col: number[] = [];
     const c = new THREE.Color();
+    const dir = new THREE.Vector3();
     for (let i = 0; i < p.count; i++) {
       c.copy(HORIZON).lerp(SKY_TOP, smoothstep(0, 0.55, p.getY(i) / 150));
+      dir.fromBufferAttribute(p, i).normalize();
+      c.lerp(GLOW, 0.85 * Math.max(0, dir.dot(SUN_DIR)) ** 6);
       col.push(c.r, c.g, c.b);
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -305,6 +340,59 @@ export function createPark(): Backdrop {
     sky.renderOrder = -1;
     group.add(sky);
   }
+
+  // ---- 阳光：光柱 + 光里的尘埃（见 sunlight.ts）----
+  const shafts = keep(
+    createLightShafts(
+      SHAFTS.map(([x, z, width, intensity], i): Shaft => ({
+        ground: [x, groundY(x, z), z],
+        // 顶端埋进树冠（离地 12~15m）
+        length: (12 + (i % 4)) / SUN_DIR.y,
+        width,
+        intensity,
+      })),
+      SUN_DIR,
+    ),
+  );
+  group.add(shafts.mesh);
+  const dust = (() => {
+    // 单独的随机数：和树、花共用一个的话，后面所有东西的位置都会变
+    const rd = rng(77);
+    const pts: THREE.Vector3[] = [];
+    const lum: number[] = [];
+    /** 头前面、头后面那一条不放：粒子糊在脸上很脏 */
+    const nearFace = (p: THREE.Vector3) => p.z > -0.7 && Math.abs(p.x) < 0.9;
+    const side = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    // 光柱里：沿光柱轴（地面往上 0.3~4.5m）撒，横向不出光柱
+    for (const [x, z, width] of SHAFTS) {
+      if (z < -14) continue;
+      const g = new THREE.Vector3(x, groundY(x, z), z);
+      side.crossVectors(SUN_DIR, new THREE.Vector3(0, 0, 1)).normalize();
+      up.crossVectors(side, SUN_DIR).normalize();
+      const n = Math.round(70 * width);
+      for (let k = 0; k < n; k++) {
+        const h = 0.3 + rd() * 4.2;
+        const a = rd() * Math.PI * 2;
+        const rad = Math.sqrt(rd()) * width * 0.4;
+        const pt = g.clone().addScaledVector(SUN_DIR, h / SUN_DIR.y)
+          .addScaledVector(side, Math.cos(a) * rad)
+          .addScaledVector(up, Math.sin(a) * rad);
+        if (nearFace(pt)) continue;
+        pts.push(pt);
+        lum.push(0.8 + rd() * 0.7);
+      }
+    }
+    // 光柱外：平台四周零星的几颗，暗一些
+    for (let k = 0; k < 260; k++) {
+      const pt = new THREE.Vector3(-4.5 + rd() * 9, 0.3 + rd() * 3, -8 + rd() * 8.6);
+      if (nearFace(pt)) continue;
+      pts.push(pt);
+      lum.push(0.25 + rd() * 0.3);
+    }
+    return keep(createDust(pts, lum));
+  })();
+  group.add(dust.points);
 
   // ---- 平台 + 栈道 ----
   {
@@ -819,8 +907,11 @@ export function createPark(): Backdrop {
     // 环境光（半球光 + IBL）压低、太阳调亮：户外阳光比天光亮好几倍。
     // 之前两边差不多亮，影子里被环境光填满，人和树的影子淡到看不出来
     hemisphere: { sky: 0xe2f0ff, ground: 0x6a8a48, intensity: 0.42 },
-    fog: new THREE.Fog(0xd3e3c6, 30, 120),
-    environment: { url: `${BASE}hdri/nagoya_wall_path_1k.hdr`, intensity: 0.1, rotation: THREE.MathUtils.degToRad(126) },
+    // 雾从近处就开始（和地平线同色）：远处的树一层比一层淡，前中后景拉开。
+    // 颜色别太白 —— 光柱是加上去的暖光，衬着一片白雾就看不出来了
+    fog: new THREE.Fog(0xd8e3c6, 20, 120),
+    // IBL 只照背景（角色的 MToon 不吃环境贴图）：比之前亮一点，背景不发闷；再高影子会被填掉
+    environment: { url: `${BASE}hdri/nagoya_wall_path_1k.hdr`, intensity: 0.2, rotation: THREE.MathUtils.degToRad(126) },
     // 春天的鸟叫和啄木鸟（Resaural, CC0），作者录的就是无缝循环。说话时自动压低
     ambience: `${import.meta.env.BASE_URL}audio/park.ogg`,
     // 鸟鸣是远处录的，默认音量下偏小：比默认高 35%（咖啡店那条保持默认，正合适）
@@ -832,6 +923,8 @@ export function createPark(): Backdrop {
       time += dt;
       wind.uTime.value = time;
       for (const t of windTrees) t.update(time);
+      shafts.update(time);
+      dust.update(time);
     },
     dispose() {
       disposed = true;
