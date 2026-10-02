@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { canvasTexture, rng, type Backdrop } from './common';
+
+export type { Backdrop };
 
 /**
  * 背景场景：一家小咖啡店的店内。全部程序生成（几何体 + canvas 画的贴图），没有外部模型和材质素材。
@@ -29,44 +32,6 @@ const D = 10; // 房间深（z）
 const H = 3.2; // 层高
 const BACK = -5; // 后墙 z
 const FRONT = BACK + D; // 前墙 z
-
-export interface Backdrop {
-  group: THREE.Group;
-  /** 场景里额外的灯（会被加进舞台） */
-  lights: THREE.Light[];
-  /** 镜头不能穿过的东西（墙、地、吧台、桌椅……），舞台用来做防穿墙 */
-  colliders: THREE.Object3D[];
-  /** 场景开着时半球光换成的颜色（让角色的环境光和店里的色调一致） */
-  hemisphere: { sky: number; ground: number; intensity: number };
-  fog: THREE.Fog;
-  /** 环境光（IBL）用的 HDRI，舞台负责转成 PMREM；intensity = scene.environmentIntensity */
-  environment: { url: string; intensity: number };
-  /** 投影的范围：舞台的主光只在这个盒子里算阴影（角色和身边的东西） */
-  shadowBounds: number;
-  dispose(): void;
-}
-
-/** canvas 画一张贴图 */
-function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, repeat?: [number, number]) {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d')!);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  if (repeat) {
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(...repeat);
-  }
-  return t;
-}
-
-/** 可复现的伪随机（每次打开店里的摆设都一样） */
-function rng(seed: number) {
-  let s = seed;
-  return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
-}
 
 function woodFloor() {
   const r = rng(7);

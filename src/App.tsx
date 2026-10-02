@@ -22,6 +22,7 @@ const MODEL_KEY = 'jev.model';
 const BACKDROP_KEY = 'jev.backdrop';
 const BACKDROPS: Array<{ id: BackdropId; label: string }> = [
   { id: 'cafe', label: '咖啡店' },
+  { id: 'park', label: '公园' },
   { id: 'none', label: '纯色背景' },
 ];
 function savedBackdrop(): BackdropId {

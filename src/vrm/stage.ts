@@ -1,10 +1,18 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
-import { createCafe, type Backdrop } from './scenes/cafe';
+import type { Backdrop } from './scenes/common';
+import { createCafe } from './scenes/cafe';
+import { createPark } from './scenes/park';
 
-/** 背景：none = 原来的纯色渐变（CSS 画的，画布透明）；cafe = 咖啡店店内（scenes/cafe.ts） */
-export type BackdropId = 'none' | 'cafe';
+/**
+ * 背景：none = 原来的纯色渐变（CSS 画的，画布透明）；cafe = 咖啡店店内（scenes/cafe.ts）；
+ * park = 公园的木栈道（scenes/park.ts）
+ */
+export type BackdropId = 'none' | 'cafe' | 'park';
+const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, park: createPark };
+/** 相机默认看多远（室内够了；室外场景自己给，见 Backdrop.far） */
+const FAR = 20;
 
 /** three.js 场景骨架：相机、灯光、背景、resize。与 VRM 无关，便于单独调。 */
 export function createStage(canvas: HTMLCanvasElement) {
@@ -23,7 +31,7 @@ export function createStage(canvas: HTMLCanvasElement) {
   //
   // 焦段用长的（24° 而非 30°+）：短焦会把鼻子推近、脸拉变形。
   // 长焦 + 拉远是拍人像的通行做法，五官关系更正。
-  const camera = new THREE.PerspectiveCamera(24, 1, 0.1, 20);
+  const camera = new THREE.PerspectiveCamera(24, 1, 0.1, FAR);
   camera.position.set(0, 1.42, 1.58);
   const lookTarget = new THREE.Vector3(0, 1.395, 0);
   camera.lookAt(lookTarget);
@@ -130,8 +138,9 @@ export function createStage(canvas: HTMLCanvasElement) {
   let envMap: THREE.Texture | null = null;
   const pmrem = new THREE.PMREMGenerator(renderer);
   /**
-   * 换背景。场景里的灯一起加进来；半球光换成店里的色调，角色的环境光和背景一致；
-   * 场景的 HDRI 转成环境光（IBL，只影响场景里的 PBR 材质，角色的 MToon 不吃环境贴图）；主光开始投影
+   * 换背景。场景里的灯一起加进来；半球光换成场景的色调，角色的环境光和背景一致；
+   * 场景的 HDRI（或者场景给的天空小场景）转成环境光（IBL，只影响场景里的 PBR 材质，角色的 MToon 不吃环境贴图）；
+   * 主光开始投影（室外场景有自己的太阳投影时不投）
    */
   function setBackdrop(id: BackdropId) {
     if (id === backdropId) return;
@@ -144,24 +153,32 @@ export function createStage(canvas: HTMLCanvasElement) {
     envMap = null;
     scene.environment = null;
     backdropId = id;
-    if (id === 'cafe') {
-      const b = createCafe();
+    if (id !== 'none') {
+      const b = BACKDROPS[id]();
       backdrop = b;
       scene.add(b.group, ...b.lights);
-      new HDRLoader().load(b.environment.url, (hdr) => {
-        if (backdrop !== b) return hdr.dispose();
-        envMap = pmrem.fromEquirectangular(hdr).texture;
-        hdr.dispose();
+      const env = b.environment;
+      scene.environmentIntensity = env.intensity;
+      if ('url' in env) {
+        new HDRLoader().load(env.url, (hdr) => {
+          if (backdrop !== b) return hdr.dispose();
+          envMap = pmrem.fromEquirectangular(hdr).texture;
+          hdr.dispose();
+          scene.environment = envMap;
+        });
+      } else {
+        envMap = pmrem.fromScene(env.scene, 0.02, 0.1, 200).texture;
         scene.environment = envMap;
-        scene.environmentIntensity = b.environment.intensity;
-      });
+      }
     }
+    camera.far = backdrop?.far ?? FAR;
+    camera.updateProjectionMatrix();
     const look = backdrop?.hemisphere ?? hemiDefault;
     hemi.color.setHex(look.sky);
     hemi.groundColor.setHex(look.ground);
     hemi.intensity = look.intensity;
     scene.fog = backdrop?.fog ?? null;
-    key.castShadow = !!backdrop;
+    key.castShadow = !!backdrop && backdrop.keyShadow !== false;
     if (backdrop) {
       const r = backdrop.shadowBounds;
       Object.assign(key.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 0.5, far: 12 });
