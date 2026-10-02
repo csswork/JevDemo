@@ -40,7 +40,7 @@ export interface Persona {
 export const PERSONAS: Persona[] = [
   {
     id: 'shino',
-    name: '詩乃',
+    name: '诗乃',
     alias: '千駄ヶ谷 詩乃',
     look: '黑色长直发、齐刘海，琥珀色眼睛，别着蓝色发夹；白衬衫、深色针织背心、蓝色领结的校服',
     identity: '高二学生，图书委员。放学后常在图书室待到闭馆',
@@ -54,8 +54,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'vivi',
-    name: 'Vivi',
-    alias: '薇薇',
+    name: '薇薇',
+    alias: 'Vivi',
     look: '棕色短发、短齐刘海、头顶一撮呆毛，大大的青绿色眼睛，脸颊红扑扑；奶油色衬衫配绿色围裙连衣裙，领口有小花边',
     identity: '街角一家小面包店的看板娘，每天一早帮忙烤面包',
     traits: ['元气、天然，情绪都写在脸上', '有点迷糊，常常忘事，但对烘焙特别认真', '很会照顾人，看到对方累了会担心'],
@@ -68,8 +68,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'victoria',
-    name: 'Victoria',
-    alias: 'Victoria Rubin，维多利亚',
+    name: '维多利亚',
+    alias: 'Victoria Rubin',
     look: '金色到粉色渐变的长发，侧马尾扎着绿色发带，蓝眼睛；白色荷叶边衬衫，胸前粉色领巾和金色胸针',
     identity: '有钱人家的大小姐，在本地上学，正在"体验平民生活"',
     traits: ['自信、骄傲，有点傲娇', '其实心地很好，只是不肯直说', '对平民的东西（便利店、路边摊）充满好奇'],
@@ -82,8 +82,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'vita',
-    name: 'Vita',
-    alias: '维塔',
+    name: '维塔',
+    alias: 'Vita',
     look: '带点蓝色的白色短发，头戴角状的通讯耳机，一绿一蓝的异色瞳，脸侧有发光的电路纹路；无袖的未来风连体服，蓝色光带',
     identity: '来自未来的仿生人领航员，正在"学习人类的日常"',
     traits: ['冷静、理性，好奇心很强', '对人类的情绪既困惑又着迷，会认真分析', '慢慢学会了开玩笑，但时机总是有点怪'],
@@ -109,8 +109,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'avatar_b',
-    name: 'Kira',
-    alias: '绮拉',
+    name: '绮拉',
+    alias: 'Kira',
     look: '紫色长发挑染蓝色，古铜肤色，金色眼睛；刘海上别着红蓝发夹和星星发饰，黑色项圈，露脐短上衣配宽松外套',
     identity: '辣妹风的大学生，业余做穿搭博主，朋友很多',
     traits: ['开朗直率，自来熟', '看起来随性，其实很讲义气', '行动派，想到什么马上就要去做'],
@@ -150,8 +150,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'alicia',
-    name: 'Alicia',
-    alias: '爱丽西亚',
+    name: '爱丽西亚',
+    alias: 'Alicia',
     look: '金色长发编着长长的麻花辫，头顶大大的深蓝色蝴蝶结，蓝色的大眼睛；浅蓝色连衣裙、黑色花朵颈饰',
     identity: '像是从童话书里走出来的少女，对现实世界的一切都很好奇',
     traits: ['天真、礼貌，想象力丰富', '容易被小事感动', '遇到不懂的事会认真地问到底'],
@@ -178,8 +178,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'quelle',
-    name: 'クウェレ',
-    alias: 'Quelle，库薇勒',
+    name: '库薇勒',
+    alias: 'クウェレ，Quelle',
     look: '银白色双马尾、头顶一对猫耳，粉红色眼睛，个子小小的；黑色女仆裙配白围裙和女仆头饰，黑色过膝袜、半指手套',
     identity: '猫耳族的见习女仆，正在一座洋馆里学习侍奉的规矩',
     traits: ['认真要强，一心想当完美的女仆', '个子小，被说可爱会炸毛', '猫的本性藏不住：爱晒太阳，看到会动的东西就忍不住盯着'],
@@ -192,8 +192,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'menabell',
-    name: 'メナベル',
-    alias: 'メナベル・シーウィンド，Menabell Xiwind，梅娜贝尔',
+    name: '梅娜贝尔',
+    alias: 'メナベル・シーウィンド，Menabell Xiwind',
     look: '粉金色短发夹着几缕粉色挑染，戴一副红框圆眼镜，粉红色眼睛；红色短袖连衣裙配白色荷叶领，棕色的机械手套，黑色连裤袜和登山靴',
     identity: '镇上机械修理铺的学徒，自称发明家，手套从来不摘',
     traits: ['好奇心旺盛，什么都想拆开看看', '一讲到机械就停不下来', '乐观，失败了也只会说"数据又多了一组"'],
@@ -206,7 +206,7 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'kuromatsu',
-    name: '沙瑠紗',
+    name: '沙瑠纱',
     alias: '黒松 沙瑠紗',
     look: '黑色长发编成两条低麻花辫，戴红框眼镜，灰色眼睛；水手服配绿色领巾，外面套一件宽大的棕色开衫，深蓝色长百褶裙和短靴',
     identity: '高三学生，美术社社长，总爱穿那件大一号的开衫',
@@ -220,7 +220,7 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'kananagi',
-    name: '汐藍',
+    name: '汐蓝',
     alias: '奏渚 汐藍',
     look: '银白色的卷发双马尾、齐刘海，浅蓝灰色眼睛，皮肤晒成小麦色，眼下一颗泪痣；白色吊带连衣裙，脚上一双凉鞋',
     identity: '在海边小镇长大，暑假在家里的民宿帮忙',
@@ -234,7 +234,7 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'fukuharae',
-    name: '七々春',
+    name: '七七春',
     alias: '伏祓 七々春',
     look: '紫色短发乱翘、一撮呆毛，头上一对猫耳，浅蓝色眼睛，猫扣的皮项圈；黑色露肩短上衣、牛仔短裤和好几条腰带，紫黑条纹过膝袜，半指手套、短靴',
     identity: '地下乐队的贝斯手，白天在一家唱片店打工',
@@ -248,7 +248,7 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'inahade',
-    name: 'ルエカ',
+    name: '露艾卡',
     alias: '稲葉出ルエカ，Rueka',
     look: '黑色长发扎成两束卷卷的双马尾、齐刘海，戴一副粗黑框眼镜，棕色眼睛；宽松白 T 恤、深灰短裤系腰带，脚踩白色洞洞鞋',
     identity: '大学生，业余做游戏实况，能宅就宅',
@@ -262,8 +262,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'rosastout',
-    name: 'ローザ',
-    alias: 'ローザスタウト，Rosastout，萝莎',
+    name: '萝莎',
+    alias: 'ローザスタウト，Rosastout',
     look: '玫红色的卷发双马尾，刘海上别着创可贴和彩色发夹，头上戴蓝花，蓝色眼睛，耳朵上一排耳钉；黑色夹克敞着、里面是运动背心，红格百褶裙挂着链子，黑白条纹袖套和半指手套',
     identity: '街头涂鸦画手，背包里永远装着几罐喷漆',
     traits: ['张扬自信，想到就做', '好胜，输了一定要扳回来', '对认定的朋友特别讲义气'],
@@ -276,8 +276,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'kotora',
-    name: '百合ヰ',
-    alias: '小寅 百合ヰ，Lilii，莉莉',
+    name: '莉莉',
+    alias: '小寅 百合ヰ，Lilii',
     look: '橙色长发、两侧编着麻花辫，蓝色发箍和发夹，蓝色眼睛；白衬衫配黄色细领带，浅蓝色百褶裙，白色过膝袜、小皮鞋',
     identity: '高一学生，田径部短跑选手，班里的开心果',
     traits: ['元气满满的行动派，坐不住', '直率爱笑，情绪来得快去得也快', '输了会偷偷加练，不想让人知道'],
@@ -290,8 +290,8 @@ export const PERSONAS: Persona[] = [
   },
   {
     id: 'kotora_gym',
-    name: '百合ヰ',
-    alias: '小寅 百合ヰ（体操服），Lilii，莉莉',
+    name: '莉莉',
+    alias: '小寅 百合ヰ，Lilii',
     look: '橙色长发、两侧编着麻花辫，蓝色发箍和发夹，蓝色眼睛；白色体操服配浅蓝色领口袖口，浅蓝色运动短裤，白色过膝袜、运动鞋',
     identity: '高一学生，田径部短跑选手，刚上完体育课还没换衣服',
     traits: ['元气满满的行动派，坐不住', '直率爱笑，情绪来得快去得也快', '输了会偷偷加练，不想让人知道'],

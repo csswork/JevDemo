@@ -9,3 +9,10 @@ CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 
 注意：这是 VRM 0.x 格式。代码里对 VRM 0.x / 1.0 的骨骼轴向差异做了自动处理
 （见 src/vrm/gestures.ts 的 axisFlip），换 VRM 1.0 模型不需要改动。
+
+AvatarSample_A.vrm
+------------------
+VRoid 官方示例模型「AvatarSample_A」（下拉框里的「夏夏」，默认模型）。
+作者 VRoid（pixiv Inc.）。VRM 元数据：allowedUserName = Everyone，commercialUssageName = Allow；
+可商用、可改、可再分发。
+取得来源: https://github.com/madjin/vrm-samples

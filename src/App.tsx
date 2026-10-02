@@ -11,7 +11,7 @@ import type { JevMeta as Meta } from './act/fromJev';
 import { MOTION_CREDIT, motionLabel, motionSource } from './vrm/motion';
 import { isGreeting } from './act/motionRules';
 import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
-import { DEFAULT_MODEL, MODELS, modelUrl, probeModels } from './models';
+import { DEFAULT_BACKDROP, DEFAULT_MODEL, MODELS, VISIBLE_MODELS, modelUrl, probeModels } from './models';
 import { appendChat, openChat, resetChat, type ChatSession } from './chat';
 import type { BackdropId, CameraView } from './vrm/stage';
 import './App.css';
@@ -23,7 +23,7 @@ const BACKDROP_KEY = 'jev.backdrop';
 
 /**
  * 每个角色自己的偏好：音色、背景、镜头视角。以选中的角色为准 —— 换角色时一起换，
- * 没设置过的角色用默认（服务端的默认音色、咖啡店、半身机位），不继承别的角色的
+ * 没设置过的角色用默认（模型自己的默认音色、公园、半身机位，见 models.ts），不继承别的角色的
  */
 const PREFS_KEY = 'jev.modelPrefs';
 interface ModelPrefs {
@@ -54,7 +54,10 @@ function savePrefs(id: string | null, patch: Partial<ModelPrefs>) {
     // 存不了（隐私模式等）：这次照样生效，下次打开不记得
   }
 }
-/** 第一次用按角色保存：把旧版全局的音色、背景交给当时选着的那个角色，之前的选择不丢 */
+/**
+ * 第一次用按角色保存：把旧版全局的音色、背景交给当时选着的那个角色，之前的选择不丢。
+ * 只搬真存过的 —— 没有旧设置就什么都不写，角色用自己的默认（否则默认背景会被写成咖啡店）
+ */
 function migratePrefs(id: string | null) {
   if (!id || allPrefs()[id]) return;
   let speaker: string | null = null;
@@ -63,26 +66,32 @@ function migratePrefs(id: string | null) {
   } catch {
     // 读不了就算了
   }
-  savePrefs(id, { backdrop: savedBackdrop(), ...(speaker ? { speaker } : {}) });
+  const backdrop = savedBackdrop();
+  if (!speaker && !backdrop) return;
+  savePrefs(id, { ...(backdrop ? { backdrop } : {}), ...(speaker ? { speaker } : {}) });
 }
 const BACKDROPS: Array<{ id: BackdropId; label: string }> = [
   { id: 'cafe', label: '咖啡店' },
   { id: 'park', label: '公园' },
   { id: 'none', label: '纯色背景' },
 ];
-function savedBackdrop(): BackdropId {
+function savedBackdrop(): BackdropId | null {
   try {
     const v = localStorage.getItem(BACKDROP_KEY);
     if (BACKDROPS.some((b) => b.id === v)) return v as BackdropId;
   } catch {
-    // 存不了就用默认
+    // 读不了就当没存过
   }
-  return 'cafe';
+  return null;
 }
+/** 角色的背景：存过的，否则默认 */
+const backdropOf = (p: ModelPrefs): BackdropId => (BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : DEFAULT_BACKDROP);
+/** 角色的音色：用户给她选过的，否则模型自己的默认 */
+const speakerOf = (id: string | null, p: ModelPrefs) => p.speaker ?? MODELS.find((m) => m.id === id)?.voice ?? null;
 
 /**
  * 开始时用哪个模型。开发时可以用 ?model=candidates/Vita.vrm 直接指定文件（路径相对
- * public/models/，对比截图用）；否则用上次选的，文件不在就用詩乃
+ * public/models/，对比截图用）；否则用上次选的，文件不在（或已隐藏）就用默认模型
  */
 function initialModel(avail: Record<string, boolean>): { id: string | null; url: string } {
   const param = import.meta.env.DEV ? new URLSearchParams(location.search).get('model') : null;
@@ -95,7 +104,7 @@ function initialModel(avail: Record<string, boolean>): { id: string | null; url:
   } catch {
     // 存不了就用默认
   }
-  const m = MODELS.find((x) => x.id === saved && avail[x.id]) ?? DEFAULT_MODEL;
+  const m = VISIBLE_MODELS.find((x) => x.id === saved && avail[x.id]) ?? DEFAULT_MODEL;
   return { id: m.id, url: modelUrl(m) };
 }
 
@@ -176,7 +185,7 @@ export default function App() {
   const [modelLoading, setModelLoading] = useState<number | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const modelPick = useRef(0);
-  const [backdrop, setBackdropState] = useState<BackdropId>('cafe');
+  const [backdrop, setBackdropState] = useState<BackdropId>(DEFAULT_BACKDROP);
   // 背景音（场景的环境音）：按角色记，默认开。第一次发送消息时才真正出声（浏览器要求用户手势）
   const [ambient, setAmbient] = useState(true);
   // 音色：按角色记在浏览器里（见 ModelPrefs），角色加载时换成她的；没选过就用服务端的默认音色（TTS_SPEAKER）
@@ -225,12 +234,12 @@ export default function App() {
         // 这个角色上次的音色、背景、视角
         migratePrefs(init.id);
         const p = prefsOf(init.id);
-        const bd = BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : 'cafe';
+        const bd = backdropOf(p);
         setBackdropState(bd);
         rt.setBackdrop(bd);
         setAmbient(p.ambient ?? true);
         rt.setAmbience(p.ambient ?? true);
-        setSpeaker(p.speaker ?? null);
+        setSpeaker(speakerOf(init.id, p));
         rt.pendingView = p.view ?? null;
         rt.setIdleArmClearance(MODELS.find((m) => m.id === init.id)?.armOut ?? 0);
         return rt.mount(canvas, init.url, setProgress);
@@ -438,15 +447,16 @@ export default function App() {
   /** 换到某个角色的音色和背景（换角色时、换失败退回时） */
   const applyPrefs = (id: string | null) => {
     const p = prefsOf(id);
-    const bd = BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : 'cafe';
+    const bd = backdropOf(p);
     setBackdropState(bd);
     runtimeRef.current?.setBackdrop(bd);
     setAmbient(p.ambient ?? true);
     runtimeRef.current?.setAmbience(p.ambient ?? true);
-    setSpeaker(p.speaker ?? null);
+    const sp = speakerOf(id, p);
+    setSpeaker(sp);
     // 状态更新是异步的，新角色马上就要打招呼：直接把音色交给 runtime
     const rt = runtimeRef.current;
-    if (rt) rt.voiceSpeaker = (match(p.speaker) ?? match(voice.speaker) ?? usable[0])?.id ?? voice.speaker ?? 'Vivian';
+    if (rt) rt.voiceSpeaker = (match(sp) ?? match(voice.speaker) ?? usable[0])?.id ?? voice.speaker ?? 'Vivian';
     return p;
   };
 
@@ -895,23 +905,19 @@ export default function App() {
           <label className="voice-pick" title="选择会记住，下次打开默认用这个模型">
             <span>模型</span>
             <select
-              value={modelId ?? ''}
+              value={VISIBLE_MODELS.some((m) => m.id === modelId) ? (modelId ?? '') : ''}
               disabled={loading || busy}
               onChange={(e) => void pickModel(e.target.value)}
             >
-              {modelId == null && (
+              {!VISIBLE_MODELS.some((m) => m.id === modelId) && (
                 <option value="" disabled>
                   地址栏指定的模型
                 </option>
               )}
-              {(['分部位', '整脸'] as const).map((face) => (
-                <optgroup key={face} label={face === '分部位' ? '表情完整' : '表情较弱（只有整脸预设，未标定）'}>
-                  {MODELS.filter((m) => m.face === face).map((m) => (
-                    <option key={m.id} value={m.id} disabled={!modelAvail[m.id]}>
-                      {`${m.name} · ${m.desc}${modelAvail[m.id] ? '' : '（未下载）'}`}
-                    </option>
-                  ))}
-                </optgroup>
+              {VISIBLE_MODELS.map((m) => (
+                <option key={m.id} value={m.id} disabled={!modelAvail[m.id]}>
+                  {`${m.name} · ${m.desc}${modelAvail[m.id] ? '' : '（未下载）'}`}
+                </option>
               ))}
             </select>
           </label>
