@@ -151,16 +151,24 @@ export function bindFaceRig(vrm: VRM): FaceRig | null {
   const indices: Partial<Record<Shape, number>> = {};
   let source = '';
 
+  // 0. 形状键直接用语义名命名的（我们自己从 MMD 转的模型，见 scripts/pmx2vrm/）
+  for (const shape of Object.keys(SHAPES) as Shape[]) {
+    if (shape in dict) indices[shape] = dict[shape];
+  }
+  if (Object.keys(indices).length >= 6) source = '语义形状名';
+
   // 1. 有名字就按名字
-  for (const shape of Object.keys(VROID_NAMES) as Shape[]) {
-    for (const n of VROID_NAMES[shape]) {
-      if (n in dict) {
-        indices[shape] = dict[n];
-        break;
+  if (!source) {
+    for (const shape of Object.keys(VROID_NAMES) as Shape[]) {
+      for (const n of VROID_NAMES[shape]) {
+        if (n in dict) {
+          indices[shape] = dict[n];
+          break;
+        }
       }
     }
+    if (Object.keys(indices).length >= 6) source = 'VRoid 形状名';
   }
-  if (Object.keys(indices).length >= 6) source = 'VRoid 形状名';
 
   // 2. 没名字就按指纹查标定表
   if (!source) {

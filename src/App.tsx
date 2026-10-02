@@ -84,7 +84,7 @@ function savedBackdrop(): BackdropId {
  */
 function initialModel(avail: Record<string, boolean>): { id: string | null; url: string } {
   const param = import.meta.env.DEV ? new URLSearchParams(location.search).get('model') : null;
-  if (param && /^[\w/.-]+\.vrm$/.test(param) && !param.includes('..')) {
+  if (param && /^[\w/.-]+\.vrmx?$/.test(param) && !param.includes('..')) {
     return { id: MODELS.find((m) => m.file === param)?.id ?? null, url: `${import.meta.env.BASE_URL}models/${param}` };
   }
   let saved: string | null = null;

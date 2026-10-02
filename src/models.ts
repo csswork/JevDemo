@@ -1,8 +1,12 @@
 /**
  * 可选的角色模型（都是女性、授权允许这样用的样例模型）。
  *
- * 除了詩乃，其余都在 public/models/candidates/（gitignored，对比用下载下来的）。
+ * 除了詩乃和 quappa/ 下的模型，其余都在 public/models/candidates/（gitignored，对比用下载下来的）。
  * 新克隆的仓库里没有它们，下拉框里会显示成不可选，见 probeModels。
+ *
+ * quappa/ 是从 QUAPPA-EL 的 MMD 模型（PMX）转出来的 VRM，加密成 .vrmx 入库（规约要求防再利用，
+ * 见 vrm/protect.ts 和 public/models/quappa/README.txt）。转换脚本在 scripts/pmx2vrm/。
+ * 规约只允许个人非商用；商用要先联系作者。
  *
  * 表情一栏是实测结果（`__faces` 对比图）：
  *   分部位  脸部形状能一个个单独驱动，眉 / 眼 / 嘴分开合成（vrm/faceRig.ts）
@@ -26,6 +30,14 @@ export interface ModelMeta {
 
 export const MODELS: ModelMeta[] = [
   { id: 'shino', name: '千駄ヶ谷 詩乃', file: 'Sendagaya_Shino.vrm', desc: '黑长直 · 制服', license: 'CC0', face: '分部位' },
+  {
+    id: 'himekawa',
+    name: '姫川 茶菰',
+    file: 'quappa/EL-Pr231_HIMEKAWA.vrmx',
+    desc: '黑发双马尾 · 衬衫',
+    license: '©QUAPPA-ELの巣処 · 个人非商用',
+    face: '分部位',
+  },
   {
     id: 'vivi',
     name: 'Vivi',
