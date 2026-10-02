@@ -304,6 +304,7 @@ key 都等于公开**，开 DevTools 就能看到。所以这里的变量一律�
 | 素 | 灰色素体、白 T 恤 | 新人演员，认真练习怎么把情绪演出来 |
 | 夏夏 | 棕红短发、开衫 | 中文系学生、咖啡店打工，温柔、会倾听 |
 | Alicia | 金色麻花辫、蓝裙、大蝴蝶结 | 童话里走出来的少女，天真、爱幻想 |
+| 茶菰 | 黑紫色低双马尾、长刘海遮一只眼、浅蓝衬衫配绿色袖箍 | 复古咖啡吧的吧台手，沉稳干练、话不多，熟了会逗人 |
 
 外形描述也写进了 prompt：用户问起"你的头发""你的衣服"时，她知道自己长什么样。
 
@@ -909,6 +910,39 @@ __jev.playMotion('spin', 0.5, true)               // 直接播动作（慢放、
   （"对话的人"站的地方），转到侧面看时她还是在和正前方的你说话
 - 旧版全局的音色（`jev.voice.speaker`）和背景（`jev.backdrop`）第一次运行时交给当时选着的那个角色，之前的选择不丢
 开发时也可以直接在地址栏指定文件：`?model=candidates/Vita.vrm`（路径相对 `public/models/`）。
+
+### QUAPPA-EL 的 MMD 模型（`public/models/quappa/`）
+
+`姫川 茶菰`（EL-Pr231）是从 [QUAPPA-EL](https://www.quappael.com/) 的 MMD 模型（PMX）转出来的 VRM 1.0，**进 git，但只放加密后的 `.vrmx`**：
+
+- **规约**（[配布モデルライセンス規約](https://www.quappael.com/license)）：只限个人非商用（商用要满足第三条之三并事先联系作者）；
+  允许改造，不得再分发 / 转授权；要署名 ©QUAPPA-ELの巣処；在交互内容里分发含模型的二进制数据时**必须防再利用**。
+  详见 `public/models/quappa/README.txt`
+- **加密**（`src/vrm/protect.ts`）：AES-256-GCM，浏览器里 WebCrypto 解密后直接 `GLTFLoader.parseAsync`，明文不落盘、不生成 URL。
+  密钥在前端代码里（前端解密绕不开），挡的是直接下载 / 另存拿去别处用，不是对抗专门逆向的人。
+  明文 `.vrm` 只留在本机，`public/models/quappa/*.vrm` 已 gitignore
+- **转换**（`scripts/pmx2vrm/`，Blender 5.2 + MMD Tools + VRM format 插件，无界面跑）：
+
+  ```
+  /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup -P scripts/pmx2vrm/convert.py -- \
+      himekawa <解压后的模型目录> <输出.vrm>
+  node scripts/protect-model.ts <输出.vrm> public/models/quappa/EL-Pr231_HIMEKAWA.vrmx
+  ```
+
+  1. 删掉默认不显示的材质（alpha 0：换装差分、泪 / 脸红等特效、R18 部件）和口パンツ这类恶搞部件，只留默认外观
+  2. MMD 变形按配方（`recipes.py`）烘焙成语义形状键：`aa`…`oh`、`blink*`，以及 `faceRig.ts` 的 `brow_*` / `eye_*` / `mouth_*`。
+     あいうえお 是组合变形（顶点 + 牙齿 / 舌头骨骼），用 mmd_tools 的变形滑块驱动后取求值结果，骨骼那部分也烘进去了。
+     `faceRig.ts` 认得这些语义名（「语义形状名」），直接走分部位表情
+  3. 受形状键影响的面拆成单独的脸网格（约 1 万顶点），身体网格不带 morph —— 否则网页里每个子网格都要背一整套 morph 纹理
+  4. 骨骼：去掉约束（付与 / IK 在 VRM 里不生效），`膝捩` 这种挂在腰キャンセル 下、靠付与跟着大腿转的辅助骨把权重并回大腿，
+     没权重的辅助骨（IK、`_dummy_` / `_shadow_`、物理配重的 `錘`）删掉；`腰` 挪到骨盆当 hips（MMD 的腰在腰线上，转身时腿会甩）
+  5. MMD 刚体 → VRM 弹簧骨：物理骨连成链（双马尾、前发、侧发、鬓角），静态刚体按 MMD 的碰撞组做碰撞体；胸 / 臀的物理不做
+  6. 材质 → MToon：toon 贴图最暗的颜色当阴影色，加算的球面贴图（spa）当 matcap，MMD 描边当轮廓线；头发的半透明边用 BLEND
+  7. T-pose 由 VRM 插件的 autoPose 摆；作者信息写进 VRM meta（个人非商用、禁止再分发、需署名）
+
+  坑：VRM 插件的属性集合 `add()` 之后，之前拿到的元素引用会失效（指到别的元素上），跨步骤只能记 uuid；
+  新建的骨架要先写 `addon_version`，否则导出时的迁移会把视线偏移再转一遍。
+- 同一作者另外 8 个模型（`~/Desktop/3d`）格式和骨骼规范一样，配方可以沿用，还没转
 
 其余候选模型放在 `public/models/candidates/`（**gitignored**，新克隆的仓库里没有，
 下拉框里显示"未下载"）。清单和实测结果在 `src/models.ts`：

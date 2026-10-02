@@ -40,3 +40,8 @@ dev-out/
 data/
 # VRoid 官方动作包（VRMA_MotionPack）：规约禁止以可提取的形式再分发，不进仓库
 public/motions/
+
+# PMX → VRM 转换脚本（scripts/pmx2vrm/）：Blender 跑脚本时生成的字节码
+__pycache__/
+# 转换出来的明文 VRM 绝不入库（QUAPPA-EL 规约要求防再利用），仓库里只放加密后的 .vrmx
+public/models/quappa/*.vrm

@@ -135,6 +135,8 @@ def bone_local(arm, bone, p):
 
 
 def build_springs(ctx, arm, statics, dynamics, chains, cfg):
+    """注意：往 Blender 的集合里 add() 会重新分配内存，之前拿到的元素引用会指到别的元素上。
+    所以只在刚创建时用引用，跨步骤一律记 uuid 字符串"""
     sb = arm.data.vrm_addon_extension.spring_bone1
     # 碰撞体：每个静态刚体一个，挂在它的骨骼上（偏移是骨骼局部坐标）
     cols = []
@@ -152,18 +154,22 @@ def build_springs(ctx, arm, statics, dynamics, chains, cfg):
             c.shape_type = 'Sphere'
             c.shape.sphere.offset = bone_local(arm, s['bone'], s['center'])
             c.shape.sphere.radius = s['radius']
-        cols.append((s, c))
+        cols.append((s, str(c.uuid)))
+
+    def hits(chain):
+        d = dynamics[chain[0]]
+        return tuple(sorted(u for s, u in cols if pmxprep.collides(d, s)))
+
     # 碰撞组：按「哪些刚体能碰到这条链」分组，同一组合共用一个
     groups = {}
     for ch in chains:
-        d = dynamics[ch[0]]
-        key = tuple(sorted(c.uuid for s, c in cols if pmxprep.collides(d, s)))
+        key = hits(ch)
         if key and key not in groups:
             g = sb.add_collider_group()
             g.vrm_name = f'body{len(groups)}'
             for u in key:
                 g.add_collider().collider_uuid = u
-            groups[key] = g
+            groups[key] = str(g.uuid)
     params = cfg['springs']
     for ch in chains:
         name = ch[0]
@@ -181,9 +187,9 @@ def build_springs(ctx, arm, statics, dynamics, chains, cfg):
             j.drag_force = p['drag']
             j.gravity_power = p['gravity']
             j.gravity_dir = (0, 0, -1)
-        key = tuple(sorted(c.uuid for s, c in cols if pmxprep.collides(dynamics[ch[0]], s)))
+        key = hits(ch)
         if key:
-            sp.add_collider_group().collider_group_uuid = groups[key].uuid
+            sp.add_collider_group().collider_group_uuid = groups[key]
     return len(cols), len(groups)
 
 
