@@ -49,7 +49,8 @@ const PAINTING_2_RY = Math.PI;
 const CLOCK_RY = Math.PI;
 const BOOKCASE_RY = -Math.PI / 2;
 const COUCH_RY = Math.PI / 2;
-const LOUNGE_RY = -Math.PI / 2;
+/** 休闲椅（Kenney）正面默认朝 -Z，和木椅一样：转到朝 -X（茶几）是 +90° */
+const LOUNGE_RY = Math.PI / 2;
 
 /** 窗户模型里的玻璃是不透明的：改成半透明、不挡阴影，窗外才看得见 */
 function glassy(o: THREE.Object3D | null) {
@@ -295,7 +296,9 @@ export function createCafe(): Backdrop {
    * 放一个模型：先绕竖轴转 ry，再按包围盒缩放到 h 米高，底部落在 y、水平中心在 (x, z)。
    * solid = 挡镜头（包围盒当碰撞体）。
    * wall = 贴墙放：包围盒的这一边贴到这个坐标上（minX 左墙、maxX 右墙、maxZ 前墙），对应的 x / z 不用；
-   * centerY = y 是包围盒中心的高度（挂在墙上的东西）
+   * centerY = y 是包围盒中心的高度（挂在墙上的东西）；
+   * fitW = 宽度也拉到这么宽（沿 fitAxis，非等比缩放）：窗框要正好罩住后面那块窗外的画。
+   * 第一版窗框按高度等比缩放，宽窄和窗洞对不上，窗外的画从窗框两边露出来
    */
   const place = (
     file: string,
@@ -305,15 +308,24 @@ export function createCafe(): Backdrop {
     h: number,
     ry = 0,
     solid = false,
-    opts: { minX?: number; maxX?: number; maxZ?: number; centerY?: boolean } = {},
+    opts: { minX?: number; maxX?: number; maxZ?: number; centerY?: boolean; fitW?: number; fitAxis?: 'x' | 'z' } = {},
   ) =>
     load(file).then((src) => {
       if (!src || disposed) return null;
-      const o = src.clone(true);
-      o.rotation.y = ry;
+      // 模型自己绕竖轴转，外面套一层不转的壳来缩放 —— 非等比缩放才是沿世界坐标轴的
+      const inner = src.clone(true);
+      inner.rotation.y = ry;
+      const o = new THREE.Group();
+      o.add(inner);
       o.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(o);
-      o.scale.setScalar(h / Math.max(1e-6, box.max.y - box.min.y));
+      const k = h / Math.max(1e-6, box.max.y - box.min.y);
+      o.scale.setScalar(k);
+      if (opts.fitW != null) {
+        const axis = opts.fitAxis ?? 'x';
+        const span = axis === 'x' ? box.max.x - box.min.x : box.max.z - box.min.z;
+        o.scale[axis] = opts.fitW / Math.max(1e-6, span);
+      }
       o.updateMatrixWorld(true);
       box.setFromObject(o);
       const px =
@@ -439,8 +451,8 @@ export function createCafe(): Backdrop {
   // 咖啡机（右边，不在头后面）：意式咖啡机，旁边一排咖啡杯、一杯星冰乐
   const mx = 1.75;
   const counterTop = 1.025;
-  // 模型的正面（冲煮头、旋钮）默认朝 -Z（实测），转半圈朝向店里
-  void place('espresso_machine', mx, counterTop, counterZ - 0.06, 0.46, Math.PI);
+  // 正面（冲煮头、旋钮）朝里，对着吧台里的咖啡师（模型默认就朝 -Z）；客人那边看到的是机身背面
+  void place('espresso_machine', mx, counterTop, counterZ - 0.06, 0.46, 0);
   for (let i = 0; i < 3; i++) void place('cup_tea', mx + 0.42 + i * 0.13, counterTop, counterZ + 0.08 - (i % 2) * 0.06, 0.075, 0.6 + i * 1.3);
   void place('frappe', mx - 0.52, counterTop, counterZ + 0.05, 0.2);
 
@@ -521,7 +533,8 @@ export function createCafe(): Backdrop {
     group.add(view);
     // 窗框：Quaternius 的白色格子窗（模型里的玻璃是不透明的，改成半透明才看得见窗外）；窗台保留
     const fx = -W / 2 + 0.06;
-    void place('window_large', 0, 1.75, wz, 1.85, WINDOW_RY, false, { minX: -W / 2 + 0.005, centerY: true }).then(glassy);
+    // 窗外的画 2.0 × 1.7，窗框比它四周各大 8cm，正好压住画的边
+    void place('window_large', 0, 1.75, wz, 1.86, WINDOW_RY, false, { minX: -W / 2 + 0.005, centerY: true, fitW: 2.16, fitAxis: 'z' }).then(glassy);
     box(0.12, 0.08, 2.2, lightWood, fx + 0.03, 0.88, wz); // 窗台
     // 窗台上的小盆栽
     for (const [dz, file] of [
@@ -542,7 +555,7 @@ export function createCafe(): Backdrop {
 
   // ---- 前墙：双开木门 + 小窗，门边一个衣帽架 ----
   void place('door_double', 1.8, 0, 0, 2.3, DOOR_RY, true, { maxZ: FRONT - 0.01 });
-  void place('window_small', -1.8, 1.7, 0, 1.3, WINDOW_SMALL_RY, false, { maxZ: FRONT - 0.005, centerY: true }).then(glassy);
+  void place('window_small', -1.8, 1.7, 0, 1.36, WINDOW_SMALL_RY, false, { maxZ: FRONT - 0.005, centerY: true, fitW: 1.76, fitAxis: 'x' }).then(glassy);
   void place('coat_rack_standing', 0.35, 0, FRONT - 0.45, 1.75, 0.4, true);
   const fview = new THREE.Mesh(keep(new THREE.PlaneGeometry(1.6, 1.2)), keep(new THREE.MeshBasicMaterial({ map: keep(windowView(77)) })));
   fview.position.set(-1.8, 1.7, FRONT - 0.03);
