@@ -13,13 +13,56 @@ import { isGreeting } from './act/motionRules';
 import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
 import { DEFAULT_MODEL, MODELS, modelUrl, probeModels } from './models';
 import { appendChat, openChat, resetChat, type ChatSession } from './chat';
-import type { BackdropId } from './vrm/stage';
+import type { BackdropId, CameraView } from './vrm/stage';
 import './App.css';
 
-/** 选过的模型存在这个 key 下（和音色一样，只是本机浏览器的偏好） */
+/** 选过的模型存在这个 key 下（只是本机浏览器的偏好） */
 const MODEL_KEY = 'jev.model';
-/** 背景场景，同上 */
+/** 旧版的背景偏好（所有角色共用一个）：只在第一次迁移到按角色保存时读一次 */
 const BACKDROP_KEY = 'jev.backdrop';
+
+/**
+ * 每个角色自己的偏好：音色、背景、镜头视角。以选中的角色为准 —— 换角色时一起换，
+ * 没设置过的角色用默认（服务端的默认音色、咖啡店、半身机位），不继承别的角色的
+ */
+const PREFS_KEY = 'jev.modelPrefs';
+interface ModelPrefs {
+  speaker?: string;
+  backdrop?: BackdropId;
+  view?: CameraView;
+}
+function allPrefs(): Record<string, ModelPrefs> {
+  try {
+    const v = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+function prefsOf(id: string | null): ModelPrefs {
+  return (id && allPrefs()[id]) || {};
+}
+function savePrefs(id: string | null, patch: Partial<ModelPrefs>) {
+  if (!id) return;
+  try {
+    const all = allPrefs();
+    all[id] = { ...all[id], ...patch };
+    localStorage.setItem(PREFS_KEY, JSON.stringify(all));
+  } catch {
+    // 存不了（隐私模式等）：这次照样生效，下次打开不记得
+  }
+}
+/** 第一次用按角色保存：把旧版全局的音色、背景交给当时选着的那个角色，之前的选择不丢 */
+function migratePrefs(id: string | null) {
+  if (!id || allPrefs()[id]) return;
+  let speaker: string | null = null;
+  try {
+    speaker = localStorage.getItem(SPEAKER_KEY);
+  } catch {
+    // 读不了就算了
+  }
+  savePrefs(id, { backdrop: savedBackdrop(), ...(speaker ? { speaker } : {}) });
+}
 const BACKDROPS: Array<{ id: BackdropId; label: string }> = [
   { id: 'cafe', label: '咖啡店' },
   { id: 'park', label: '公园' },
@@ -59,7 +102,7 @@ interface Turn {
   text: string;
 }
 
-/** 选过的音色存在这个 key 下（只是本机浏览器的偏好，不影响别人） */
+/** 旧版的音色偏好（所有角色共用一个）：只在第一次迁移到按角色保存时读一次 */
 const SPEAKER_KEY = 'jev.voice.speaker';
 
 /** Jev 按段的判断 → 每段的语气指令（声音和表情用同一个判断） */
@@ -131,7 +174,14 @@ export default function App() {
   const [modelLoading, setModelLoading] = useState<number | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const modelPick = useRef(0);
-  const [backdrop, setBackdropState] = useState<BackdropId>(savedBackdrop);
+  const [backdrop, setBackdropState] = useState<BackdropId>('cafe');
+  // 音色：按角色记在浏览器里（见 ModelPrefs），角色加载时换成她的；没选过就用服务端的默认音色（TTS_SPEAKER）
+  const [speaker, setSpeaker] = useState<string | null>(null);
+  // 偏好按角色存：存的时候要用最新的角色 id（闭包里的可能是旧的）。换角色时在事件里直接改，这里兜底同步
+  const modelIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    modelIdRef.current = modelId;
+  }, [modelId]);
   // 聊天记录：每个模型一个 session（session id = 模型 id）
   const [persona, setPersona] = useState<ChatSession['persona'] | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -151,8 +201,12 @@ export default function App() {
 
     const rt = new Runtime();
     runtimeRef.current = rt;
-    rt.setBackdrop(savedBackdrop());
     rt.onState = setLive;
+    // 转完 / 拉完镜头就把视角记在当前角色下；关页面时再记一次（见下面的 pagehide）
+    rt.onViewChange = () => {
+      const v = rt.getView();
+      if (v) savePrefs(modelIdRef.current, { view: v });
+    };
     rt.onSpeechText = setSubtitle;
 
     let disposed = false;
@@ -162,7 +216,16 @@ export default function App() {
         setModelAvail(avail);
         const init = initialModel(avail);
         setModelId(init.id);
+        modelIdRef.current = init.id;
         sessionId = init.id ?? 'default';
+        // 这个角色上次的音色、背景、视角
+        migratePrefs(init.id);
+        const p = prefsOf(init.id);
+        const bd = BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : 'cafe';
+        setBackdropState(bd);
+        rt.setBackdrop(bd);
+        setSpeaker(p.speaker ?? null);
+        rt.pendingView = p.view ?? null;
         rt.setIdleArmClearance(MODELS.find((m) => m.id === init.id)?.armOut ?? 0);
         return rt.mount(canvas, init.url, setProgress);
       })
@@ -237,14 +300,6 @@ export default function App() {
 
   const useVoice = tts && voice.ready;
 
-  // 音色：下拉框选的记在浏览器里，下次打开默认用它；没选过就用服务端的默认音色（TTS_SPEAKER）
-  const [speaker, setSpeaker] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(SPEAKER_KEY);
-    } catch {
-      return null;
-    }
-  });
   const voices = voice.voices ?? [];
   // 不区分大小写：本地后端的音色 id 是小写（serena），千问的是首字母大写（Serena），
   // 换后端之后存下来的选择还能对上。暂时不能选的（加载中）不算，但不改用户存的选择
@@ -258,14 +313,10 @@ export default function App() {
     if (runtimeRef.current) runtimeRef.current.voiceSpeaker = activeSpeaker;
   }, [activeSpeaker]);
 
-  /** 换了音色：记下来，并让角色用新音色说一句，直接听效果 */
+  /** 换了音色：记在当前角色下，并让角色用新音色说一句，直接听效果 */
   const pickSpeaker = async (id: string) => {
     setSpeaker(id);
-    try {
-      localStorage.setItem(SPEAKER_KEY, id);
-    } catch {
-      // 隐私模式等存不了：这次会话里照样生效，只是下次打开不记得
-    }
+    savePrefs(modelIdRef.current, { speaker: id });
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.voiceSpeaker = id;
@@ -335,15 +386,40 @@ export default function App() {
     await showChat(session, () => resetChat(session));
   };
 
+  /** 换背景：记在当前角色下 */
   const pickBackdrop = (id: BackdropId) => {
     setBackdropState(id);
     runtimeRef.current?.setBackdrop(id);
-    try {
-      localStorage.setItem(BACKDROP_KEY, id);
-    } catch {
-      // 存不了：这次照样生效
-    }
+    savePrefs(modelIdRef.current, { backdrop: id });
   };
+
+  /** 换到某个角色的音色和背景（换角色时、换失败退回时） */
+  const applyPrefs = (id: string | null) => {
+    const p = prefsOf(id);
+    const bd = BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : 'cafe';
+    setBackdropState(bd);
+    runtimeRef.current?.setBackdrop(bd);
+    setSpeaker(p.speaker ?? null);
+    // 状态更新是异步的，新角色马上就要打招呼：直接把音色交给 runtime
+    const rt = runtimeRef.current;
+    if (rt) rt.voiceSpeaker = (match(p.speaker) ?? match(voice.speaker) ?? usable[0])?.id ?? voice.speaker ?? 'Vivian';
+    return p;
+  };
+
+  // 关页面 / 切到后台时把当前视角记下来（转完镜头时已经记过一次，这里兜底）
+  useEffect(() => {
+    const save = () => {
+      const v = runtimeRef.current?.getView();
+      if (v) savePrefs(modelIdRef.current, { view: v });
+    };
+    const onHide = () => document.visibilityState === 'hidden' && save();
+    window.addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', save);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, []);
 
   /** 换模型：旧模型留在画面里直到新的加载好；选择记下来，下次打开默认用它 */
   const pickModel = async (id: string) => {
@@ -354,7 +430,12 @@ export default function App() {
     const pick = ++modelPick.current;
     // 选择框的改动就是用户操作：趁现在解锁音频，新角色打招呼时才能出声
     if (useVoice) rt.unlockAudio();
+    // 旧角色的视角记下来，换成新角色的音色、背景、视角（视角在取景的同一帧里换）
+    const v = rt.getView();
+    if (v) savePrefs(prev, { view: v });
     setModelId(id);
+    modelIdRef.current = id;
+    rt.pendingView = applyPrefs(id).view ?? null;
     setModelLoading(0);
     setModelError(null);
     try {
@@ -371,6 +452,9 @@ export default function App() {
     } catch (e) {
       if (pick !== modelPick.current) return;
       setModelId(prev);
+      modelIdRef.current = prev;
+      rt.pendingView = null;
+      applyPrefs(prev);
       setModelError(`${m.name} 载入失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       if (pick === modelPick.current) setModelLoading(null);

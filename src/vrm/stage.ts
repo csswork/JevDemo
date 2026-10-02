@@ -10,6 +10,13 @@ import { createPark } from './scenes/park';
  * park = 公园的木栈道（scenes/park.ts）
  */
 export type BackdropId = 'none' | 'cafe' | 'park';
+
+/** 镜头的视角：绕转轴的水平角、俯仰角（弧度，three.js Spherical 的 theta / phi）和离转轴的距离 */
+export interface CameraView {
+  azimuth: number;
+  polar: number;
+  distance: number;
+}
 const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, park: createPark };
 /** 相机默认看多远（室内够了；室外场景自己给，见 Backdrop.far） */
 const FAR = 20;
@@ -201,6 +208,26 @@ export function createStage(canvas: HTMLCanvasElement) {
     }
   }
 
+  /** 当前视角（存下来，下次打开 / 换回这个角色时恢复） */
+  function getView(): CameraView {
+    const s = new THREE.Spherical().setFromVector3(_offset.copy(camera.position).sub(controls.target));
+    return { azimuth: s.theta, polar: s.phi, distance: s.radius };
+  }
+  /**
+   * 换到某个视角。距离、俯仰角限制在鼠标能到的范围里（换了模型身高不同，范围也不同）；
+   * 转轴的高度跟着距离走（和 followZoom 一样），所以先按距离定转轴、再按角度摆相机
+   */
+  function setView(v: CameraView) {
+    if (![v.azimuth, v.polar, v.distance].every(Number.isFinite)) return;
+    const r = THREE.MathUtils.clamp(v.distance, controls.minDistance, controls.maxDistance);
+    const phi = THREE.MathUtils.clamp(v.polar, controls.minPolarAngle, controls.maxPolarAngle);
+    const k = THREE.MathUtils.clamp((r - homeDistance) / Math.max(1e-3, fullDistance - homeDistance), 0, 1);
+    controls.target.y = frameY.head + (frameY.center - frameY.head) * k * k * (3 - 2 * k);
+    camera.position.copy(controls.target).add(_offset.setFromSpherical(new THREE.Spherical(r, phi, v.azimuth)));
+    camera.lookAt(controls.target);
+    controls.update();
+  }
+
   function resize() {
     const parent = canvas.parentElement;
     if (!parent) return;
@@ -263,6 +290,8 @@ export function createStage(canvas: HTMLCanvasElement) {
     view,
     lookTarget,
     frame,
+    getView,
+    setView,
     resize,
     render,
     dispose,

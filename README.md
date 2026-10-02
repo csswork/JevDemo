@@ -27,7 +27,7 @@ npm install && npm run dev
 
 模型已放在 `public/models/`，无需额外下载。
 
-背景（面板"模型"下面的"背景"，选择记在浏览器里）：**咖啡店**（默认，`vrm/scenes/cafe.ts`）、**公园**（`vrm/scenes/park.ts`）或原来的纯色渐变。
+背景（面板"模型"下面的"背景"，跟着角色记在浏览器里，见"模型"一节）：**咖啡店**（默认，`vrm/scenes/cafe.ts`）、**公园**（`vrm/scenes/park.ts`）或原来的纯色渐变。
 咖啡店的墙（灰泥墙、砖墙、墙裙）、天花板和梁、黑板菜单、窗外、店招、吧台、置物架是程序生成的（几何体 + canvas 画的贴图）；
 其余是 [Poly Pizza](https://poly.pizza) 上的低多边形模型（`public/scene/polypizza/`，32 个、共 1.3MB，进 git）：
 
@@ -726,7 +726,7 @@ tts/.venv/bin/pip install mlx-audio
 
 ### 音色
 
-界面上的下拉框选，选择记在浏览器里，下次打开默认用它（没选过就用 `TTS_SPEAKER`，默认 vivian）。
+界面上的下拉框选，跟着角色记在浏览器里（见"模型"一节），下次打开、换回这个角色时用它（没选过就用 `TTS_SPEAKER`，默认 vivian）。
 切换后角色会用新音色说一句，直接听效果。只列女声，分两组：
 
 | 后端 | 分组 | 音色 |
@@ -898,6 +898,16 @@ __jev.playMotion('spin', 0.5, true)               // 直接播动作（慢放、
 
 面板上"音色"下面的"模型"可以换角色，选择记在浏览器里（`localStorage['jev.model']`）。
 换的时候旧模型留在画面里，新的加载好再一帧内换掉；正在说的话会停掉。
+
+**以角色为准保存偏好**（`localStorage['jev.modelPrefs']`，按模型 id 分开）：每个角色自己的**音色、背景、镜头视角**，
+换角色时一起换成她的；没设置过的角色用默认（服务端的默认音色、咖啡店、半身机位），不继承别的角色的。
+
+- 视角存的是绕转轴的水平角、俯仰角和距离（`stage.getView()` / `setView()`）。转完 / 拉完镜头、停稳之后存一次，
+  关页面 / 切到后台时再存一次（`pagehide` / `visibilitychange` 兜底）；换角色前先把旧角色的视角存下来。
+  恢复时距离和俯仰角限制在鼠标能到的范围里（换了身高范围不同），转轴高度按距离算（和拉远时转轴下移的规则一样）
+- 恢复在取景的同一帧里做（`runtime.pendingView`），不会先闪一下默认的半身机位；视线照样看默认机位
+  （"对话的人"站的地方），转到侧面看时她还是在和正前方的你说话
+- 旧版全局的音色（`jev.voice.speaker`）和背景（`jev.backdrop`）第一次运行时交给当时选着的那个角色，之前的选择不丢
 开发时也可以直接在地址栏指定文件：`?model=candidates/Vita.vrm`（路径相对 `public/models/`）。
 
 其余候选模型放在 `public/models/candidates/`（**gitignored**，新克隆的仓库里没有，

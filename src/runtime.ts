@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { VRMUtils } from '@pixiv/three-vrm';
-import { createStage, type BackdropId } from './vrm/stage';
+import { createStage, type BackdropId, type CameraView } from './vrm/stage';
 import { Character } from './vrm/character';
 import { TimelinePlayer, compileAct, type CompiledAct } from './act/timeline';
 import { estimateDuration, makeMeasuredMapper, makeTimeToChar } from './act/anchors';
@@ -58,12 +58,33 @@ export class Runtime {
   private disposed = false;
   onState: ((s: LiveState) => void) | null = null;
   onSpeechText: ((text: string) => void) | null = null;
+  /**
+   * 下一次取景（mount / setModel）之后换成这个视角：用户上次离开这个角色时的角度。用一次就清掉。
+   * 在取景的同一帧里换，不会先闪一下默认的半身机位
+   */
+  pendingView: CameraView | null = null;
+  /** 用户转完 / 拉完镜头、停稳之后调一次（App 用它把视角存下来） */
+  onViewChange: (() => void) | null = null;
+  private viewTimer = 0;
+
+  getView(): CameraView | null {
+    return this.stage?.getView() ?? null;
+  }
+
+  setView(view: CameraView) {
+    this.stage?.setView(view);
+  }
 
   async mount(canvas: HTMLCanvasElement, modelUrl: string, onProgress?: (r: number) => void) {
     const stage = createStage(canvas);
     this.stage = stage;
     stage.resize();
     stage.setBackdrop(this.backdrop);
+    // 松开鼠标之后镜头还会因为阻尼滑一小段：等它停稳了再通知
+    stage.controls.addEventListener('end', () => {
+      clearTimeout(this.viewTimer);
+      this.viewTimer = window.setTimeout(() => this.onViewChange?.(), 700);
+    });
 
     const character = new Character(stage.camera.position);
     this.character = character;
@@ -120,7 +141,12 @@ export class Runtime {
         : null;
     if (eyeY == null) return;
     stage.frame(eyeY);
+    // 视线看的是默认机位（"对话的人"站的地方），不是恢复出来的视角：先记默认机位，再换视角
     character.gaze.setCameraPos(stage.camera.position);
+    if (this.pendingView) {
+      stage.setView(this.pendingView);
+      this.pendingView = null;
+    }
   }
 
   private modelLoad = 0;
@@ -496,6 +522,7 @@ export class Runtime {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    clearTimeout(this.viewTimer);
     this.speech?.cancel();
     this.session?.stop();
     void this.audio?.close();
