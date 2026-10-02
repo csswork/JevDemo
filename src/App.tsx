@@ -108,6 +108,31 @@ function initialModel(avail: Record<string, boolean>): { id: string | null; url:
   return { id: m.id, url: modelUrl(m) };
 }
 
+/**
+ * 开发用：把每次前后台判断记下来，存到 dev-out/audio_<tab>.txt（每个标签页一个文件，开了两个页面也分得清）。
+ * 排查"切到别处之后声音还在响"这类问题：浏览器在各种切换里到底报了什么，看日志一目了然。
+ * 状态没变的定时复查不记
+ */
+function audioStateLog() {
+  const tab = Math.random().toString(36).slice(2, 6);
+  const lines = [`# ${location.href} 打开于 ${new Date().toLocaleString()}`];
+  let last = '';
+  let timer = 0;
+  const flush = () =>
+    void fetch(`/__dev/save?name=audio_${tab}.txt`, { method: 'POST', body: lines.join('\n') + '\n' }).catch(() => {});
+  return (why: string, a: { active: boolean; ctx: string } | undefined) => {
+    const state = `hidden=${document.hidden} focus=${document.hasFocus()} → active=${a?.active ?? '-'} ctx=${a?.ctx ?? '-'}`;
+    if (why === 'poll' && state === last) return;
+    last = state;
+    lines.push(`${new Date().toISOString().slice(11, 23)} ${why.padEnd(16)} ${state}`);
+    if (lines.length > 400) lines.splice(1, lines.length - 400);
+    clearTimeout(timer);
+    timer = window.setTimeout(flush, 300);
+  };
+}
+/** 每个页面一份（StrictMode 会把 effect 跑两遍，放在组件外才不会一页出两个文件） */
+const audioLog = import.meta.env.DEV ? audioStateLog() : null;
+
 interface Turn {
   role: 'user' | 'character';
   text: string;
@@ -247,6 +272,9 @@ export default function App() {
       .then(async () => {
         if (disposed) return;
         setLoading(false);
+        // 先试着把音频建起来：浏览器允许自动播放（常来的站点）时刷新完背景音就出来；
+        // 不允许的话上下文是挂起的，第一次点击 / 按键时再放行（见上面的 unlock）
+        rt.unlockAudio();
         // 接着上次的聊天记录；第一次见面就先打招呼（页面刚打开还不能出声，只有字幕）
         try {
           const chat = await openChat(sessionId);
@@ -323,8 +351,17 @@ export default function App() {
   // 那一瞬间 hasFocus() 可能还是 false，随后的 focus 事件有时压根不来，于是永久静音。
   // 现在加了每秒一次的复查兜住这种情况（setPageActive 只在状态真的变化时才做事，平时没有开销；
   // 后台 tab 的定时器被浏览器节流，本来也该是静音的）。
+  //
+  // 多显示器上从另一块屏点回来、点的是别的 tab：focus → blur → hidden 在 3ms 内连着来，
+  // focus 发出的异步 resume 会在页面已经切走之后才完成 —— 这个竞态在 runtime.setPageActive 里处理。
   useEffect(() => {
-    const evaluate = () => runtimeRef.current?.setPageActive(!document.hidden && document.hasFocus());
+    const evaluate = (e?: Event) => {
+      runtimeRef.current?.setPageActive(!document.hidden && document.hasFocus());
+      audioLog?.(e?.type ?? 'poll', runtimeRef.current?.audioDebug);
+    };
+    // 浏览器只在用户手势里放行音频：页面上随便点一下 / 按一个键就把声音打开
+    // （以前只有点特定按钮才解锁，刷新之后点别处是不出声的）。unlockAudio 可以重复调
+    const unlock = () => runtimeRef.current?.unlockAudio();
     const events: Array<[EventTarget, string]> = [
       [document, 'visibilitychange'],
       [window, 'blur'],
@@ -335,10 +372,12 @@ export default function App() {
       [window, 'keydown'],
     ];
     for (const [t, e] of events) t.addEventListener(e, evaluate);
+    for (const e of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(e, unlock);
     const timer = window.setInterval(evaluate, 1000);
     evaluate();
     return () => {
       for (const [t, e] of events) t.removeEventListener(e, evaluate);
+      for (const e of ['pointerdown', 'keydown', 'touchstart']) window.removeEventListener(e, unlock);
       clearInterval(timer);
     };
   }, []);

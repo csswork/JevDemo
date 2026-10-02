@@ -220,9 +220,14 @@ export class Runtime {
       this.ambience = new AmbiencePlayer(this.audio);
       this.applyAmbience();
       this.ambience.unlock();
-      // 浏览器自己把上下文挂起/打断时（换音频设备、休眠恢复）不声不响：人在前台就要回来
+      // 状态和"在不在前台"对不上就纠正：
+      //   在前台却被挂起 —— 浏览器自己挂起/打断的（换音频设备、休眠恢复），不声不响，要拉回来；
+      //   不在前台却在跑 —— 一次迟到的 resume（见 setPageActive），立刻挂回去
       this.audio.onstatechange = () => {
-        if (this.pageActive && this.audio?.state === 'suspended') void this.audio.resume().catch(() => {});
+        const ctx = this.audio;
+        if (!ctx) return;
+        if (this.pageActive && ctx.state === 'suspended') void ctx.resume().catch(() => {});
+        else if (!this.pageActive && ctx.state === 'running') void ctx.suspend().catch(() => {});
       };
       // 建的时候页面就不在前台（少见）：立刻挂起来，别出声
       if (!this.pageActive) void this.audio.suspend().catch(() => {});
@@ -252,18 +257,29 @@ export class Runtime {
    * 时间轴本身不用管：它由 tick() 里的 rAF 推进，后台标签页里 rAF 本来就被节流到几乎不动。
    * Web Speech（系统语音兜底）不走 AudioContext，要单独 pause / resume。
    */
+  /** 调试用：前后台状态和音频上下文的状态 */
+  get audioDebug() {
+    return { active: this.pageActive, ctx: this.audio?.state ?? 'none', ambience: this.ambience?.current ?? null };
+  }
+
   setPageActive(active: boolean) {
-    if (active === this.pageActive) return;
+    const changed = active !== this.pageActive;
     this.pageActive = active;
     const ctx = this.audio;
     if (!ctx) return;
     if (active) {
+      if (!changed) return;
       this.wakeAudio();
       this.speech?.resume();
-    } else {
-      if (ctx.state === 'running') void ctx.suspend().catch(() => {});
-      this.speech?.pause();
+      return;
     }
+    // 不在前台就必须挂起，而且**不看当前状态**：resume() 是异步的。多显示器上从另一块屏点回来、
+    // 点的却是别的 tab 时，focus → blur → hidden 在 3ms 内连着来 —— focus 发出的 resume 还没完成，
+    // 此刻状态仍是 suspended，按"running 才挂起"就漏掉了，等 resume 完成时页面已经在后台，声音就响了
+    // （dev-out/audio_*.txt 的日志里抓到的）。在途的 resume 之后再排一个 suspend，最终一定是挂起的。
+    // 定时复查（状态没变）时也兜一下：万一还是跑起来了就再挂回去
+    if (changed || ctx.state === 'running') void ctx.suspend().catch(() => {});
+    if (changed) this.speech?.pause();
   }
 
   /**
@@ -286,6 +302,7 @@ export class Runtime {
       play();
       return;
     }
+    // resume 完成时页面可能已经切走了（onstatechange 会挂回去，这里只是不再重起背景音）
     void ctx.resume().then(play, () => {});
     setTimeout(() => {
       const c = this.audio;

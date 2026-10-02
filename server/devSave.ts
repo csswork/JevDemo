@@ -3,6 +3,7 @@
  *
  *   POST /__dev/save?name=faces_Vita.jpg   body = 图片字节
  *   GET  /__dev/save?name=faces_Vita.jpg   读回来（拼对比总图用）
+ *   POST /__dev/save?name=audio_x1y2.txt   文本日志（App 里音频前后台判断的记录，排查用）
  *
  * 审计工具（src/dev/audit.ts 的 __faces）截完图直接存盘，不用靠截屏把图拿出来。
  * configureServer 只在 `vite dev` 时生效，生产构建里没有这个接口。
@@ -19,7 +20,7 @@ export function devSave(): Plugin {
     configureServer(server) {
       server.middlewares.use('/__dev/save', (req, res) => {
         const name = new URL(req.url ?? '', 'http://x').searchParams.get('name') ?? '';
-        if (!/^[\w.-]+\.(jpe?g|png)$/.test(name) || (req.method !== 'POST' && req.method !== 'GET')) {
+        if (!/^[\w.-]+\.(jpe?g|png|txt)$/.test(name) || (req.method !== 'POST' && req.method !== 'GET')) {
           res.statusCode = 400;
           res.end('bad request');
           return;
@@ -31,7 +32,7 @@ export function devSave(): Plugin {
             res.end('not found');
             return;
           }
-          res.setHeader('content-type', name.endsWith('.png') ? 'image/png' : 'image/jpeg');
+          res.setHeader('content-type', name.endsWith('.png') ? 'image/png' : name.endsWith('.txt') ? 'text/plain; charset=utf-8' : 'image/jpeg');
           res.end(fs.readFileSync(file));
           return;
         }
