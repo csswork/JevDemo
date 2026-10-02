@@ -8,7 +8,21 @@ import * as THREE from 'three';
  * 所以做成二次元插画里常见的画法：沿着阳光方向的一根根半透明光柱，加色混合、边缘柔和，
  * 里面有一点缓慢流动的明暗（光里的尘埃）。每根光柱是一张始终侧对相机的长条面片（绕光柱轴的柱面公告板），
  * 从任何角度看都像一束体积光；全部光柱一个 InstancedMesh、尘埃一个 Points，各一次绘制。
+ * 两者都用滤色混合（见 SCREEN），不会把亮的背景叠成一片白。
  */
+
+/**
+ * 滤色（screen）混合：结果 = 底色 + 光 ×（1 − 底色）。衬着暗绿的树叶时几乎全加上去，衬着亮的雾和天空时
+ * 只加一点 —— 加色混合在亮处会一路叠到发白（宽屏转到太阳那一侧时，雾 + 天空光晕 + 几根光柱叠成一片乳白）
+ */
+const SCREEN = {
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.CustomBlending,
+  blendEquation: THREE.AddEquation,
+  blendSrc: THREE.OneMinusDstColorFactor,
+  blendDst: THREE.OneFactor,
+} as const;
 
 export interface Shaft {
   /** 光柱落到地面的那一点（世界坐标） */
@@ -105,9 +119,7 @@ export function createLightShafts(shafts: Shaft[], sunDir: THREE.Vector3, color 
     },
     vertexShader: SHAFT_VERT,
     fragmentShader: SHAFT_FRAG,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    ...SCREEN,
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(inst, mat);
@@ -185,9 +197,7 @@ export function createDust(points: THREE.Vector3[], brightness: number[], color 
     },
     vertexShader: DUST_VERT,
     fragmentShader: DUST_FRAG,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    ...SCREEN,
   });
   const dust = new THREE.Points(geo, mat);
   dust.frustumCulled = false;

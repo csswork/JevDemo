@@ -321,7 +321,7 @@ export function createPark(): Backdrop {
   {
     const SKY_TOP = new THREE.Color(0x86bff0);
     // 地平线和雾同色（雾接得上），偏暖：晴天午后的薄雾
-    const HORIZON = new THREE.Color(0xd8e3c6);
+    const HORIZON = new THREE.Color(0xc4d5b6);
     // 太阳那一侧的天空发亮（光晕），转到侧面、背面时看得到
     const GLOW = new THREE.Color(0xfff3d6);
     const g = keep(new THREE.SphereGeometry(150, 48, 24));
@@ -332,13 +332,78 @@ export function createPark(): Backdrop {
     for (let i = 0; i < p.count; i++) {
       c.copy(HORIZON).lerp(SKY_TOP, smoothstep(0, 0.55, p.getY(i) / 150));
       dir.fromBufferAttribute(p, i).normalize();
-      c.lerp(GLOW, 0.85 * Math.max(0, dir.dot(SUN_DIR)) ** 6);
+      // 光晕收窄、减弱：宽屏转到太阳那一侧时，太强的光晕和雾连成一片白
+      c.lerp(GLOW, 0.4 * Math.max(0, dir.dot(SUN_DIR)) ** 10);
       col.push(c.r, c.g, c.b);
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     const sky = new THREE.Mesh(g, keep(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
     sky.renderOrder = -1;
     group.add(sky);
+  }
+
+  // ---- 云：天空球前面一圈半透明的云片（canvas 画的积云，正对角色），哪个方向看都不是一片空天 ----
+  {
+    const rc = rng(53);
+    const cloudTex = (seed: number) => {
+      const rr = rng(seed);
+      return keep(
+        canvasTexture(512, 256, (g) => {
+          // 一团团白色的圆叠起来，底部压平；下半部稍微偏灰蓝（云的背光面）
+          for (let k = 0; k < 26; k++) {
+            const t = k / 25;
+            const x = 70 + t * 372 + (rr() - 0.5) * 40;
+            const top = 1 - Math.abs(t - 0.5) * 2;
+            const rad = 34 + top * 58 + rr() * 26;
+            const y = 190 - rad * (0.55 + rr() * 0.25);
+            const grd = g.createRadialGradient(x, y - rad * 0.2, 0, x, y, rad);
+            grd.addColorStop(0, 'rgba(255,255,255,0.9)');
+            grd.addColorStop(0.55, 'rgba(250,251,255,0.55)');
+            grd.addColorStop(1, 'rgba(240,244,252,0)');
+            g.fillStyle = grd;
+            g.beginPath();
+            g.arc(x, y, rad, 0, Math.PI * 2);
+            g.fill();
+          }
+          // 底边：从下往上淡出，云底是平的
+          g.globalCompositeOperation = 'destination-out';
+          const fade = g.createLinearGradient(0, 256, 0, 170);
+          fade.addColorStop(0, 'rgba(0,0,0,1)');
+          fade.addColorStop(1, 'rgba(0,0,0,0)');
+          g.fillStyle = fade;
+          g.fillRect(0, 170, 512, 86);
+          g.globalCompositeOperation = 'source-atop';
+          const shade = g.createLinearGradient(0, 80, 0, 200);
+          shade.addColorStop(0, 'rgba(255,255,255,0)');
+          shade.addColorStop(1, 'rgba(196,208,226,0.55)');
+          g.fillStyle = shade;
+          g.fillRect(0, 0, 512, 256);
+        }),
+      );
+    };
+    const texes = [cloudTex(1), cloudTex(2), cloudTex(3)];
+    const geo = keep(new THREE.PlaneGeometry(1, 0.5));
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2 + (rc() - 0.5) * 0.35;
+      const elev = THREE.MathUtils.degToRad(5 + rc() * 14);
+      const d = 132;
+      const w = 34 + rc() * 40;
+      const mat = keep(
+        new THREE.MeshBasicMaterial({
+          map: texes[k % texes.length],
+          transparent: true,
+          depthWrite: false,
+          fog: false,
+          opacity: 0.55 + rc() * 0.35,
+        }),
+      );
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(Math.cos(a) * Math.cos(elev) * d, Math.sin(elev) * d, Math.sin(a) * Math.cos(elev) * d);
+      m.scale.set(w * (rc() < 0.5 ? -1 : 1), w, 1);
+      m.lookAt(0, m.position.y * 0.6, 0);
+      m.renderOrder = -0.5;
+      group.add(m);
+    }
   }
 
   // ---- 阳光：光柱 + 光里的尘埃（见 sunlight.ts）----
@@ -349,7 +414,8 @@ export function createPark(): Backdrop {
         // 顶端埋进树冠（离地 12~15m）
         length: (12 + (i % 4)) / SUN_DIR.y,
         width,
-        intensity,
+        // 滤色混合比加色暗（亮的底色上加得少），整体提一点
+        intensity: intensity * 1.35,
       })),
       SUN_DIR,
     ),
@@ -539,6 +605,64 @@ export function createPark(): Backdrop {
   ] as const)
     bush(x, z, Math.floor(r() * 2));
 
+  // ---- 背面（她面朝的那一侧，+Z）：镜头转到身后时看到的 ----
+  // 第一版这边只有一条路、几盏灯和空草坪，转过去很单调：补一片树林、远处加密、路边灌木。
+  // 用单独的随机数：和上面共用一个的话，正面已经调好的树、草、花的位置会全部变掉
+  {
+    const rb = rng(31);
+    const addTree = (x0: number, z0: number, variant: number) => {
+      const [x, z] = pushClear(x0, z0, 1.2);
+      if (Math.hypot(x, z) < 7 || blocksSun(x, z) || trees.some((o) => Math.hypot(o.x - x, o.z - z) < 4.2)) return false;
+      trees.push({ x, z, variant, scale: 0.88 + rb() * 0.24, ry: rb() * Math.PI * 2 });
+      return true;
+    };
+    // 路两边几棵（手摆，构图用），再随机补一片
+    for (const [x, z, v] of [
+      [-6.2, 8.5, 1],
+      [6.6, 9.8, 0],
+      [-4.4, 14.5, 2],
+      [5.4, 15.8, 3],
+      [-8.8, 19.5, 4],
+      [8.6, 22.5, 1],
+      [-3.8, 25.5, 0],
+      [4.2, 29, 2],
+      [-7.4, 31, 3],
+      [10.5, 14, 4],
+    ] as const)
+      addTree(x, z, v);
+    for (let i = 0, n = 0; i < 300 && n < 16; i++) {
+      const x = (rb() - 0.5) * 64;
+      const z = 8 + rb() * 40;
+      if (clearance(x, z) < 1.4) continue;
+      if (addTree(x, z, Math.floor(rb() * TREE_VARIANTS.length))) n++;
+    }
+    // 远处那一圈在这一侧加密（原来这一侧只有零星几棵，地平线是空的）
+    for (let i = 0, n = 0; i < 400 && n < 30; i++) {
+      const a = rb() * Math.PI;
+      const d = 30 + rb() * 42;
+      const x = Math.cos(a) * d;
+      const z = -8 + Math.sin(a) * d;
+      if (z < 18 || clearance(x, z) < 1.4) continue;
+      if (far.some((o) => Math.hypot(o.x - x, o.z - z) < 6) || trees.some((o) => Math.hypot(o.x - x, o.z - z) < 5)) continue;
+      far.push({ x, z, variant: FAR_VARIANTS[Math.floor(rb() * FAR_VARIANTS.length)], scale: 0.9 + rb() * 0.35, ry: rb() * Math.PI * 2 });
+      n++;
+    }
+    for (const [x0, z0, v] of [
+      [-2.9, 6.2, 0],
+      [3.1, 10.5, 1],
+      [-3.4, 12.8, 0],
+      [3.9, 16.4, 0],
+      [-2.6, 20.5, 1],
+      [3.0, 24.5, 0],
+      [-5.5, 10.8, 2],
+      [6.0, 18.8, 2],
+      [-4.8, 22.4, 1],
+    ] as const) {
+      const [x, z] = pushClear(x0, z0, 0.7);
+      bushes.push({ x, z, variant: v, scale: 0.85 + rb() * 0.3, ry: rb() * Math.PI * 2 });
+    }
+  }
+
   // ---- 地面（草地材质）----
   const shadeNear = (x: number, z: number) => {
     let s = 0;
@@ -600,6 +724,36 @@ export function createPark(): Backdrop {
     for (const dx of [-0.42, 0.42])
       seat(new THREE.BoxGeometry(0.26, 0.4, 0.32), stumpMat, bx + dx * Math.cos(ry), 0.2, bz - dx * Math.sin(ry), ry);
     seat(new THREE.BoxGeometry(1.3, 0.09, 0.5), deckMat, bx, 0.445, bz, ry);
+  }
+
+  // ---- 栈道边的长椅（背面那条路上，面朝栈道）：木条座面和靠背、铸铁扶手和腿 ----
+  {
+    const iron = keep(new THREE.MeshStandardMaterial({ color: 0x1d1f22, roughness: 0.5, metalness: 0.6 }));
+    const parkBench = (x0: number, z0: number) => {
+      const [x, z] = pushClear(x0, z0, 0.45);
+      const np = nearestPath(x, z);
+      const g = new THREE.Group();
+      const box = (w: number, h: number, d: number, px: number, py: number, pz: number, mat: THREE.Material, rx = 0) => {
+        const m = new THREE.Mesh(keep(new THREE.BoxGeometry(w, h, d)), mat);
+        m.position.set(px, py, pz);
+        m.rotation.x = rx;
+        g.add(m);
+      };
+      for (const k of [0, 1, 2]) box(1.5, 0.035, 0.11, 0, 0.44, 0.14 - k * 0.135, deckMat);
+      for (const k of [0, 1]) box(1.5, 0.1, 0.03, 0, 0.6 + k * 0.15, -0.21 - k * 0.025, deckMat, -0.17);
+      for (const sx of [-0.66, 0.66]) {
+        box(0.05, 0.44, 0.05, sx, 0.22, 0.17, iron);
+        box(0.05, 0.86, 0.05, sx, 0.43, -0.21, iron, -0.12);
+        box(0.05, 0.04, 0.42, sx, 0.4, -0.02, iron);
+        box(0.05, 0.035, 0.4, sx, 0.64, 0.0, iron);
+      }
+      g.position.set(x, groundY(x, z), z);
+      // 局部 +Z（座位正面）朝着最近的路
+      g.rotation.y = Math.atan2(np.x - x, np.z - z);
+      add(g);
+    };
+    parkBench(2.8, 11.6);
+    parkBench(-2.7, 18.4);
   }
 
   // ---- 落叶（平台和栈道上）----
@@ -734,6 +888,13 @@ export function createPark(): Backdrop {
       [3.3, 6.6, 6, 1],
       [-2.5, 7.9, 7, -1],
       [-5.2, -1.2, 6, 1],
+      // 背面那条路两边（放在最后：前面那些花的随机位置不受影响）
+      [2.2, 9.2, 7, 2],
+      [-2.4, 11.0, 6, 0],
+      [3.4, 13.9, 8, -1],
+      [-3.0, 16.0, 7, 1],
+      [2.6, 20.8, 7, 0],
+      [-3.4, 23.2, 6, 2],
     ];
     const spots: Array<{ m: THREE.Matrix4; type: number }> = [];
     const up = new THREE.Vector3(0, 1, 0);
@@ -907,9 +1068,9 @@ export function createPark(): Backdrop {
     // 环境光（半球光 + IBL）压低、太阳调亮：户外阳光比天光亮好几倍。
     // 之前两边差不多亮，影子里被环境光填满，人和树的影子淡到看不出来
     hemisphere: { sky: 0xe2f0ff, ground: 0x6a8a48, intensity: 0.42 },
-    // 雾从近处就开始（和地平线同色）：远处的树一层比一层淡，前中后景拉开。
-    // 颜色别太白 —— 光柱是加上去的暖光，衬着一片白雾就看不出来了
-    fog: new THREE.Fog(0xd8e3c6, 20, 120),
+    // 雾从 24m 开始（和地平线同色）：远处的树一层比一层淡，前中后景拉开。
+    // 颜色不能太白、要带点饱和度（远处的树林是灰绿偏蓝，不是乳白）：太白的话画面发灰发白，光柱也衬不出来
+    fog: new THREE.Fog(0xc4d5b6, 24, 130),
     // IBL 只照背景（角色的 MToon 不吃环境贴图）：比之前亮一点，背景不发闷；再高影子会被填掉
     environment: { url: `${BASE}hdri/nagoya_wall_path_1k.hdr`, intensity: 0.2, rotation: THREE.MathUtils.degToRad(126) },
     // 春天的鸟叫和啄木鸟（Resaural, CC0），作者录的就是无缝循环。说话时自动压低
