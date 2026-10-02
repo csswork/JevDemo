@@ -633,6 +633,8 @@ export function createCafe(): Backdrop {
     // 很淡的暖色雾：角色离相机 1.6m 基本不受影响，5m 外的后墙对比度降一点，背景退后、视线落在人身上
     fog: new THREE.Fog(0x8a6a50, 2.5, 22),
     environment: { url: `${import.meta.env.BASE_URL}scene/hdri/wooden_lounge_1k.hdr`, intensity: 0.5 },
+    // 店里的人声底噪（waweee, CC0）。说话时自动压低
+    ambience: `${import.meta.env.BASE_URL}audio/cafe.ogg`,
     shadowBounds: 3,
     dispose() {
       disposed = true;

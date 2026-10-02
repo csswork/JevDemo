@@ -30,6 +30,8 @@ interface ModelPrefs {
   speaker?: string;
   backdrop?: BackdropId;
   view?: CameraView;
+  /** 背景音开关。没设置过 = 开 */
+  ambient?: boolean;
 }
 function allPrefs(): Record<string, ModelPrefs> {
   try {
@@ -175,6 +177,8 @@ export default function App() {
   const [modelError, setModelError] = useState<string | null>(null);
   const modelPick = useRef(0);
   const [backdrop, setBackdropState] = useState<BackdropId>('cafe');
+  // 背景音（场景的环境音）：按角色记，默认开。第一次发送消息时才真正出声（浏览器要求用户手势）
+  const [ambient, setAmbient] = useState(true);
   // 音色：按角色记在浏览器里（见 ModelPrefs），角色加载时换成她的；没选过就用服务端的默认音色（TTS_SPEAKER）
   const [speaker, setSpeaker] = useState<string | null>(null);
   // 偏好按角色存：存的时候要用最新的角色 id（闭包里的可能是旧的）。换角色时在事件里直接改，这里兜底同步
@@ -224,6 +228,8 @@ export default function App() {
         const bd = BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : 'cafe';
         setBackdropState(bd);
         rt.setBackdrop(bd);
+        setAmbient(p.ambient ?? true);
+        rt.setAmbience(p.ambient ?? true);
         setSpeaker(p.speaker ?? null);
         rt.pendingView = p.view ?? null;
         rt.setIdleArmClearance(MODELS.find((m) => m.id === init.id)?.armOut ?? 0);
@@ -297,6 +303,23 @@ export default function App() {
     // 系统语音只在本地语音不可用时兜底
     if (runtimeRef.current) runtimeRef.current.ttsEnabled = tts && !voice.ready;
   }, [tts, voice.ready]);
+
+  // 切到别的 tab，或者浏览器/窗口失去焦点：把声音停掉，回来再恢复。
+  // 两个信号都要 —— document.hidden 管"tab 被切走"，hasFocus() 管"窗口还在但已经不是当前窗口"
+  // （另开一个窗口盖在上面、点了别的 App）。只想在 tab 真正隐藏时静音的话，
+  // 去掉 focus / blur 两个监听、只留 visibilitychange 即可。
+  useEffect(() => {
+    const sync = () => runtimeRef.current?.setPageActive(!document.hidden && document.hasFocus());
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('focus', sync);
+    window.addEventListener('blur', sync);
+    sync();
+    return () => {
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('focus', sync);
+      window.removeEventListener('blur', sync);
+    };
+  }, []);
 
   const useVoice = tts && voice.ready;
 
@@ -386,11 +409,20 @@ export default function App() {
     await showChat(session, () => resetChat(session));
   };
 
-  /** 换背景：记在当前角色下 */
+  /** 换背景：记在当前角色下。换背景也是一次用户操作，顺手解锁音频（背景音这才出得来） */
   const pickBackdrop = (id: BackdropId) => {
     setBackdropState(id);
+    runtimeRef.current?.unlockAudio();
     runtimeRef.current?.setBackdrop(id);
     savePrefs(modelIdRef.current, { backdrop: id });
+  };
+
+  /** 背景音开关：记在当前角色下 */
+  const pickAmbient = (on: boolean) => {
+    setAmbient(on);
+    runtimeRef.current?.unlockAudio();
+    runtimeRef.current?.setAmbience(on);
+    savePrefs(modelIdRef.current, { ambient: on });
   };
 
   /** 换到某个角色的音色和背景（换角色时、换失败退回时） */
@@ -399,6 +431,8 @@ export default function App() {
     const bd = BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : 'cafe';
     setBackdropState(bd);
     runtimeRef.current?.setBackdrop(bd);
+    setAmbient(p.ambient ?? true);
+    runtimeRef.current?.setAmbience(p.ambient ?? true);
     setSpeaker(p.speaker ?? null);
     // 状态更新是异步的，新角色马上就要打招呼：直接把音色交给 runtime
     const rt = runtimeRef.current;
@@ -541,8 +575,9 @@ export default function App() {
     setBusy(true);
     setJevMeta(null);
     setJevError(null);
-    // 音频必须在用户操作里启动：发送这一下（点击或回车）就是
-    if (useVoice) rt.unlockAudio();
+    // 音频必须在用户操作里启动：发送这一下（点击或回车）就是。
+    // 背景音和语音共用同一个 AudioContext，所以不开语音时也要解锁
+    if (useVoice || ambient) rt.unlockAudio();
     const history = turns.slice(-6).map(({ role, text }) => ({ role, text }));
     const ctx = { history, session };
     // 台词不是服务端写的（规则模板、passthrough）时，由前端把这一轮记进聊天记录
@@ -678,7 +713,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [input, busy, turns, jev.progressive, jev.reaction, jev.mode, useVoice, session, chatError, modelLoading]);
+  }, [input, busy, turns, jev.progressive, jev.reaction, jev.mode, useVoice, ambient, session, chatError, modelLoading]);
 
 
 
@@ -884,6 +919,10 @@ export default function App() {
                 </option>
               ))}
             </select>
+          </label>
+          <label title="场景的环境音：咖啡店的人声 / 公园的鸟鸣（CC0 素材，说话时自动压低）">
+            <input type="checkbox" checked={ambient} onChange={(e) => pickAmbient(e.target.checked)} />
+            背景音
           </label>
           <label title={jev.endpoint ?? jev.backend ?? '在 .env.local 里配置后重启 dev server'}>
             <input

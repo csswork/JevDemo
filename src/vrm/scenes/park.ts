@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { canvasTexture, rng, type Backdrop } from './common';
+import { AMBIENCE_VOLUME } from '../../speech/ambience';
 
 /**
  * 背景场景：城市公园里的木栈道（照着一张实拍的公园照片搭的），全 3D：
@@ -820,6 +821,10 @@ export function createPark(): Backdrop {
     hemisphere: { sky: 0xe2f0ff, ground: 0x6a8a48, intensity: 0.42 },
     fog: new THREE.Fog(0xd3e3c6, 30, 120),
     environment: { url: `${BASE}hdri/nagoya_wall_path_1k.hdr`, intensity: 0.1, rotation: THREE.MathUtils.degToRad(126) },
+    // 春天的鸟叫和啄木鸟（Resaural, CC0），作者录的就是无缝循环。说话时自动压低
+    ambience: `${import.meta.env.BASE_URL}audio/park.ogg`,
+    // 鸟鸣是远处录的，默认音量下偏小：比默认高 35%（咖啡店那条保持默认，正合适）
+    ambienceVolume: AMBIENCE_VOLUME * 1.35,
     shadowBounds: 3,
     sun: { color: 0xfff1dc, intensity: 2.2, bounds: 18, position: SUN_POS, fill: 0.25, rim: 0.35 },
     far: 170,

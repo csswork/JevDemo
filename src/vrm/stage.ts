@@ -299,5 +299,13 @@ export function createStage(canvas: HTMLCanvasElement) {
     get backdrop() {
       return backdropId;
     },
+    /** 当前背景要播的环境音（CC0 循环音频）。没配或纯色背景就是 null */
+    get ambience(): string | null {
+      return backdrop?.ambience ?? null;
+    },
+    /** 当前背景要的环境音音量。场景没指定就是 null（用播放层的默认值） */
+    get ambienceVolume(): number | null {
+      return backdrop?.ambienceVolume ?? null;
+    },
   };
 }

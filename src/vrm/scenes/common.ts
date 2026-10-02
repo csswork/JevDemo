@@ -20,6 +20,16 @@ export interface Backdrop {
    * rotation = 绕竖轴转多少（弧度），和场景里显示出来的全景对齐
    */
   environment: { url: string; intensity: number; rotation?: number } | { scene: THREE.Scene; intensity: number };
+  /**
+   * 场景的环境音：一条 CC0 循环音频的路径（见 src/speech/ambience.ts 和 public/audio/）。
+   * 省略 = 这个场景安静。角色开口时会被自动压低，说完抬回来。
+   */
+  ambience?: string;
+  /**
+   * 环境音的音量（线性增益）。省略 = 用播放层的默认值（AMBIENCE_VOLUME）。
+   * 同一档音量在不同素材上听感差很多（人声很近、鸟鸣很远），所以由场景自己定。
+   */
+  ambienceVolume?: number;
   /** 投影的范围：舞台的主光只在这个盒子里算阴影（角色和身边的东西） */
   shadowBounds: number;
   /** 舞台的主光投不投影（默认投） */

@@ -7,6 +7,9 @@
 
 export interface SpeakHandle {
   cancel: () => void;
+  /** 暂停 / 继续。页面切到后台时用（Web Speech 不走 AudioContext，管不到） */
+  pause: () => void;
+  resume: () => void;
 }
 
 export function ttsAvailable(): boolean {
@@ -51,7 +54,7 @@ export function speak(
 ): SpeakHandle {
   if (!ttsAvailable()) {
     opts.onEnd?.();
-    return { cancel: () => {} };
+    return { cancel: () => {}, pause: () => {}, resume: () => {} };
   }
 
   window.speechSynthesis.cancel();
@@ -68,5 +71,10 @@ export function speak(
   u.onerror = () => opts.onEnd?.();
 
   window.speechSynthesis.speak(u);
-  return { cancel: () => window.speechSynthesis.cancel() };
+  return {
+    cancel: () => window.speechSynthesis.cancel(),
+    // 有的平台 pause 不生效（只会继续出声），但不会报错，所以不做特殊处理
+    pause: () => window.speechSynthesis.pause(),
+    resume: () => window.speechSynthesis.resume(),
+  };
 }

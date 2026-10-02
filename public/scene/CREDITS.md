@@ -51,3 +51,15 @@
 - [Wall painting](https://poly.pizza/m/0CiZ4f1cZaF) — jeremy，CC-BY 3.0
 - [Analog clock](https://poly.pizza/m/5gAoMR2YHs3) — Poly by Google，CC-BY 3.0
 - [Vase](https://poly.pizza/m/7img3RnfCzZ) — Poly by Google，CC-BY 3.0
+
+## 场景背景音（`public/audio/`）
+
+每个场景一条循环环境音（咖啡店人声 / 公园鸟鸣），**CC0**（公有领域，可商用、可再分发、不要求署名）。
+播放见 `src/speech/ambience.ts`：整段解码成 AudioBuffer 之后按缓冲区循环 —— 浏览器在**样本级**绕回开头。
+
+> **素材必须是 OGG（Opus/Vorbis），不能用 MP3。** MP3 编码器的补零会在每圈接缝处留一小段静音，
+> 循环时"咔"一下。换素材时注意这一点。
+
+- 咖啡店 [coffee shop ambience](https://freesound.org/people/waweee/sounds/370973/) — waweee，CC0（4:56）
+- 公园 [Spring Birds & Woodpeckers (Loop)](https://freesound.org/people/Resaural/sounds/634511/) — Resaural，CC0（7:11，作者录的就是无缝循环）
+

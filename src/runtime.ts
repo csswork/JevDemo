@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { VRMUtils } from '@pixiv/three-vrm';
 import { createStage, type BackdropId, type CameraView } from './vrm/stage';
 import { Character } from './vrm/character';
-import { TimelinePlayer, compileAct, type CompiledAct } from './act/timeline';
+import { TimelinePlayer, compileAct, type CompiledAct, type TimelineEvent } from './act/timeline';
 import { estimateDuration, makeMeasuredMapper, makeTimeToChar } from './act/anchors';
 import { isProceduralMotion, type ActScript, type Emotion, type MotionId } from './act/schema';
 import { GESTURES } from './vrm/gestures';
 import { pickChineseVoice, speak, ttsAvailable, type SpeakHandle } from './speech/tts';
 import { VoiceSession } from './speech/voice';
+import { AmbiencePlayer } from './speech/ambience';
 
 export interface LiveState {
   fps: number;
@@ -40,6 +41,14 @@ export class Runtime {
   private audio: AudioContext | null = null;
   /** 本地语音（Vivian）的这一次说话；没有就是 null（无声或系统语音） */
   private session: VoiceSession | null = null;
+  /** 场景背景音。AudioContext 在 unlockAudio 里才建，见那里的注释 */
+  private ambience: AmbiencePlayer | null = null;
+  /** 用户开关：关掉就不再出声（只影响这一层，场景自己声明什么照旧） */
+  private ambienceEnabled = true;
+  /** 页面是不是在前台（可见 + 窗口有焦点） */
+  private pageActive = true;
+  /** 这次挂起是我们主动做的；浏览器自己挂的要区分开，恢复时才由我们 resume */
+  private suspendedByPage = false;
   /** 此刻的秒 → 字符下标，给口型用 */
   private timeToChar: ((t: number) => number) | null = null;
   private elapsed = 0;
@@ -80,6 +89,7 @@ export class Runtime {
     this.stage = stage;
     stage.resize();
     stage.setBackdrop(this.backdrop);
+    this.applyAmbience();
     // 松开鼠标之后镜头还会因为阻尼滑一小段：等它停稳了再通知
     stage.controls.addEventListener('end', () => {
       clearTimeout(this.viewTimer);
@@ -160,7 +170,7 @@ export class Runtime {
     this.speech?.cancel();
     this.speech = null;
     // 说到一半停下：补一个"说完了"，不然对话状态会一直停在 speaking、嘴也不合上
-    if (wasPlaying) this.character?.apply({ time: this.elapsed, kind: 'speech_end' });
+    if (wasPlaying) this.apply({ time: this.elapsed, kind: 'speech_end' });
     this.onSpeechText?.('');
   }
 
@@ -206,8 +216,62 @@ export class Runtime {
    * 之后同一个 AudioContext 一直复用。
    */
   unlockAudio() {
-    if (!this.audio) this.audio = new AudioContext();
-    if (this.audio.state === 'suspended') void this.audio.resume();
+    if (!this.audio) {
+      this.audio = new AudioContext();
+      // 背景音复用同一个 ctx：浏览器只把音频放行给"在用户手势里建的那一个"
+      this.ambience = new AmbiencePlayer(this.audio);
+      this.applyAmbience();
+      this.ambience.unlock();
+      // 建的时候页面就不在前台（少见）：立刻挂起来，别出声
+      if (!this.pageActive) {
+        this.suspendedByPage = true;
+        void this.audio.suspend().catch(() => {});
+      }
+    }
+    if (this.audio.state === 'suspended' && this.pageActive) void this.audio.resume();
+  }
+
+  /** 把"当前场景 + 用户开关"合起来告诉背景音层 */
+  private applyAmbience() {
+    const url = this.stage?.ambience ?? null;
+    this.ambience?.setScene(this.ambienceEnabled ? url : null, this.stage?.ambienceVolume ?? undefined);
+  }
+
+  /** 背景音开关（面板上的复选框） */
+  setAmbience(on: boolean) {
+    this.ambienceEnabled = on;
+    this.applyAmbience();
+  }
+
+  /**
+   * 切到别的 tab / 别的窗口时传 false，回来传 true。
+   *
+   * 挂起的是**整个 AudioContext**，而不是逐个去停声音：它一挂起，背景音和正在说的
+   * 那句话一起暂停，而且**音频时钟也冻住** —— 回来 resume 时两者都从原来的位置接着走，
+   * 不会出现"切走两分钟、回来发现话已经说完了"。
+   *
+   * 时间轴本身不用管：它由 tick() 里的 rAF 推进，后台标签页里 rAF 本来就被节流到几乎不动。
+   * Web Speech（系统语音兜底）不走 AudioContext，要单独 pause / resume。
+   */
+  setPageActive(active: boolean) {
+    if (active === this.pageActive) return;
+    this.pageActive = active;
+    const ctx = this.audio;
+    if (!ctx) return;
+    if (active) {
+      if (this.suspendedByPage) {
+        this.suspendedByPage = false;
+        void ctx.resume().catch(() => {});
+      }
+      this.speech?.resume();
+    } else {
+      // 已经是 suspended（浏览器自己挂的）就别抢，只记下这次该由我们恢复
+      if (ctx.state === 'running') {
+        this.suspendedByPage = true;
+        void ctx.suspend().catch(() => {});
+      }
+      this.speech?.pause();
+    }
   }
 
   /** 本地语音的音色（预设音色 id）；null = 用服务端默认音色 */
@@ -284,7 +348,7 @@ export class Runtime {
     for (const ev of this.player.upgrade(compiled, { retime: true })) {
       if (ev.kind === 'cue') continue;
       if (ev.kind === 'motion' && this.elapsed - ev.time > 0.8) continue;
-      character.apply(ev);
+      this.apply(ev);
     }
     this.compiled = compiled;
   }
@@ -311,11 +375,21 @@ export class Runtime {
     for (const ev of this.player.upgrade(compiled)) {
       if (ev.kind === 'cue') continue;
       if (ev.kind === 'motion' && this.elapsed - ev.time > 0.8) continue;
-      character.apply(ev);
+      this.apply(ev);
     }
     character.setArousal(act.emotion.arousal);
     this.judged = true;
     return true;
+  }
+
+  /**
+   * 时间轴事件的统一入口。
+   * 这里只多管一件渲染层不关心的事：角色开口时把背景音压下去，说完抬回来。
+   */
+  private apply(ev: TimelineEvent) {
+    if (ev.kind === 'speech_start') this.ambience?.setDucked(true);
+    else if (ev.kind === 'speech_end') this.ambience?.setDucked(false);
+    this.character?.apply(ev);
   }
 
   // ---- 对话状态 ----
@@ -436,6 +510,7 @@ export class Runtime {
   setBackdrop(id: BackdropId) {
     this.backdrop = id;
     this.stage?.setBackdrop(id);
+    this.applyAmbience();
   }
 
   /** 待机时上臂额外外展（按模型的裙子定，见 models.ts 的 armOut）。mount / setModel 前后调用都行 */
@@ -466,9 +541,7 @@ export class Runtime {
     // 有真实语音时时钟跟着音频走：下一段晚到了、播放顿了一下，表情也一起等
     const session = this.player.isPlaying ? this.session : null;
     const due = session ? this.player.updateTo(session.time) : this.player.update(dt);
-    for (const ev of due) {
-      character.apply(ev);
-    }
+    for (const ev of due) this.apply(ev);
     if (session && this.timeToChar) {
       character.lipsync.follow(this.timeToChar(Math.max(0, session.time)), session.level());
     }
@@ -525,6 +598,7 @@ export class Runtime {
     clearTimeout(this.viewTimer);
     this.speech?.cancel();
     this.session?.stop();
+    this.ambience?.dispose();
     void this.audio?.close();
     this.character?.dispose();
     this.stage?.dispose();
