@@ -71,6 +71,83 @@ export function cellUV(cell: number): [number, number, number, number] {
   return [(col * CELL + inset) / W, 1 - ((row + 1) * CELL - inset) / H, ((col + 1) * CELL - inset) / W, 1 - (row * CELL + inset) / H];
 }
 
+/**
+ * 有玻璃的格子：开口在格子里的位置（像素，256×256、y 朝下，和画的时候一样），开口里的东西都是几何体（street.ts）：
+ *   hole   开口：墙在这里挖空（着色器里丢掉这些像素），玻璃往里缩 12cm，四周有窗套
+ *   bars   窗棂、门的竖梃和横档、门下的踢脚板：开口里的木条 / 铝条（像素矩形）
+ *   frame  窗框的颜色；metal = 铝框（铁件那一批）还是木框（木头那一批）
+ *   room   玻璃后面是什么房间（glass.ts 的房间图集）
+ *   sill   窗台（往外伸的一块木板）
+ *   handle 门把手（黄铜）
+ */
+export interface WindowSpec {
+  hole: [number, number, number, number];
+  bars: Array<[number, number, number, number]>;
+  frame: number;
+  metal: boolean;
+  room: 'cafe' | 'pottery' | 'souvenir' | 'clothes' | 'flower' | 'home';
+  sill?: [number, number, number, number];
+  handle?: [number, number, number, number];
+}
+export const WINDOWS: Partial<Record<Cell, WindowSpec>> = {
+  [F.CAFE_WIN]: { hole: [16, 44, 240, 194], bars: [[125, 44, 131, 194], [16, 72, 240, 76]], frame: 0x4a3326, metal: false, room: 'cafe' },
+  [F.CAFE_DOOR]: {
+    hole: [16, 44, 240, 228],
+    bars: [
+      [70, 44, 78, 228],
+      [182, 44, 190, 228],
+      [78, 44, 182, 52],
+      [78, 206, 182, 228],
+      [16, 72, 70, 76],
+      [190, 72, 240, 76],
+    ],
+    frame: 0x4a3326,
+    metal: false,
+    room: 'cafe',
+    handle: [166, 128, 171, 160],
+  },
+  [F.SHOP_WIN]: { hole: [15, 44, 241, 192], bars: [[84, 44, 89, 192], [167, 44, 172, 192]], frame: 0x6e4c35, metal: false, room: 'pottery' },
+  [F.SOUVENIR]: { hole: [14, 44, 242, 204], bars: [[126, 44, 131, 204]], frame: 0x59606a, metal: true, room: 'souvenir' },
+  [F.GLASS_SHOP]: { hole: [12, 42, 244, 222], bars: [[126, 42, 131, 222]], frame: 0x5c636b, metal: true, room: 'clothes' },
+  [F.FLOWER]: { hole: [14, 44, 242, 220], bars: [[125, 44, 131, 220]], frame: 0xe9e4d8, metal: true, room: 'flower' },
+  [F.WIN_WOOD]: {
+    hole: [66, 66, 190, 170],
+    bars: [[126, 66, 130, 170], [66, 116, 190, 120]],
+    frame: 0x4a3326,
+    metal: false,
+    room: 'home',
+    sill: [52, 178, 204, 186],
+  },
+  [F.WIN_ALU]: { hole: [50, 72, 190, 166], bars: [[118, 72, 123, 166]], frame: 0xb7bcc1, metal: true, room: 'home' },
+  [F.BALC_DOOR]: { hole: [32, 40, 224, 244], bars: [[125, 40, 131, 244]], frame: 0x5a5f66, metal: true, room: 'home' },
+  [F.WIN_TALL]: {
+    hole: [73, 35, 183, 239],
+    bars: [[126, 35, 130, 239], [73, 102, 183, 106], [73, 170, 183, 174]],
+    frame: 0x4a3326,
+    metal: false,
+    room: 'home',
+  },
+};
+
+/** 每一格开口在图集 uv 里的范围（vec4[32]：u0, v0, u1, v1；没有开口的格子给一个永远不在里面的范围），墙的着色器拿来挖洞 */
+export function holeRects() {
+  const W = CELL * COLS;
+  const H = CELL * ROWS;
+  const out: THREE.Vector4[] = [];
+  for (let cell = 0; cell < COLS * ROWS; cell++) {
+    const w = WINDOWS[cell as Cell];
+    if (!w) {
+      out.push(new THREE.Vector4(2, 2, 2, 2));
+      continue;
+    }
+    const ox = (cell % COLS) * CELL;
+    const oy = Math.floor(cell / COLS) * CELL;
+    const [x0, y0, x1, y1] = w.hole;
+    out.push(new THREE.Vector4((ox + x0) / W, 1 - (oy + y1) / H, (ox + x1) / W, 1 - (oy + y0) / H));
+  }
+  return out;
+}
+
 const WOOD_DARK = '#4a3326';
 const WOOD_MID = '#6e4c35';
 const WOOD_LIGHT = '#94704f';
@@ -154,24 +231,6 @@ function glass(g: G, x: number, y: number, w: number, h: number, alpha = 1) {
   g.restore();
 }
 
-/** 窗帘：两边垂下来的布，有褶 */
-function curtains(g: G, x: number, y: number, w: number, h: number, color = '#f6efe2', open = 0.5) {
-  const cw = (w * (1 - open)) / 2;
-  for (const [cx, dir] of [
-    [x, 1],
-    [x + w - cw, -1],
-  ] as const) {
-    g.fillStyle = color;
-    g.fillRect(cx, y, cw, h);
-    for (let k = 0; k < 4; k++) {
-      g.fillStyle = 'rgba(120,100,80,0.12)';
-      g.fillRect(cx + (k + 0.5) * (cw / 4), y, 2, h);
-    }
-    g.fillStyle = 'rgba(0,0,0,0.08)';
-    g.fillRect(dir > 0 ? cx + cw - 2 : cx, y, 2, h);
-  }
-}
-
 /** 木框（框是实心填色，里面的洞由调用方再画） */
 function frame(g: G, x: number, y: number, w: number, h: number, t: number, color = WOOD_DARK) {
   g.fillStyle = color;
@@ -182,124 +241,6 @@ function frame(g: G, x: number, y: number, w: number, h: number, t: number, colo
   g.fillStyle = 'rgba(0,0,0,0.25)';
   g.fillRect(x + t - 1.5, y + t, 1.5, h - 2 * t);
   g.fillRect(x + t, y + t - 1.5, w - 2 * t, 1.5);
-}
-
-/** 店里：暖色的墙、几层架子上的瓶瓶罐罐、吊灯。e = 自发光层（同样位置画灯光） */
-function cafeInterior(g: G, e: G, r: R, x: number, y: number, w: number, h: number, kind: 'cafe' | 'pottery' | 'souvenir') {
-  for (const [ctx, k] of [
-    [g, 1],
-    [e, 0.62],
-  ] as const) {
-    const grd = ctx.createLinearGradient(x, y, x, y + h);
-    grd.addColorStop(0, kind === 'cafe' ? '#f7d9a4' : '#f3dfba');
-    grd.addColorStop(1, kind === 'cafe' ? '#b98a57' : '#c9a57a');
-    ctx.save();
-    ctx.globalAlpha = k;
-    ctx.fillStyle = grd;
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
-  }
-  // 架子
-  const shelves = kind === 'cafe' ? [0.36, 0.56, 0.76] : [0.3, 0.52, 0.74];
-  for (const t of shelves) {
-    const sy = y + h * t;
-    g.fillStyle = WOOD_MID;
-    g.fillRect(x + 4, sy, w * (kind === 'cafe' ? 0.6 : 0.92), 4);
-    g.fillStyle = 'rgba(0,0,0,0.18)';
-    g.fillRect(x + 4, sy + 4, w * (kind === 'cafe' ? 0.6 : 0.92), 3);
-    // 架子上的东西
-    let cx = x + 8 + r() * 6;
-    const end = x + w * (kind === 'cafe' ? 0.6 : 0.92);
-    while (cx < end - 8) {
-      const iw = 6 + r() * 9;
-      const ih = 8 + r() * 14;
-      if (kind === 'cafe') {
-        // 玻璃罐（琥珀色、透明）、白杯子、小盆栽
-        const pick = r();
-        g.fillStyle = pick < 0.35 ? '#c98a3a' : pick < 0.6 ? '#f6f2ea' : pick < 0.8 ? '#e9dcc0' : '#5e9a4a';
-        g.fillRect(cx, sy - ih, iw, ih);
-        g.fillStyle = 'rgba(255,255,255,0.35)';
-        g.fillRect(cx + 1, sy - ih + 1, 2, ih - 2);
-      } else if (kind === 'pottery') {
-        // 碗（半圆）、盘子（立着的椭圆）、青花的瓶
-        const pick = r();
-        if (pick < 0.4) {
-          g.fillStyle = r() < 0.5 ? '#3d5f9c' : '#8a5a3c';
-          g.beginPath();
-          g.ellipse(cx + iw / 2, sy - 2, iw / 2 + 2, ih * 0.45, 0, Math.PI, 0);
-          g.fill();
-        } else if (pick < 0.7) {
-          g.fillStyle = '#eef1f4';
-          g.beginPath();
-          g.ellipse(cx + iw / 2, sy - ih / 2, iw / 2 + 1, ih / 2, 0, 0, Math.PI * 2);
-          g.fill();
-          g.strokeStyle = '#3d5f9c';
-          g.lineWidth = 1.5;
-          g.stroke();
-        } else {
-          g.fillStyle = r() < 0.5 ? '#e8ecf0' : '#6f8fb8';
-          g.beginPath();
-          g.ellipse(cx + iw / 2, sy - ih * 0.45, iw / 2, ih * 0.5, 0, 0, Math.PI * 2);
-          g.fill();
-          g.fillRect(cx + iw / 2 - 2, sy - ih - 2, 4, 4);
-        }
-      } else {
-        // 土特产：一盒盒的（彩色的长方块）
-        g.fillStyle = ['#e2574c', '#f2c14e', '#4f9bd9', '#f6f2ea', '#7cbf6a', '#e88fb0'][Math.floor(r() * 6)];
-        g.fillRect(cx, sy - ih, iw + 3, ih);
-        g.fillStyle = 'rgba(255,255,255,0.4)';
-        g.fillRect(cx + 2, sy - ih + 3, iw - 2, 3);
-      }
-      cx += iw + 3 + r() * 4;
-    }
-  }
-  if (kind === 'cafe') {
-    // 右边：吧台和意式咖啡机的剪影
-    g.fillStyle = '#5a3a28';
-    g.fillRect(x + w * 0.62, y + h * 0.66, w * 0.38, h * 0.34);
-    g.fillStyle = '#c9ccd0';
-    g.fillRect(x + w * 0.7, y + h * 0.5, w * 0.2, h * 0.16);
-    g.fillStyle = '#7a7f86';
-    g.fillRect(x + w * 0.72, y + h * 0.6, w * 0.16, 3);
-    // 一盆大绿植
-    g.fillStyle = '#4f8f43';
-    for (let k = 0; k < 7; k++) {
-      g.beginPath();
-      g.ellipse(x + w * 0.9 + (r() - 0.5) * 14, y + h * (0.42 + r() * 0.2), 7, 12, r() * 2, 0, Math.PI * 2);
-      g.fill();
-    }
-  }
-  // 吊灯：细线 + 灯罩 + 光晕（两层都画，自发光那层是亮的）
-  const lamps = kind === 'cafe' ? [0.25, 0.7] : [0.5];
-  for (const t of lamps) {
-    const lx = x + w * t;
-    const ly = y + h * 0.2;
-    g.strokeStyle = '#3a2a20';
-    g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(lx, y);
-    g.lineTo(lx, ly);
-    g.stroke();
-    for (const [ctx, a] of [
-      [g, 0.85],
-      [e, 1],
-    ] as const) {
-      const glow = ctx.createRadialGradient(lx, ly + 6, 0, lx, ly + 6, 34);
-      glow.addColorStop(0, `rgba(255,236,180,${a})`);
-      glow.addColorStop(1, 'rgba(255,220,150,0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(lx - 34, ly - 28, 68, 68);
-    }
-    g.fillStyle = '#2f2a26';
-    g.beginPath();
-    g.moveTo(lx - 9, ly + 6);
-    g.lineTo(lx + 9, ly + 6);
-    g.lineTo(lx + 4, ly - 2);
-    g.lineTo(lx - 4, ly - 2);
-    g.fill();
-    g.fillStyle = '#fff4cf';
-    g.fillRect(lx - 4, ly + 6, 8, 3);
-  }
 }
 
 /** 一楼的店面：上面一段墙、横梁、下面石基座；返回开口的范围 */
@@ -313,16 +254,10 @@ function groundFrame(g: G, r: R) {
 type Painter = (g: G, e: G, r: R) => void;
 
 const PAINTERS: Partial<Record<Cell, Painter>> = {
-  [F.CAFE_WIN]: (g, e, r) => {
+  [F.CAFE_WIN]: (g, _e, r) => {
     const { y0, y1 } = groundFrame(g, r);
     frame(g, 6, y0, 244, y1 - y0, 10);
-    cafeInterior(g, e, r, 16, y0 + 8, 224, 150, 'cafe');
-    glass(g, 16, y0 + 8, 224, 150, 0.32);
-    // 竖棂、横棂
-    post(g, 125, 6, y0 + 8, y0 + 158);
-    g.fillStyle = WOOD_DARK;
-    g.fillRect(16, y0 + 36, 224, 4);
-    // 下面的木裙板
+    // 玻璃那块是开口（WINDOWS）：真的玻璃、窗棂是几何体，这里只画四周的木框和下面的木裙板
     g.fillStyle = WOOD_MID;
     g.fillRect(16, y0 + 162, 224, y1 - y0 - 170);
     g.strokeStyle = 'rgba(0,0,0,0.3)';
@@ -330,54 +265,21 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     g.strokeRect(24, y0 + 168, 96, y1 - y0 - 182);
     g.strokeRect(136, y0 + 168, 96, y1 - y0 - 182);
   },
-  [F.CAFE_DOOR]: (g, e, r) => {
+  [F.CAFE_DOOR]: (g, _e, r) => {
     const { y0, y1 } = groundFrame(g, r);
     frame(g, 6, y0, 244, y1 - y0, 10);
-    cafeInterior(g, e, r, 16, y0 + 8, 224, y1 - y0 - 8, 'cafe');
-    glass(g, 16, y0 + 8, 224, y1 - y0 - 8, 0.3);
-    // 门：木框 + 一整块玻璃，门把手，"OPEN" 小木牌
-    g.fillStyle = WOOD_DARK;
-    for (const x of [70, 182]) g.fillRect(x, y0 + 8, 8, y1 - y0 - 8);
-    g.fillRect(70, y0 + 8, 120, 8);
-    g.fillRect(70, y1 - 22, 120, 22);
-    g.fillRect(16, y0 + 36, 54, 4);
-    g.fillRect(190, y0 + 36, 50, 4);
-    g.fillStyle = '#d6b36a';
-    g.fillRect(168, y0 + 96, 4, 26);
-    g.fillStyle = '#f3ead8';
-    g.fillRect(104, y0 + 58, 52, 22);
-    g.strokeStyle = '#6e4c35';
-    g.lineWidth = 2;
-    g.strokeRect(104, y0 + 58, 52, 22);
-    g.beginPath();
-    g.moveTo(112, y0 + 58);
-    g.lineTo(130, y0 + 44);
-    g.lineTo(148, y0 + 58);
-    g.stroke();
-    g.fillStyle = '#4a3326';
-    g.font = 'bold 14px Georgia, serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText('OPEN', 130, y0 + 70);
   },
-  [F.SHOP_WIN]: (g, e, r) => {
+  [F.SHOP_WIN]: (g, _e, r) => {
     const { y0, y1 } = groundFrame(g, r);
     frame(g, 6, y0, 244, y1 - y0, 9, WOOD_MID);
-    cafeInterior(g, e, r, 15, y0 + 8, 226, 148, 'pottery');
-    glass(g, 15, y0 + 8, 226, 148, 0.3);
-    post(g, 84, 5, y0 + 8, y0 + 156, WOOD_MID);
-    post(g, 167, 5, y0 + 8, y0 + 156, WOOD_MID);
     g.fillStyle = WOOD_LIGHT;
     g.fillRect(15, y0 + 158, 226, y1 - y0 - 166);
     g.fillStyle = 'rgba(0,0,0,0.2)';
     g.fillRect(15, y0 + 158, 226, 3);
   },
-  [F.SOUVENIR]: (g, e, r) => {
+  [F.SOUVENIR]: (g, _e, r) => {
     const { y0, y1 } = groundFrame(g, r);
     frame(g, 6, y0, 244, y1 - y0, 8, '#59606a');
-    cafeInterior(g, e, r, 14, y0 + 8, 228, 160, 'souvenir');
-    glass(g, 14, y0 + 8, 228, 160, 0.28);
-    post(g, 126, 5, y0 + 8, y0 + 168, '#59606a');
     g.fillStyle = '#8e949b';
     g.fillRect(14, y0 + 170, 228, y1 - y0 - 178);
   },
@@ -539,13 +441,6 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     plaster(g, r);
     beam(g, 246, 10);
     frame(g, 58, 58, 140, 120, 8);
-    g.fillStyle = '#3c3a3f';
-    g.fillRect(66, 66, 124, 104);
-    curtains(g, 66, 66, 124, 104);
-    glass(g, 66, 66, 124, 104, 0.55);
-    g.fillStyle = WOOD_DARK;
-    g.fillRect(126, 66, 4, 104);
-    g.fillRect(66, 116, 124, 4);
     g.fillStyle = WOOD_LIGHT;
     g.fillRect(52, 178, 152, 8);
     g.fillStyle = 'rgba(0,0,0,0.12)';
@@ -556,12 +451,6 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     beam(g, 248, 8, '#b9b3a8');
     g.fillStyle = ALU;
     g.fillRect(44, 66, 152, 106);
-    g.fillStyle = '#3d3f45';
-    g.fillRect(50, 72, 140, 94);
-    curtains(g, 50, 72, 140, 94, '#eef2f5', 0.35);
-    glass(g, 50, 72, 140, 94, 0.6);
-    g.fillStyle = ALU;
-    g.fillRect(118, 72, 5, 94);
     // 雨户的盒子
     g.fillStyle = '#d7d2c6';
     g.fillRect(196, 62, 34, 114);
@@ -606,12 +495,6 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     plaster(g, r);
     g.fillStyle = '#5a5f66';
     g.fillRect(26, 34, 204, 214);
-    g.fillStyle = '#3a3c42';
-    g.fillRect(32, 40, 192, 204);
-    curtains(g, 32, 40, 192, 204, '#f4ede0', 0.4);
-    glass(g, 32, 40, 192, 204, 0.58);
-    g.fillStyle = '#5a5f66';
-    g.fillRect(125, 40, 6, 204);
   },
   [F.WIN_SMALL]: (g, _e, r) => {
     plaster(g, r);
@@ -625,14 +508,6 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
   [F.WIN_TALL]: (g, _e, r) => {
     plaster(g, r);
     frame(g, 64, 26, 128, 222, 9);
-    g.fillStyle = '#3b3439';
-    g.fillRect(73, 35, 110, 204);
-    curtains(g, 73, 35, 110, 204, '#f3e9d6', 0.45);
-    glass(g, 73, 35, 110, 204, 0.55);
-    g.fillStyle = WOOD_DARK;
-    g.fillRect(126, 35, 4, 204);
-    g.fillRect(73, 102, 110, 4);
-    g.fillRect(73, 170, 110, 4);
   },
   [F.WALL_AC]: (g, _e, r) => {
     plaster(g, r);
@@ -808,59 +683,14 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     g.font = `bold 14px ${FONT_SERIF_JP}`;
     g.fillText('酒', 220, y0 + 93);
   },
-  [F.GLASS_SHOP]: (g, e, r) => {
+  [F.GLASS_SHOP]: (g, _e, r) => {
     const { y0, y1 } = groundFrame(g, r);
     g.fillStyle = '#5c636b';
     g.fillRect(6, y0, 244, y1 - y0);
-    for (const [ctx, k] of [
-      [g, 1],
-      [e, 0.5],
-    ] as const) {
-      ctx.fillStyle = k === 1 ? '#f4f1ea' : 'rgba(240,235,225,0.5)';
-      ctx.fillRect(12, y0 + 6, 232, y1 - y0 - 12);
-    }
-    // 货架上的帽子、T 恤（彩色的块）
-    for (let k = 0; k < 9; k++) {
-      const x = 22 + k * 25;
-      g.fillStyle = ['#4f9bd9', '#f6f2ea', '#e2574c', '#f2c14e', '#7cbf6a', '#2f3a8f'][Math.floor(r() * 6)];
-      g.beginPath();
-      g.moveTo(x, y0 + 70);
-      g.lineTo(x + 18, y0 + 70);
-      g.lineTo(x + 16, y0 + 112);
-      g.lineTo(x + 2, y0 + 112);
-      g.fill();
-    }
-    g.fillStyle = '#c9ccd0';
-    g.fillRect(12, y0 + 120, 232, 4);
-    for (let k = 0; k < 10; k++) {
-      g.fillStyle = ['#e88fb0', '#f6f2ea', '#4f9bd9', '#f2c14e'][Math.floor(r() * 4)];
-      g.beginPath();
-      g.ellipse(24 + k * 23, y0 + 140, 9, 6, 0, 0, Math.PI * 2);
-      g.fill();
-    }
-    glass(g, 12, y0 + 6, 232, y1 - y0 - 12, 0.3);
-    g.fillStyle = '#5c636b';
-    g.fillRect(126, y0, 5, y1 - y0);
   },
-  [F.FLOWER]: (g, e, r) => {
+  [F.FLOWER]: (g, _e, r) => {
     const { y0, y1 } = groundFrame(g, r);
     frame(g, 6, y0, 244, y1 - y0, 8, '#e9e4d8');
-    for (const [ctx, k] of [
-      [g, 1],
-      [e, 0.35],
-    ] as const) {
-      ctx.fillStyle = k === 1 ? '#dfe8d4' : 'rgba(220,230,200,0.35)';
-      ctx.fillRect(14, y0 + 8, 228, y1 - y0 - 16);
-    }
-    for (let k = 0; k < 40; k++) {
-      g.fillStyle = r() < 0.6 ? `hsl(${100 + r() * 30}, 40%, ${30 + r() * 15}%)` : ['#e2574c', '#f2c14e', '#f08fb0', '#ffffff', '#9b6bd0'][Math.floor(r() * 5)];
-      g.beginPath();
-      g.arc(20 + r() * 216, y0 + 40 + r() * (y1 - y0 - 60), 5 + r() * 9, 0, Math.PI * 2);
-      g.fill();
-    }
-    glass(g, 14, y0 + 8, 228, y1 - y0 - 16, 0.28);
-    g.fillStyle = '#e9e4d8';
-    g.fillRect(125, y0 + 8, 6, y1 - y0 - 16);
   },
 };
 
@@ -942,6 +772,7 @@ export const SIGNS = [
   ['花のアトリエ', 'FLOWER', '#ffffff', '#3e7a4a'],
   ['魚よし', '地魚料理', '#2a2420', '#f6f0e4'],
   ['潮騒', 'Surf & Coffee', '#e9f2f6', '#2f5c7a'],
+  ['OPEN', 'いらっしゃいませ', '#f3ead8', '#4a3326'],
 ] as const;
 
 const BANNER_W = 128;

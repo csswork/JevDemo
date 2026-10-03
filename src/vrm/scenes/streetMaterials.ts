@@ -43,9 +43,10 @@ const normMap = (k: number, lo = 0) => /* glsl */ `
 /**
  * 墙：灰泥的 PBR 铺在 uv1（米）上，立面图集（窗、门、梁、招牌……）按遮罩盖在上面 —— 遮罩是 0 的地方是灰泥，
  * 1 的地方是画出来的构件（构件那里不要灰泥的法线，粗糙度也换掉）。每栋的顶点色乘在最后（米白、浅灰……）。
- * 墙根 60cm 一圈溅上去的泥；每层楼板下面零星几道往下流的雨痕
+ * 墙根 60cm 一圈溅上去的泥；每层楼板下面零星几道往下流的雨痕。
+ * holes = 每一格开口的 uv 范围（streetTextures.ts 的 holeRects）：窗、店门那块挖空，真的玻璃和窗框在里面（street.ts）
  */
-export function facadeMaterial(keep: Keep, atlas: { map: THREE.Texture; emissive: THREE.Texture; mask: THREE.Texture }) {
+export function facadeMaterial(keep: Keep, atlas: { map: THREE.Texture; emissive: THREE.Texture; mask: THREE.Texture }, holes: THREE.Vector4[]) {
   const PLASTER_M = 2.23;
   const mat = keep(
     new THREE.MeshStandardMaterial({
@@ -61,12 +62,14 @@ export function facadeMaterial(keep: Keep, atlas: { map: THREE.Texture; emissive
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uAtlas = { value: atlas.map };
     shader.uniforms.uMask = { value: atlas.mask };
+    shader.uniforms.uHoles = { value: holes };
     addVaryings(shader);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform sampler2D uAtlas;\nuniform sampler2D uMask;\n${HASH}`)
+      .replace('#include <common>', `#include <common>\nuniform sampler2D uAtlas;\nuniform sampler2D uMask;\n${HOLES_GLSL}\n${HASH}`)
       .replace(
         '#include <map_fragment>',
-        `${normMap(0.4)}
+        `if ( inHole( vEmissiveMapUv ) ) discard;
+        ${normMap(0.4)}
         vec4 atlasC = texture2D( uAtlas, vEmissiveMapUv );
         float atlasM = texture2D( uMask, vEmissiveMapUv ).r;
         vec2 wallM = vMapUv * ${PLASTER_M.toFixed(2)};
@@ -82,6 +85,32 @@ export function facadeMaterial(keep: Keep, atlas: { map: THREE.Texture; emissive
       .replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * ( 1.0 - atlasM );');
   };
   mat.customProgramCacheKey = () => 'street-facade';
+  return mat;
+}
+
+/** 挖洞：按 uv 算出是图集的哪一格，在那一格的开口里就丢掉（按格子查表，不用遮罩贴图：远处取 mipmap 时洞不会变形） */
+const HOLES_GLSL = /* glsl */ `
+  uniform vec4 uHoles[32];
+  bool inHole( vec2 hu ) {
+    int cellI = int( floor( hu.x * 8.0 ) ) + int( floor( ( 1.0 - hu.y ) * 4.0 ) ) * 8;
+    vec4 hr = uHoles[ clamp( cellI, 0, 31 ) ];
+    return hu.x > hr.x && hu.x < hr.z && hu.y > hr.y && hu.y < hr.w;
+  }
+`;
+
+/** 墙投影用的深度材质：同样挖洞（阳光从窗口照进店里，地板上有窗格的光斑） */
+export function facadeDepthMaterial(keep: Keep, holes: THREE.Vector4[]) {
+  const mat = keep(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uHoles = { value: holes };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vHoleUv;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHoleUv = uv;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying vec2 vHoleUv;\n${HOLES_GLSL}`)
+      .replace('void main() {', 'void main() {\n  if ( inHole( vHoleUv ) ) discard;');
+  };
+  mat.customProgramCacheKey = () => 'street-facade-depth';
   return mat;
 }
 
