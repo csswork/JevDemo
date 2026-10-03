@@ -1,8 +1,25 @@
 import * as THREE from 'three';
+import type { TimeState } from '../timeOfDay';
 
 /**
  * 背景场景的公共部分：舞台（stage.ts）认的接口，和几个场景都用的贴图小工具。
  */
+
+/**
+ * 场景每帧交给舞台的灯光（Backdrop.lighting）。颜色都是线性空间的 THREE.Color。
+ * envScene = 拿来烘环境贴图（PMREM）的小场景（天空 + 月亮 + ……），envVersion 变了舞台就重新烘一次（最多 10 次 / 秒），
+ * 旧的那张释放掉；贴图大小要和 HDRI 转出来的一样（256），换贴图的时候材质才不用重新编译
+ */
+export interface LiveLighting {
+  /** 主光：太阳（夜里换成月亮）。position = 相对角色的方向 × 距离；shadow = 影子的浓淡（0..1，换灯的那一下淡掉） */
+  sun: { color: THREE.Color; intensity: number; position: THREE.Vector3; shadow: number };
+  fill: { color: THREE.Color; intensity: number };
+  rim: { color: THREE.Color; intensity: number };
+  hemisphere: { sky: THREE.Color; ground: THREE.Color; intensity: number };
+  environmentIntensity: number;
+  envScene: THREE.Scene | null;
+  envVersion: number;
+}
 
 export interface Backdrop {
   group: THREE.Group;
@@ -17,9 +34,10 @@ export interface Backdrop {
   /**
    * 环境光（IBL），舞台负责转成 PMREM；intensity = scene.environmentIntensity。
    * url = 一张 HDRI；scene = 一个小场景（比如天空球 + 草地），舞台直接拿它烘环境贴图，不用下载。
-   * rotation = 绕竖轴转多少（弧度），和场景里显示出来的全景对齐
+   * rotation = 绕竖轴转多少（弧度），和场景里显示出来的全景对齐。
+   * 省略 = 场景按时间自己给（lighting.envScene，见 LiveLighting）
    */
-  environment: { url: string; intensity: number; rotation?: number } | { scene: THREE.Scene; intensity: number };
+  environment?: { url: string; intensity: number; rotation?: number } | { scene: THREE.Scene; intensity: number };
   /**
    * 场景的环境音：一条 CC0 循环音频的路径（见 src/speech/ambience.ts 和 public/audio/）。
    * 省略 = 这个场景安静。角色开口时会被自动压低，说完抬回来。
@@ -60,8 +78,13 @@ export interface Backdrop {
    * 给了预算，像素比就按窗口大小自动降一点（比如 1.76），肉眼几乎看不出，片元着色的开销按像素数降
    */
   pixelBudget?: number;
-  /** 每帧调一次（风吹树叶、草） */
-  update?(dt: number): void;
+  /** 每帧调一次（风吹树叶、草）。time = 现在几点、太阳在哪（舞台的时间，见 timeOfDay.ts；只有街景用） */
+  update?(dt: number, time: TimeState): void;
+  /**
+   * 按时间变的灯光：有的话舞台每帧（update 之后）照着它设主光、补光、轮廓光、半球光和环境光，
+   * 盖掉上面 sun / hemisphere / environment 的固定值。场景在 update 里改它的值就行
+   */
+  lighting?: LiveLighting;
   /**
    * 每次渲染前调一次，传进这次渲染的视锥（实际用的相机：主相机、防穿墙的替身或调试相机）
    * 和主光阴影相机的视锥（主光不投影时为 null）。场景拿来自己剔除合批的东西（公园的树，见 park.ts）

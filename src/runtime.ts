@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { VRMUtils } from '@pixiv/three-vrm';
 import { createStage, type BackdropId, type CameraView } from './vrm/stage';
+import type { TimeMode } from './vrm/timeOfDay';
 import { Character } from './vrm/character';
 import { TimelinePlayer, compileAct, type CompiledAct, type TimelineEvent } from './act/timeline';
 import { estimateDuration, makeMeasuredMapper, makeTimeToChar } from './act/anchors';
@@ -87,6 +88,7 @@ export class Runtime {
     this.stage = stage;
     stage.resize();
     stage.setBackdrop(this.backdrop);
+    stage.setTimeOfDay(this.timeMode, true);
     this.applyAmbience();
     // 松开鼠标之后镜头还会因为阻尼滑一小段：等它停稳了再通知
     stage.controls.addEventListener('end', () => {
@@ -542,12 +544,28 @@ export class Runtime {
   }
 
   private backdrop: BackdropId = 'none';
+  private timeMode: TimeMode | number = 'now';
 
   /** 背景场景（mount 前后调用都行） */
   setBackdrop(id: BackdropId) {
     this.backdrop = id;
     this.stage?.setBackdrop(id);
     this.applyAmbience();
+  }
+
+  /**
+   * 时间（只有街景用）：跟随现在 / 清晨 / 白天 / 黄昏 / 夜晚。mount 前后调用都行；
+   * mount 之前设的（读偏好）直接跳过去，之后换的花 3 秒过渡
+   */
+  setTimeOfDay(mode: TimeMode) {
+    this.timeMode = mode;
+    this.stage?.setTimeOfDay(mode);
+  }
+
+  /** 调试：固定在某个钟点（太阳时，比如 19.5）。instant = 不过渡 */
+  setTime(hours: number, instant = true) {
+    this.timeMode = hours;
+    this.stage?.setTimeOfDay(hours, instant);
   }
 
   /** 待机时上臂额外外展（按模型的裙子定，见 models.ts 的 armOut）。mount / setModel 前后调用都行 */

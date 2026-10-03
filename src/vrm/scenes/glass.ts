@@ -304,6 +304,12 @@ export function roomAtlas() {
  */
 const GLASS_REFLECTION = (k: number) => `reflectedLight.indirectSpecular = min( reflectedLight.indirectSpecular * ${k.toFixed(1)}, vec3( 0.32 ) );`;
 
+/** 玻璃里的店内按时间变：uLights = 天黑了多少（0 白天 … 1 夜里，开灯的程度），uHour = 几点（太阳时） */
+export interface GlassNight {
+  uLights: { value: number };
+  uHour: { value: number };
+}
+
 /**
  * 室内映射的玻璃。几何体要带这几个属性（见 street.ts 的 GlassMesher）：
  *   aRoomPos   这一点在房间里的位置（米）：x 从房间左墙量、y 从地板量（玻璃在房间的 z = 0 面上）
@@ -311,10 +317,12 @@ const GLASS_REFLECTION = (k: number) => `reflectedLight.indirectSpecular = min( 
  *   aRoomInfo  x = 房间种类（图集的行）、y = 变体（0..1 随机）、z = 店里的灯有多亮、w = 窗帘（0 没有，1 有）
  *   aWinUv     在这扇窗里的位置（0..1），窗帘用
  */
-export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture) {
+export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture, night: GlassNight) {
   const mat = keep(new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.06, metalness: 0, emissive: 0xffffff }));
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uRooms = { value: atlas };
+    shader.uniforms.uLights = night.uLights;
+    shader.uniforms.uHour = night.uHour;
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -345,6 +353,8 @@ export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture) {
         '#include <common>',
         `#include <common>
         uniform sampler2D uRooms;
+        uniform float uLights;
+        uniform float uHour;
         varying vec2 vRoomPos;
         varying vec3 vRoomSize;
         varying vec4 vRoomInfo;
@@ -414,14 +424,26 @@ export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture) {
               }
             }
           }
+          // 夜里这间开不开灯：住家按房间的随机值和钟点（傍晚七成亮着，夜深了越来越少），
+          // 商店 21 点关门（咖啡店 22 点），清晨还没开门。开着的比白天亮（外面黑了），关着的几乎全黑
+          float kind = floor( vRoomInfo.x + 0.5 );
+          float isHome = step( 4.5, kind );
+          float rnd = fract( vRoomInfo.y * 91.7 );
+          float ev = uHour < 12.0 ? uHour + 24.0 : uHour;
+          float pHome = ev < 22.0 ? 0.72 : ev < 24.0 ? mix( 0.72, 0.45, ( ev - 22.0 ) / 2.0 ) : ev < 26.0 ? mix( 0.45, 0.15, ( ev - 24.0 ) / 2.0 ) : ev < 29.0 ? 0.1 : 0.22;
+          float shopOpen = step( ev, kind < 0.5 ? 22.0 : 21.0 );
+          float lit = isHome > 0.5 ? step( rnd, pHome ) : shopOpen;
+          float bright = mix( vRoomInfo.z, lit > 0.5 ? max( vRoomInfo.z, isHome > 0.5 ? 0.75 : 0.95 ) : 0.03, uLights );
           // 越往里越暗（窗边亮，屋子深处暗）；店里的灯整体乘一个亮度
-          room *= mix( 1.0, 0.55, clamp( -hit.z / D, 0.0, 1.0 ) ) * vRoomInfo.z;
+          room *= mix( 1.0, 0.55, clamp( -hit.z / D, 0.0, 1.0 ) ) * bright;
           // 窗帘：住家的窗拉开一半（两边垂下来的布，迎着窗外的天光是亮的），或者一层白纱
           if ( vRoomInfo.w > 0.5 ) {
             float c = 0.16 + 0.24 * fract( vRoomInfo.y * 13.0 );
             float x = vWinUv.x;
             float folds = 0.82 + 0.18 * sin( x * 90.0 + vRoomInfo.y * 20.0 );
             vec3 cloth = mix( vec3( 0.93, 0.9, 0.84 ), vec3( 0.82, 0.86, 0.9 ), step( 0.5, fract( vRoomInfo.y * 5.0 ) ) ) * folds * 0.75;
+            // 夜里：开着灯的从里面透出暖光，关着的是暗的
+            cloth = mix( cloth, cloth * ( lit > 0.5 ? vec3( 1.1, 0.88, 0.6 ) : vec3( 0.04 ) ), uLights );
             if ( x < c || x > 1.0 - c ) room = cloth;
             else if ( fract( vRoomInfo.y * 3.0 ) > 0.6 ) room = mix( room, cloth * 0.9, 0.55 );
           }

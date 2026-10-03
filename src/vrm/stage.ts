@@ -5,6 +5,7 @@ import type { Backdrop } from './scenes/common';
 import { createCafe } from './scenes/cafe';
 import { createPark } from './scenes/park';
 import { createStreet } from './scenes/street';
+import { TimeOfDay, type TimeMode } from './timeOfDay';
 
 /**
  * 背景：none = 原来的纯色渐变（CSS 画的，画布透明）；cafe = 咖啡店店内（scenes/cafe.ts）；
@@ -138,8 +139,8 @@ export function createStage(canvas: HTMLCanvasElement) {
   const rim = new THREE.DirectionalLight(0xffe9d6, 0.7);
   rim.position.set(-0.6, 1.6, -2.0);
   scene.add(rim);
-  const fillDefault = fill.intensity;
-  const rimDefault = rim.intensity;
+  const fillDefault = { color: fill.color.getHex(), intensity: fill.intensity };
+  const rimDefault = { color: rim.color.getHex(), intensity: rim.intensity };
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.75);
   scene.add(hemi);
@@ -150,6 +151,10 @@ export function createStage(canvas: HTMLCanvasElement) {
   let backdropId: BackdropId = 'none';
   let envMap: THREE.Texture | null = null;
   const pmrem = new THREE.PMREMGenerator(renderer);
+  /** 场景按时间给的环境贴图（Backdrop.lighting.envScene 烘出来的），换一张就释放上一张 */
+  let baked: { rt: THREE.WebGLRenderTarget; version: number; at: number } | null = null;
+  /** 一天里的时间（只有街景用：太阳、月亮、灯，见 timeOfDay.ts） */
+  const time = new TimeOfDay();
   /**
    * 换背景。场景里的灯一起加进来；半球光换成场景的色调，角色的环境光和背景一致；
    * 场景的 HDRI（或者场景给的天空小场景）转成环境光（IBL，只影响场景里的 PBR 材质，角色的 MToon 不吃环境贴图）；
@@ -164,6 +169,8 @@ export function createStage(canvas: HTMLCanvasElement) {
     }
     envMap?.dispose();
     envMap = null;
+    baked?.rt.dispose();
+    baked = null;
     scene.environment = null;
     scene.environmentRotation.set(0, 0, 0);
     backdropId = id;
@@ -172,8 +179,10 @@ export function createStage(canvas: HTMLCanvasElement) {
       backdrop = b;
       scene.add(b.group, ...b.lights);
       const env = b.environment;
-      scene.environmentIntensity = env.intensity;
-      if ('url' in env) {
+      if (!env) {
+        // 场景按时间自己给（lighting.envScene），第一帧就烘
+      } else if ('url' in env) {
+        scene.environmentIntensity = env.intensity;
         scene.environmentRotation.set(0, env.rotation ?? 0, 0);
         new HDRLoader().load(env.url, (hdr) => {
           if (backdrop !== b) return hdr.dispose();
@@ -182,6 +191,7 @@ export function createStage(canvas: HTMLCanvasElement) {
           scene.environment = envMap;
         });
       } else {
+        scene.environmentIntensity = env.intensity;
         envMap = pmrem.fromScene(env.scene, 0.02, 0.1, 200).texture;
         scene.environment = envMap;
       }
@@ -199,8 +209,12 @@ export function createStage(canvas: HTMLCanvasElement) {
     key.intensity = sun?.intensity ?? keyDefault.intensity;
     if (sun?.position) key.position.set(...sun.position);
     else key.position.copy(keyDefault.position);
-    fill.intensity = sun?.fill ?? fillDefault;
-    rim.intensity = sun?.rim ?? rimDefault;
+    key.shadow.intensity = 1;
+    fill.color.setHex(fillDefault.color);
+    fill.intensity = sun?.fill ?? fillDefault.intensity;
+    rim.color.setHex(rimDefault.color);
+    rim.intensity = sun?.rim ?? rimDefault.intensity;
+    applyLighting();
     if (backdrop) {
       // 当太阳用时阴影范围大：灯离目标只有 2.8m，近平面要放到灯"身后"，远处的树冠才进得了阴影
       const r = sun?.bounds ?? backdrop.shadowBounds;
@@ -302,9 +316,39 @@ export function createStage(canvas: HTMLCanvasElement) {
     backdrop.beforeRender(viewFrustum, shadow);
   };
 
+  /**
+   * 场景按时间给的灯光（Backdrop.lighting）：主光、补光、轮廓光、半球光、环境光每帧照着设；
+   * 环境贴图在 envVersion 变了的时候重烘（最多 10 次 / 秒：切时段的那 3 秒里一直在变）
+   */
+  function applyLighting() {
+    const L = backdrop?.lighting;
+    if (!L) return;
+    key.color.copy(L.sun.color);
+    key.intensity = L.sun.intensity;
+    key.position.copy(L.sun.position);
+    key.shadow.intensity = L.sun.shadow;
+    fill.color.copy(L.fill.color);
+    fill.intensity = L.fill.intensity;
+    rim.color.copy(L.rim.color);
+    rim.intensity = L.rim.intensity;
+    hemi.color.copy(L.hemisphere.sky);
+    hemi.groundColor.copy(L.hemisphere.ground);
+    hemi.intensity = L.hemisphere.intensity;
+    scene.environmentIntensity = L.environmentIntensity;
+    if (L.envScene && (!baked || (baked.version !== L.envVersion && performance.now() - baked.at > 100))) {
+      const rt = pmrem.fromScene(L.envScene, 0, 0.1, 1000, { size: 256 });
+      baked?.rt.dispose();
+      baked = { rt, version: L.envVersion, at: performance.now() };
+      scene.environment = rt.texture;
+    }
+  }
+
   const clock = new THREE.Clock();
   function render() {
-    backdrop?.update?.(Math.min(clock.getDelta(), 0.1));
+    const dt = Math.min(clock.getDelta(), 0.1);
+    time.update(dt);
+    backdrop?.update?.(dt, time.state);
+    applyLighting();
     controls.update();
     followZoom();
     renderer.render(scene, renderCamera());
@@ -313,6 +357,7 @@ export function createStage(canvas: HTMLCanvasElement) {
   function dispose() {
     backdrop?.dispose();
     envMap?.dispose();
+    baked?.rt.dispose();
     pmrem.dispose();
     controls.dispose();
     renderer.dispose();
@@ -334,6 +379,17 @@ export function createStage(canvas: HTMLCanvasElement) {
     setBackdrop,
     get backdrop() {
       return backdropId;
+    },
+    /** 时间模式（跟随现在 / 清晨 / 白天 / 黄昏 / 夜晚，或者调试用的某个钟点）。instant = 不过渡、直接跳过去 */
+    setTimeOfDay(mode: TimeMode | number, instant = false) {
+      time.setMode(mode, instant);
+    },
+    get timeOfDay() {
+      return time.current;
+    },
+    /** 现在几点、太阳在哪（调试看） */
+    get time() {
+      return time.state;
     },
     /** 当前背景要播的环境音（CC0 循环音频）。没配或纯色背景就是 null */
     get ambience(): string | null {

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { canvasTexture, rng, type Backdrop } from './common';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
+import { canvasTexture, rng, type Backdrop, type LiveLighting } from './common';
 import { createBatcher, createTreeMaker, type TreeVariant } from './foliage';
 import {
   HAZE,
@@ -13,10 +14,16 @@ import {
   createFarTown,
   createLighthouse,
   createSky,
+  createSkyEnv,
+  farShore,
   fbm,
+  skyUniforms,
 } from './seaside';
+import { createPalette, createSkyMapping, dirOf, moonIllum, samplePalette } from './streetTime';
+import { createLights, lampLit, type LightAnchor } from './streetLights';
+import type { TimeState } from '../timeOfDay';
 import { F, WINDOWS, bannerUV, cellUV, chalkboard, facadeAtlas, holeRects, signAtlas, signUV, type Cell } from './streetTextures';
-import { ROOMS, clearGlassMaterial, interiorGlassMaterial, roomAtlas } from './glass';
+import { ROOMS, clearGlassMaterial, interiorGlassMaterial, roomAtlas, type GlassNight } from './glass';
 import { buildCafeInterior } from './streetInterior';
 import { REFLECT_LAYER, createWater } from './water';
 import {
@@ -431,7 +438,16 @@ export function createStreet(): Backdrop {
   const holes = holeRects();
   const facadeMat = facadeMaterial(keep, atlas, holes);
   const rooms = keep(roomAtlas());
-  const interiorGlassMat = interiorGlassMaterial(keep, rooms);
+  /** 按时间变的几个量（天黑了多少、几点），几个着色器共用 */
+  const night: GlassNight = { uLights: { value: 0 }, uHour: { value: 15 } };
+  const interiorGlassMat = interiorGlassMaterial(keep, rooms, night);
+  // ---- 夜里的灯（三档：真实点光源、材质里的轻量灯、光晕，见 streetLights.ts）----
+  const nightLights = createLights(keep, { focus: v3(0, 1.2, 0), reflectLayer: REFLECT_LAYER });
+  group.add(nightLights.glow);
+  /** 灯的随机（错开亮灯的时刻）：单独一个随机数，不动布局用的 r() 的顺序 */
+  const rl = rng(911);
+  const warm = (hex: number) => new THREE.Color(hex);
+  const light = (a: Omit<LightAnchor, 'color'> & { color: number }) => nightLights.add({ ...a, color: warm(a.color) });
   const clearGlassMat = clearGlassMaterial(keep);
   const roofMat = roofMaterial(keep);
   const woodMat = woodMaterial(keep);
@@ -477,20 +493,58 @@ export function createStreet(): Backdrop {
     group.add(o);
     return o;
   };
-  far(createSky(keep, SUN_DIR, SKY_R));
+  // 天空（按时间变：渐变、太阳、月亮、星星），和烘环境贴图的小场景共用参数；白天的反射混进 HDRI（Furry Clouds，
+  // 转 20°：让它里面的太阳和舞台主光在同一个方位），玻璃、铁件反射的云和太阳和加时间之前一样
+  const skyU = skyUniforms();
+  skyU.uHdriRot.value = THREE.MathUtils.degToRad(20);
+  far(createSky(keep, SKY_R, skyU));
+  const envScene = createSkyEnv(keep, skyU);
+  let hdriReady = false;
+  new HDRLoader().load(`${BASE}hdri/furry_clouds_1k.hdr`, (hdr) => {
+    keep(hdr);
+    if (disposed) return;
+    skyU.uHdri.value = hdr;
+    hdriReady = true;
+  });
   // 海那一侧的方位角：从左前方（-150°）绕到右后方（80°）
   const SEA_FROM = THREE.MathUtils.degToRad(-150);
   const SEA_TO = THREE.MathUtils.degToRad(80);
-  far(createClouds(keep, SKY_R * 0.88, THREE.MathUtils.degToRad(-140), THREE.MathUtils.degToRad(40)));
+  const clouds = far(createClouds(keep, SKY_R * 0.88, THREE.MathUtils.degToRad(-140), THREE.MathUtils.degToRad(40)));
+  const cloudMats: THREE.MeshBasicMaterial[] = [];
+  clouds.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined;
+    if (m && !cloudMats.includes(m)) cloudMats.push(m);
+  });
   far(createFarLand(keep, SEA_FROM, SEA_TO));
-  far(createFarTown(keep, THREE.MathUtils.degToRad(-128), THREE.MathUtils.degToRad(-40)));
-  far(createBridge(keep, THREE.MathUtils.degToRad(-128), THREE.MathUtils.degToRad(-108), 160));
+  const TOWN_FROM = THREE.MathUtils.degToRad(-128);
+  const TOWN_TO = THREE.MathUtils.degToRad(-40);
+  const farTown = far(createFarTown(keep, TOWN_FROM, TOWN_TO, 900, night.uLights));
+  const bridge = far(createBridge(keep, THREE.MathUtils.degToRad(-128), THREE.MathUtils.degToRad(-108), 160));
+  // 对岸沿海一串路灯的光点（只有光晕）：暖黄的钠灯、白的 LED 混着
+  for (let a = TOWN_FROM; a < TOWN_TO; a += 0.026 + rl() * 0.01) {
+    const rr = farShore(a) + 5 + rl() * 6;
+    light({ pos: v3(Math.cos(a) * rr, 5.5, Math.sin(a) * rr), color: rl() < 0.6 ? 0xffb060 : 0xfff0dd, intensity: 0, radius: 0, glow: 2.6, glowGain: 1.4, onAt: 0.1 + rl() * 0.5 });
+  }
+  // 桥面一排路灯
+  {
+    bridge.updateMatrixWorld(true);
+    bridge.geometry.computeBoundingBox();
+    const bb = bridge.geometry.boundingBox!;
+    for (let x = bb.min.x + 10; x < bb.max.x - 5; x += 32) {
+      for (const z of [-4.2, 4.2]) {
+        light({ pos: v3(x, 13.5, z).applyMatrix4(bridge.matrixWorld), color: 0xffd8a0, intensity: 0, radius: 0, glow: 3, glowGain: 1.2, onAt: 0.2 });
+      }
+    }
+  }
   // 灯塔在画面右边、路灯和头之间（插画里的位置）
   const BREAKWATER: [[number, number], [number, number]] = [
     [-40, -206],
     [38, -218],
   ];
-  far(createLighthouse(keep, ...BREAKWATER));
+  const lighthouse = createLighthouse(keep, ...BREAKWATER, night.uLights);
+  far(lighthouse.group);
+  // 灯塔的灯：转到正对着她这边的那一下最亮（光晕跟着光束的朝向变）
+  light({ pos: lighthouse.lamp, color: 0xfff4e0, intensity: 0, radius: 0, glow: 5, glowGain: 2.5, onAt: 0.15, gain: () => lighthouse.facing() });
   // 渔船、海鸥是异步载入的模型：反射层在载入后才加得上，所以把层号传进去
   const alive = () => !disposed;
   const boats = createBoats(keep, alive, REFLECT_LAYER);
@@ -1327,6 +1381,8 @@ export function createStreet(): Backdrop {
     const vm = new THREE.Mesh(keep(vend.build()), facadeMat);
     vm.castShadow = true;
     group.add(vm);
+    // 售货机的灯箱：一整面冷白的光，照亮脚下的人行道
+    light({ pos: v3(0, 1.0, 0.7).applyMatrix4(frameAt(S0 + 24.6, FRONT - 0.45)), color: 0xe4eeff, intensity: 3.5, radius: 5, glow: 1.1, glowGain: 0.22, onAt: 0.05 });
   }
   /** 路边插的布旗：一根细杆、顶上一根横杆，旗面朝着街的方向（d 在哪边人行道上） */
   const nobori = (s: number, d: number, idx: number) => {
@@ -1522,7 +1578,8 @@ export function createStreet(): Backdrop {
   ] as const;
   void import('@dgreenheck/ez-tree').then(({ Tree }) => {
     if (disposed) return;
-    const make = createTreeMaker(Tree, { wind, sunDir: SUN_DIR, keep, leafTint: LEAF_TINT });
+    const make = createTreeMaker(Tree, { wind, sunDir: SUN_DIR, keep, leafTint: LEAF_TINT, leafLight });
+    leafMats = make.leaves;
     const up = new THREE.Vector3(0, 1, 0);
     const plant = (v: TreeVariant, spots: Spot[], solid: boolean) => {
       if (!spots.length) return;

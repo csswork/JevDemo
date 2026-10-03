@@ -71,8 +71,17 @@ export function createBatcher(group: THREE.Group, keep: Keep, sunDir: THREE.Vect
     const spheres = matrices.map((m) => geo.boundingSphere!.clone().applyMatrix4(m));
     // three 给物体排先后（不透明的由近到远、半透明的由远到近）用整体的包围球。不设的话它在第一帧按当时的实例数算一次，可能是空的
     const bounds = spheres.reduce((u, s) => u.union(s), spheres[0].clone());
-    // 胶囊的下端：从包围球心逆着阳光走到地面以下
-    const ends = spheres.map((s) => s.center.clone().addScaledVector(sunDir, -(s.center.y - floor) / sunDir.y));
+    // 胶囊的下端：从包围球心逆着阳光走到地面以下。太阳会动（街景的昼夜）：方向变了就重算；
+    // 太阳很低时胶囊很长（往远处拖），低到地平线附近就按 3° 算（影子本来也淡了）
+    const ends = spheres.map((s) => s.center.clone());
+    const lastSun = new THREE.Vector3();
+    const updateEnds = () => {
+      if (lastSun.distanceToSquared(sunDir) < 1e-5) return;
+      lastSun.copy(sunDir);
+      const dy = Math.max(sunDir.y, 0.05);
+      spheres.forEach((s, i) => ends[i].copy(s.center).addScaledVector(sunDir, -(s.center.y - floor) / dy));
+    };
+    updateEnds();
     /** 第 i 棵的影子会不会落进视锥：胶囊整个在视锥某一个面的外侧就不会 */
     const shadowInView = (view: THREE.Frustum, i: number) => {
       const r = spheres[i].radius;
@@ -123,7 +132,10 @@ export function createBatcher(group: THREE.Group, keep: Keep, sunDir: THREE.Vect
     }
     batches.push((v, s) => {
       view.cull(v);
-      cast?.cull(s, v);
+      if (cast) {
+        updateEnds();
+        cast.cull(s, v);
+      }
     });
   };
   return {
@@ -150,7 +162,7 @@ export interface TreeVariant {
  */
 export function createTreeMaker(
   TreeClass: typeof Tree,
-  opts: { wind: Wind; sunDir: THREE.Vector3; keep: Keep; leafTint: THREE.Color },
+  opts: { wind: Wind; sunDir: THREE.Vector3; keep: Keep; leafTint: THREE.Color; leafLight?: { value: number } },
 ) {
   const { wind, keep } = opts;
   /**
@@ -180,14 +192,20 @@ export function createTreeMaker(
    * Phong 默认不带 getShadowMask()，在 shadowmap_pars_fragment 后面补上
    */
   const sunDir = { value: opts.sunDir };
+  /** 透光乘多少：太阳的亮度（街景天黑了透光跟着弱下去；公园一直是 1） */
+  const leafLight = opts.leafLight ?? { value: 1 };
+  /** 这个场景所有的树叶材质（街景按时间调自发光） */
+  const leaves: THREE.MeshPhongMaterial[] = [];
   const translucent = (shader: THREE.WebGLProgramParametersWithUniforms) => {
     shader.uniforms.uSunDir = sunDir;
+    shader.uniforms.uLeafLight = leafLight;
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <shadowmap_pars_fragment>',
         `#include <shadowmap_pars_fragment>
         #include <shadowmask_pars_fragment>
-        uniform vec3 uSunDir;`,
+        uniform vec3 uSunDir;
+        uniform float uLeafLight;`,
       )
       .replace(
         '#include <lights_fragment_end>',
@@ -196,15 +214,15 @@ export function createTreeMaker(
           vec3 sunDirView = normalize( ( viewMatrix * vec4( uSunDir, 0.0 ) ).xyz );
           float translucency = pow( max( dot( - geometryViewDir, sunDirView ), 0.0 ), 2.0 ) * 0.6
             + max( dot( - normal, sunDirView ), 0.0 ) * 0.24;
-          reflectedLight.directDiffuse += diffuseColor.rgb * vec3( 1.9, 1.6, 0.85 ) * translucency * ( 0.25 + 0.75 * getShadowMask() );
+          reflectedLight.directDiffuse += diffuseColor.rgb * vec3( 1.9, 1.6, 0.85 ) * translucency * ( 0.25 + 0.75 * getShadowMask() ) * uLeafLight;
         }`,
       );
   };
-  return (preset: string, seed: number, height: number, tint: number | null, leaves = 1): TreeVariant => {
+  const make = (preset: string, seed: number, height: number, tint: number | null, leafCount = 1): TreeVariant => {
     const t = new TreeClass();
     t.loadPreset(preset);
     t.options.seed = seed;
-    t.options.leaves.count = Math.round(t.options.leaves.count * leaves);
+    t.options.leaves.count = Math.round(t.options.leaves.count * leafCount);
     if (tint != null) t.options.leaves.tint = tint;
     t.generate();
     const leafMat = t.leavesMesh.material as THREE.MeshPhongMaterial;
@@ -213,6 +231,7 @@ export function createTreeMaker(
     leafMat.emissive.set(tint == null ? 0x4a6a14 : 0x5a1a0a);
     leafMat.emissiveIntensity = 0.3;
     leafMat.emissiveMap = leafMat.map;
+    leaves.push(leafMat);
     const ez = leafMat.onBeforeCompile.bind(leafMat);
     leafMat.onBeforeCompile = (shader, renderer) => {
       leafWind(ez, shader, renderer);
@@ -236,4 +255,5 @@ export function createTreeMaker(
       trunk: (t.options.branch.radius as Record<string, number>)['0'] ?? 1,
     };
   };
+  return Object.assign(make, { leaves });
 }

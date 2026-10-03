@@ -14,6 +14,7 @@ import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
 import { DEFAULT_BACKDROP, DEFAULT_MODEL, MODELS, VISIBLE_MODELS, modelUrl, probeModels } from './models';
 import { appendChat, openChat, resetChat, type ChatSession } from './chat';
 import type { BackdropId, CameraView } from './vrm/stage';
+import { TIME_MODES, type TimeMode } from './vrm/timeOfDay';
 import './App.css';
 
 /** 选过的模型存在这个 key 下（只是本机浏览器的偏好） */
@@ -32,6 +33,8 @@ interface ModelPrefs {
   view?: CameraView;
   /** 背景音开关。没设置过 = 开 */
   ambient?: boolean;
+  /** 时间（街景的昼夜）。没设置过 = 跟随现在 */
+  time?: TimeMode;
 }
 function allPrefs(): Record<string, ModelPrefs> {
   try {
@@ -88,6 +91,7 @@ function savedBackdrop(): BackdropId | null {
 /** 角色的背景：存过的，否则默认 */
 const backdropOf = (p: ModelPrefs): BackdropId => (BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : DEFAULT_BACKDROP);
 /** 角色的音色：用户给她选过的，否则模型自己的默认 */
+const timeOf = (p: ModelPrefs): TimeMode => (TIME_MODES.some((t) => t.id === p.time) ? p.time! : 'now');
 const speakerOf = (id: string | null, p: ModelPrefs) => p.speaker ?? MODELS.find((m) => m.id === id)?.voice ?? null;
 
 /**
@@ -214,6 +218,7 @@ export default function App() {
   const [backdrop, setBackdropState] = useState<BackdropId>(DEFAULT_BACKDROP);
   // 背景音（场景的环境音）：按角色记，默认开。第一次发送消息时才真正出声（浏览器要求用户手势）
   const [ambient, setAmbient] = useState(true);
+  const [timeMode, setTimeMode] = useState<TimeMode>('now');
   // 音色：按角色记在浏览器里（见 ModelPrefs），角色加载时换成她的；没选过就用服务端的默认音色（TTS_SPEAKER）
   const [speaker, setSpeaker] = useState<string | null>(null);
   // 偏好按角色存：存的时候要用最新的角色 id（闭包里的可能是旧的）。换角色时在事件里直接改，这里兜底同步
@@ -265,6 +270,8 @@ export default function App() {
         rt.setBackdrop(bd);
         setAmbient(p.ambient ?? true);
         rt.setAmbience(p.ambient ?? true);
+        setTimeMode(timeOf(p));
+        rt.setTimeOfDay(timeOf(p));
         setSpeaker(speakerOf(init.id, p));
         rt.pendingView = p.view ?? null;
         rt.setIdleArmClearance(MODELS.find((m) => m.id === init.id)?.armOut ?? 0);
@@ -487,6 +494,13 @@ export default function App() {
     savePrefs(modelIdRef.current, { ambient: on });
   };
 
+  /** 时间（街景的昼夜）：记在当前角色下 */
+  const pickTime = (mode: TimeMode) => {
+    setTimeMode(mode);
+    runtimeRef.current?.setTimeOfDay(mode);
+    savePrefs(modelIdRef.current, { time: mode });
+  };
+
   /** 换到某个角色的音色和背景（换角色时、换失败退回时） */
   const applyPrefs = (id: string | null) => {
     const p = prefsOf(id);
@@ -495,6 +509,8 @@ export default function App() {
     runtimeRef.current?.setBackdrop(bd);
     setAmbient(p.ambient ?? true);
     runtimeRef.current?.setAmbience(p.ambient ?? true);
+    setTimeMode(timeOf(p));
+    runtimeRef.current?.setTimeOfDay(timeOf(p));
     const sp = speakerOf(id, p);
     setSpeaker(sp);
     // 状态更新是异步的，新角色马上就要打招呼：直接把音色交给 runtime
@@ -975,6 +991,16 @@ export default function App() {
               {BACKDROPS.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="voice-pick" title={backdrop === 'street' ? '街景的时间：跟随现在 = 按电脑的时钟（晚上打开就是夜景）' : '只有街景有昼夜'}>
+            <span>时间</span>
+            <select value={timeMode} disabled={backdrop !== 'street'} onChange={(e) => pickTime(e.target.value as TimeMode)}>
+              {TIME_MODES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
                 </option>
               ))}
             </select>

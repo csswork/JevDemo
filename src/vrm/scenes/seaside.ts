@@ -63,29 +63,211 @@ export const HAZE = 0xd3e8f5;
 type Keep = <T extends { dispose(): void }>(x: T) => T;
 
 // ---- 天空 ----
-export function createSky(keep: Keep, sunDir: THREE.Vector3, radius: number) {
-  const ZENITH = new THREE.Color(0x2265c8);
-  const MID = new THREE.Color(0x4f98e6);
-  const HORIZON = new THREE.Color(HAZE);
-  const GLOW = new THREE.Color(0xfff8e6);
-  const g = keep(new THREE.SphereGeometry(radius, 64, 32));
-  const p = g.attributes.position;
-  const col: number[] = [];
-  const c = new THREE.Color();
-  const dir = new THREE.Vector3();
-  for (let i = 0; i < p.count; i++) {
-    dir.fromBufferAttribute(p, i).normalize();
-    const e = Math.max(0, dir.y);
-    // 地平线那一圈很窄就过渡到天蓝（插画里的天是饱和的深蓝，只有贴着地平线才发白）
-    c.copy(HORIZON).lerp(MID, smoothstep(0, 0.2, e)).lerp(ZENITH, smoothstep(0.18, 0.85, e));
-    c.lerp(GLOW, 0.55 * Math.max(0, dir.dot(sunDir)) ** 12);
-    col.push(c.r, c.g, c.b);
+/**
+ * 天空的参数（按时间变，见 streetTime.ts）。颜色是线性空间的。
+ * 渐变：地平线 → mid（很窄就过渡过去）→ 天顶；太阳周围一圈光晕（glowAmt），黄昏时贴着地平线、朝着太阳那边一条暖色带（band）；
+ * 夜里有星星（stars）和月亮（moon = 显不显，phase = 月相）
+ */
+export function skyUniforms() {
+  return {
+    uZenith: { value: new THREE.Color(0x2265c8) },
+    uMid: { value: new THREE.Color(0x4f98e6) },
+    uHorizon: { value: new THREE.Color(HAZE) },
+    uGlow: { value: new THREE.Color(0xfff8e6) },
+    uGlowAmt: { value: 0.55 },
+    uBand: { value: 0 },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uSunDisk: { value: 0 },
+    uMoonDir: { value: new THREE.Vector3(0, 0.2, -1).normalize() },
+    uMoon: { value: 0 },
+    uMoonPhase: { value: 0.38 },
+    uMoonTex: { value: null as THREE.Texture | null },
+    uStars: { value: 0 },
+    uTime: { value: 0 },
+    /** 只给环境贴图用：HDRI 混进来多少、乘什么色、绕竖轴转多少；地平线以下的地面色；地平线上小镇的灯 */
+    uHdri: { value: null as THREE.Texture | null },
+    uHdriMix: { value: 0 },
+    uHdriTint: { value: new THREE.Color(1, 1, 1) },
+    uHdriRot: { value: 0 },
+    uGround: { value: new THREE.Color(0x1a1e26) },
+    uTownGlow: { value: 0 },
+  };
+}
+export type SkyUniforms = ReturnType<typeof skyUniforms>;
+
+/** 月亮的盘面（canvas）：灰白的底、一块块暗的月海、几个亮的环形山。月相在着色器里按球面算 */
+function moonTexture() {
+  const r = rng(77);
+  return canvasTexture(256, 256, (g) => {
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, 256, 256);
+    g.save();
+    g.beginPath();
+    g.arc(128, 128, 124, 0, Math.PI * 2);
+    g.clip();
+    const base = g.createRadialGradient(110, 110, 10, 128, 128, 130);
+    base.addColorStop(0, '#f4f2ea');
+    base.addColorStop(1, '#d8d6cf');
+    g.fillStyle = base;
+    g.fillRect(0, 0, 256, 256);
+    // 月海：几块大的暗斑（参考满月时"兔子"的位置）
+    const maria: Array<[number, number, number]> = [
+      [96, 92, 34],
+      [140, 80, 26],
+      [160, 120, 30],
+      [118, 140, 22],
+      [84, 150, 18],
+      [150, 168, 16],
+    ];
+    for (const [x, y, rr] of maria) {
+      for (let k = 0; k < 6; k++) {
+        g.fillStyle = `rgba(120,122,128,${0.12 + r() * 0.1})`;
+        g.beginPath();
+        g.ellipse(x + (r() - 0.5) * rr * 0.6, y + (r() - 0.5) * rr * 0.6, rr * (0.5 + r() * 0.5), rr * (0.4 + r() * 0.5), r() * 3, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    for (let k = 0; k < 40; k++) {
+      const x = 20 + r() * 216;
+      const y = 20 + r() * 216;
+      const rr = 1.5 + r() * 5;
+      g.fillStyle = `rgba(255,255,250,${0.15 + r() * 0.2})`;
+      g.beginPath();
+      g.arc(x, y, rr, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = `rgba(110,110,115,${0.1 + r() * 0.1})`;
+      g.beginPath();
+      g.arc(x + rr * 0.3, y + rr * 0.3, rr * 0.8, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+  });
+}
+
+const SKY_VERT = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vDir = normalize( ( modelMatrix * vec4( position, 0.0 ) ).xyz );
+    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+    gl_Position.z = gl_Position.w; // 永远在最远处
   }
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  const sky = new THREE.Mesh(g, keep(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
+`;
+const SKY_COMMON = /* glsl */ `
+  uniform vec3 uZenith, uMid, uHorizon, uGlow;
+  uniform float uGlowAmt, uBand;
+  uniform vec3 uSunDir;
+  uniform float uSunDisk;
+  varying vec3 vDir;
+  vec3 skyGradient( vec3 d ) {
+    float e = max( d.y, 0.0 );
+    // 地平线那一圈很窄就过渡到天蓝（插画里的天是饱和的深蓝，只有贴着地平线才发白）
+    vec3 c = mix( uHorizon, uMid, smoothstep( 0.0, 0.2, e ) );
+    c = mix( c, uZenith, smoothstep( 0.18, 0.85, e ) );
+    float sd = max( dot( d, uSunDir ), 0.0 );
+    c = mix( c, uGlow, uGlowAmt * pow( sd, 12.0 ) );
+    // 黄昏：贴着地平线、朝太阳那一侧的一条暖色带（背着太阳的那边也有一点）
+    vec2 dh = normalize( d.xz + 1e-5 );
+    vec2 sh = normalize( uSunDir.xz + 1e-5 );
+    float side = pow( dot( dh, sh ) * 0.5 + 0.5, 2.5 );
+    c = mix( c, uGlow, uBand * ( 0.25 + 0.75 * side ) * ( 1.0 - smoothstep( 0.0, 0.32, e ) ) );
+    // 太阳盘（只在太阳附近，白天几乎不会转到它）
+    c += uGlow * uSunDisk * smoothstep( 0.99985, 0.99993, sd ) * 6.0;
+    return c;
+  }
+`;
+const SKY_FRAG = /* glsl */ `
+  ${SKY_COMMON}
+  uniform vec3 uMoonDir;
+  uniform float uMoon, uMoonPhase, uStars, uTime;
+  uniform sampler2D uMoonTex;
+  float hash13( vec3 p ) {
+    p = fract( p * 0.1031 );
+    p += dot( p, p.zyx + 31.32 );
+    return fract( ( p.x + p.y ) * p.z );
+  }
+  void main() {
+    vec3 d = normalize( vDir );
+    vec3 c = skyGradient( d );
+    float e = max( d.y, 0.0 );
+    // 星星：方向空间里一格一格，少数格子里有一颗，各自闪；贴着地平线的看不见（雾、光污染）
+    if ( uStars > 0.0 ) {
+      vec3 sp = d * 260.0;
+      vec3 cell = floor( sp );
+      float h = hash13( cell );
+      if ( h > 0.982 ) {
+        vec3 f = fract( sp ) - 0.5 - ( vec3( hash13( cell + 7.1 ), hash13( cell + 3.7 ), hash13( cell + 1.3 ) ) - 0.5 ) * 0.5;
+        float tw = 0.65 + 0.35 * sin( uTime * ( 1.3 + h * 4.0 ) + h * 60.0 );
+        float b = ( h - 0.982 ) / 0.018;
+        c += vec3( 0.85, 0.9, 1.0 ) * smoothstep( 0.22, 0.0, length( f ) ) * ( 0.25 + 1.6 * b * b ) * tw * uStars * smoothstep( 0.03, 0.2, e );
+      }
+    }
+    // 月亮：盘面贴图 + 按月相的明暗（球面上的光照），外面一圈淡淡的光晕
+    if ( uMoon > 0.0 ) {
+      float md = dot( d, uMoonDir );
+      const float SIZE = 0.0105; // 半径约 0.6°，比真的大一倍（长焦下更好看）
+      float halo = pow( max( md, 0.0 ), 900.0 ) * 0.35 + pow( max( md, 0.0 ), 90.0 ) * 0.08;
+      c += vec3( 0.75, 0.82, 1.0 ) * halo * uMoon;
+      if ( md > cos( SIZE ) ) {
+        vec3 right = normalize( cross( uMoonDir, vec3( 0.0, 1.0, 0.0 ) ) );
+        vec3 up = cross( right, uMoonDir );
+        vec2 uv = vec2( dot( d, right ), dot( d, up ) ) / sin( SIZE );
+        float r2 = dot( uv, uv );
+        if ( r2 < 1.0 ) {
+          vec3 n = vec3( uv, sqrt( 1.0 - r2 ) );
+          float th = uMoonPhase * 6.2831853;
+          vec3 L = vec3( sin( th ), 0.0, -cos( th ) );
+          float lit = smoothstep( -0.04, 0.12, dot( n, L ) );
+          vec3 tex = texture2D( uMoonTex, uv * 0.5 + 0.5 ).rgb;
+          vec3 moon = tex * ( lit * 1.25 + 0.035 ) * vec3( 1.0, 0.97, 0.9 );
+          float edge = smoothstep( 1.0, 0.92, r2 );
+          c = mix( c, moon + c * ( 1.0 - lit ) * 0.6, edge * uMoon );
+        }
+      }
+    }
+    gl_FragColor = vec4( c, 1.0 );
+    #include <colorspace_fragment>
+  }
+`;
+/** 环境贴图（反射）用的天空：同一套渐变，白天混进 HDRI（玻璃、铁件反射的云和太阳），地平线以下是地面 / 海 */
+const ENV_FRAG = /* glsl */ `
+  ${SKY_COMMON}
+  uniform sampler2D uHdri;
+  uniform float uHdriMix, uHdriRot, uTownGlow;
+  uniform vec3 uHdriTint, uGround;
+  void main() {
+    vec3 d = normalize( vDir );
+    vec3 c = skyGradient( d );
+    c = mix( c, uGround, smoothstep( 0.0, -0.25, d.y ) );
+    // 地平线上一圈小镇的灯（夜里反射里的暖光）
+    c += vec3( 1.0, 0.72, 0.42 ) * uTownGlow * exp( -abs( d.y ) * 28.0 );
+    if ( uHdriMix > 0.0 ) {
+      float cs = cos( uHdriRot ), sn = sin( uHdriRot );
+      vec3 dl = vec3( cs * d.x - sn * d.z, d.y, sn * d.x + cs * d.z );
+      vec2 uv = vec2( atan( dl.z, dl.x ) * 0.15915494 + 0.5, asin( clamp( dl.y, -1.0, 1.0 ) ) * 0.31830989 + 0.5 );
+      c = mix( c, texture2D( uHdri, uv ).rgb * uHdriTint, uHdriMix );
+    }
+    gl_FragColor = vec4( c, 1.0 );
+  }
+`;
+
+export function createSky(keep: Keep, radius: number, uniforms: SkyUniforms) {
+  uniforms.uMoonTex.value = keep(moonTexture());
+  const mat = keep(
+    new THREE.ShaderMaterial({ uniforms, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false, fog: false }),
+  );
+  const sky = new THREE.Mesh(keep(new THREE.SphereGeometry(radius, 48, 24)), mat);
   sky.renderOrder = -2;
+  sky.frustumCulled = false;
   sky.name = 'sky';
   return sky;
+}
+
+/** 烘环境贴图用的小场景（舞台按 Backdrop.lighting.envScene 烘成 PMREM）：一个天空球，和画面里的天空共用参数 */
+export function createSkyEnv(keep: Keep, uniforms: SkyUniforms) {
+  const scene = new THREE.Scene();
+  const mat = keep(new THREE.ShaderMaterial({ uniforms, vertexShader: SKY_VERT, fragmentShader: ENV_FRAG, side: THREE.BackSide, depthWrite: false }));
+  scene.add(new THREE.Mesh(keep(new THREE.SphereGeometry(500, 48, 24)), mat));
+  return scene;
 }
 
 // ---- 积云 ----

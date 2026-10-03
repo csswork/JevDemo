@@ -132,6 +132,11 @@ const FRAG = /* glsl */ `
   uniform vec3 uDeep;
   uniform vec3 uShallow;
   uniform vec3 uScatter;
+  // 按时间变（见 streetTime.ts）：浪花的亮度；高光的锐、柔两项（指数、强度）—— 月亮的碎光比太阳宽；
+  // 倒影竖着拉长多少（夜里灯火在海面上拉成一条条光柱）
+  uniform float uFoam;
+  uniform vec4 uGlint;
+  uniform float uStretch;
   varying vec3 vWorld;
   #include <common>
   #include <fog_pars_fragment>
@@ -174,10 +179,10 @@ const FRAG = /* glsl */ `
     vec4 rc = uTextureMatrix * vec4( vWorld, 1.0 );
     vec2 ruv = rc.xy / rc.w;
     float k = mix( 0.035, 0.006, smoothstep( 10.0, 700.0, dist ) );
-    ruv += vec2( N.x * 0.6, N.z * 1.6 ) * k;
+    ruv += vec2( N.x * 0.6, N.z * 1.6 * ( 1.0 + uStretch * 2.5 ) ) * k;
     // 远处的波面多半斜着朝向看的人：倒影只往下（往近处）拉长，采到的是更高处的天 ——
     // 真实的海远看也是这样，倒影是竖着的长条，远处的海比"镜子里的地平线"蓝得多
-    ruv.y -= length( slope ) * 0.6 * smoothstep( 20.0, 400.0, dist );
+    ruv.y -= length( slope ) * ( 0.6 * smoothstep( 20.0, 400.0, dist ) + uStretch * 0.12 );
     // 倒影往蓝里推一点（水面会吸掉一点红光）
     vec3 refl = texture2D( uReflection, ruv ).rgb * vec3( 0.86, 0.95, 1.05 );
 
@@ -197,7 +202,7 @@ const FRAG = /* glsl */ `
     // ---- 太阳的高光：一大片柔的 + 很窄的碎光 ----
     vec3 H = normalize( uSunDir + V );
     float nh = max( dot( N, H ), 0.0 );
-    col += uSunColor * ( pow( nh, 900.0 ) * 30.0 + pow( nh, 90.0 ) * 0.35 ) * smoothstep( 0.0, 0.1, uSunDir.y );
+    col += uSunColor * ( pow( nh, uGlint.x ) * uGlint.y + pow( nh, uGlint.z ) * uGlint.w ) * smoothstep( 0.0, 0.1, uSunDir.y );
 
     // ---- 浪花：护岸脚下一圈、防波堤和灯塔四周一圈，按波高起伏，近处才有 ----
     float wall = shoreM;
@@ -210,7 +215,7 @@ const FRAG = /* glsl */ `
     float foam = ( 1.0 - smoothstep( 0.0, 1.2 + 1.8 * surge, edge ) ) * breakup;
     foam = max( foam, ( 1.0 - smoothstep( 0.0, 0.3, edge ) ) * 0.9 );
     foam *= 1.0 - smoothstep( 120.0, 380.0, dist );
-    col = mix( col, vec3( 0.92, 0.95, 0.97 ), foam * 0.85 );
+    col = mix( col, vec3( 0.92, 0.95, 0.97 ) * uFoam, foam * 0.85 );
 
     gl_FragColor = vec4( col, 1.0 );
     #include <tonemapping_fragment>
@@ -274,6 +279,9 @@ export function createWater(keep: Keep, o: WaterOptions) {
           uDeep: { value: new THREE.Color(0x1d66a6) },
           uShallow: { value: new THREE.Color(0x17707c) },
           uScatter: { value: new THREE.Color(0x1f9a9a) },
+          uFoam: { value: 1 },
+          uGlint: { value: new THREE.Vector4(900, 30, 90, 0.35) },
+          uStretch: { value: 0 },
         },
       ]),
       vertexShader: VERT,
@@ -361,6 +369,8 @@ export function createWater(keep: Keep, o: WaterOptions) {
 
   return {
     mesh,
+    /** 着色器的参数（按时间改颜色、高光、浪花，见 streetTime.ts） */
+    uniforms: mat.uniforms,
     /** 正在渲染反射（嵌套渲染里场景的 beforeRender 要跳过合批的剔除） */
     get reflecting() {
       return state.reflecting;
