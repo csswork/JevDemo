@@ -491,9 +491,11 @@ export function createStreet(): Backdrop {
     [38, -218],
   ];
   far(createLighthouse(keep, ...BREAKWATER));
-  const boats = createBoats(keep);
+  // 渔船、海鸥是异步载入的模型：反射层在载入后才加得上，所以把层号传进去
+  const alive = () => !disposed;
+  const boats = createBoats(keep, alive, REFLECT_LAYER);
   far(boats.group);
-  const gulls = createGulls(keep);
+  const gulls = createGulls(keep, alive);
   group.add(gulls.group);
 
   // ---- 陆地（身后的小镇和山）：一张 8m 一格的高度场 ----

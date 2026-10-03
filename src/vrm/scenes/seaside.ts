@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { canvasTexture, rng } from './common';
 
 /**
  * 街景（street.ts）的远景：天空、积云、对岸的山和小镇、防波堤上的灯塔、远处的跨海桥（海面本身见 water.ts），
- * 海上慢慢绕圈的几条渔船、头顶盘旋的海鸥。
+ * 海上慢慢绕圈的几条渔船、头顶盘旋的海鸥（这两样是 Blender 做的模型，见 scripts/blender/）。
  *
  * 照着一张二次元风格的海边小镇插画搭：深蓝的天、地平线发白，大朵的积云堆在山后面；
  * 对岸一条白色的小镇贴着海岸线，后面两层山（近的绿、远的发蓝）。
@@ -450,58 +451,36 @@ export function createLighthouse(keep: Keep, from: [number, number], to: [number
   return group;
 }
 
-// ---- 渔船、海鸥 ----
-/** 给几何体刷一个顶点色（合并前用） */
-function paint(g: THREE.BufferGeometry, hex: number) {
-  const c = new THREE.Color(hex);
-  const n = g.attributes.position.count;
-  const a = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) a.set([c.r, c.g, c.b], i * 3);
-  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
-  return g;
+// ---- 渔船、海鸥（Blender 做的模型，生成脚本见 scripts/blender/）----
+const MODELS = `${import.meta.env.BASE_URL}scene/models/`;
+
+/** 载入一个 GLB，几何体、材质、贴图登记到场景的释放列表里；场景已经换走了就返回 null */
+function loadModel(keep: Keep, file: string, alive: () => boolean) {
+  return new GLTFLoader().loadAsync(`${MODELS}${file}`).then(
+    (gltf) => {
+      gltf.scene.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        keep(mesh.geometry);
+        for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+          keep(m);
+          for (const v of Object.values(m)) if (v instanceof THREE.Texture) keep(v);
+        }
+      });
+      return alive() ? gltf : null;
+    },
+    () => null,
+  );
 }
 
 /**
- * 几条小渔船：白船身（尖船头）、一道蓝色的船舷、白色的驾驶舱。在海湾里慢慢绕大圈、随浪轻轻起伏。
- * 每条船合成一个网格（顶点色），一条一次绘制
+ * 几条小渔船（scripts/blender/fishing_boat.py 生成的 9m 玻璃钢渔船：白船身、蓝腰线、驾驶舱、桅杆、轮胎防撞垫）。
+ * 在海湾里慢慢绕大圈、随浪轻轻起伏和摇晃。模型的水线在 y = 0，船头朝 +X。
+ * 每条船两个材质（油漆、玻璃），一条两次绘制。layer = 加进哪一层（海面的反射）
  */
-export function createBoats(keep: Keep) {
+export function createBoats(keep: Keep, alive: () => boolean, layer?: number) {
   const group = new THREE.Group();
   group.name = 'boats';
-  const outline = new THREE.Shape();
-  outline.moveTo(-4, -1.3);
-  outline.lineTo(2.2, -1.3);
-  outline.quadraticCurveTo(4.2, -0.9, 5, 0);
-  outline.quadraticCurveTo(4.2, 0.9, 2.2, 1.3);
-  outline.lineTo(-4, 1.3);
-  outline.closePath();
-  const hull = new THREE.ExtrudeGeometry(outline, { depth: 1.4, bevelEnabled: false });
-  // 挤出方向是 +z：转成竖着的（船身高 1.4m，水线下埋 0.5m）
-  hull.rotateX(-Math.PI / 2);
-  hull.translate(0, -0.5, 0);
-  const band = new THREE.ExtrudeGeometry(outline, { depth: 0.22, bevelEnabled: false });
-  band.rotateX(-Math.PI / 2);
-  band.scale(1.01, 1, 1.03);
-  band.translate(0, 0.62, 0);
-  const cabin = new THREE.BoxGeometry(2.2, 1.6, 1.9);
-  cabin.translate(-1.6, 1.7, 0);
-  const roof = new THREE.BoxGeometry(2.5, 0.15, 2.2);
-  roof.translate(-1.6, 2.55, 0);
-  const mast = new THREE.BoxGeometry(0.12, 2.4, 0.12);
-  mast.translate(0.6, 2.1, 0);
-  // 挤出的几何体本来就没有索引，盒子有：统一成没有索引的才能合并
-  const flat = (g: THREE.BufferGeometry) => (g.index ? g.toNonIndexed() : g);
-  const geo = keep(
-    mergeGeometries([
-      paint(flat(hull), 0xf6f7f8),
-      paint(flat(band), 0x2f6cb3),
-      paint(flat(cabin), 0xffffff),
-      paint(flat(roof), 0x3a5f8f),
-      paint(flat(mast), 0xdfe3e6),
-    ])!,
-  );
-  for (const g of [hull, band, cabin, roof, mast]) g.dispose();
-  const mat = keep(new THREE.MeshLambertMaterial({ vertexColors: true }));
   // [绕圈的圆心 x, z, 半径, 速度（米/秒，负 = 反方向）, 起始角]
   const paths: Array<[number, number, number, number, number]> = [
     [70, -190, 70, 1.4, 0.3],
@@ -509,10 +488,15 @@ export function createBoats(keep: Keep) {
     [180, -420, 110, 1.2, 4.1],
     [20, -620, 120, -0.9, 1.0],
   ];
-  const boats = paths.map(([x, z, rad, speed, a0]) => {
-    const m = new THREE.Mesh(geo, mat);
-    group.add(m);
-    return { m, x, z, rad, speed, a0 };
+  const boats: Array<{ m: THREE.Object3D; x: number; z: number; rad: number; speed: number; a0: number }> = [];
+  void loadModel(keep, 'fishing_boat/fishing_boat.glb', alive).then((gltf) => {
+    if (!gltf) return;
+    for (const [x, z, rad, speed, a0] of paths) {
+      const m = gltf.scene.clone(true);
+      if (layer != null) m.traverse((c) => c.layers.enable(layer));
+      group.add(m);
+      boats.push({ m, x, z, rad, speed, a0 });
+    }
   });
   return {
     group,
@@ -520,53 +504,29 @@ export function createBoats(keep: Keep) {
       for (const [k, b] of boats.entries()) {
         const a = b.a0 + (t * b.speed) / b.rad;
         b.m.position.set(b.x + Math.cos(a) * b.rad, SEA_Y + 0.08 * Math.sin(t * 1.3 + k), b.z + Math.sin(a) * b.rad);
-        // 船头朝着前进方向（圆的切线）
+        // 船头朝着前进方向（圆的切线）；船头随浪一抬一落、左右轻轻摇
         const dx = -Math.sin(a) * Math.sign(b.speed);
         const dz = Math.cos(a) * Math.sign(b.speed);
-        b.m.rotation.set(0.03 * Math.sin(t * 1.1 + k * 2), Math.atan2(-dz, dx), 0.04 * Math.sin(t * 0.9 + k));
+        b.m.rotation.set(0.035 * Math.sin(t * 0.9 + k), Math.atan2(-dz, dx), 0.025 * Math.sin(t * 1.1 + k * 2), 'YXZ');
       }
     },
   };
 }
 
 /**
- * 海鸥：几只在栏杆外面的海上盘旋（白色的"V"，翅尖深灰）。正对相机的小贴片，
- * 扇翅膀就是把贴片在竖直方向压扁再拉开；扇一阵、滑翔一阵
+ * 海鸥（scripts/blender/seagull.py 生成：带骨架，两段循环动作 flap 扇翅 / glide 滑翔）。
+ * 几只在栏杆外面的海上绕圈：扇一阵、滑翔一阵（两段动作交叉淡入淡出），转弯时往圈里侧身，
+ * 扇翅时微微往上爬、滑翔时往下滑。每只一个骨骼动画网格（SkeletonUtils.clone），各自一个 AnimationMixer。
+ * 模型头朝 +X、左翅膀朝 -Z、背朝 +Y
  */
-export function createGulls(keep: Keep) {
+export function createGulls(keep: Keep, alive: () => boolean, layer?: number) {
   const group = new THREE.Group();
   group.name = 'gulls';
-  const tex = keep(
-    canvasTexture(128, 64, (g) => {
-      g.lineCap = 'round';
-      g.lineJoin = 'round';
-      const wing = (dir: 1 | -1) => {
-        g.beginPath();
-        g.moveTo(64, 36);
-        g.quadraticCurveTo(64 + dir * 22, 14, 64 + dir * 58, 26);
-        g.stroke();
-      };
-      g.strokeStyle = '#ffffff';
-      g.lineWidth = 9;
-      wing(1);
-      wing(-1);
-      // 翅尖
-      g.strokeStyle = '#4a4f57';
-      g.lineWidth = 7;
-      for (const dir of [1, -1] as const) {
-        g.beginPath();
-        g.moveTo(64 + dir * 44, 22);
-        g.quadraticCurveTo(64 + dir * 52, 22, 64 + dir * 58, 26);
-        g.stroke();
-      }
-      g.fillStyle = '#ffffff';
-      g.beginPath();
-      g.ellipse(64, 37, 7, 5, 0, 0, Math.PI * 2);
-      g.fill();
-    }),
-  );
-  // [圆心 x, y, z, 半径, 角速度, 相位]
+  // [圆心 x, y, z, 半径, 角速度, 相位]。前两只离岸近（50~60m），整圈都在默认机位的画面里、看得清扇翅；
+  // 圈的最内侧离护岸也有几米，低空飞不会穿过栏杆边的路灯和树
   const paths: Array<[number, number, number, number, number, number]> = [
+    [10, 5.5, -46, 6, 0.38, 0.8],
+    [14, 7.5, -60, 9, -0.26, 2.9],
     [24, 10, -52, 9, 0.32, 0],
     [30, 13, -60, 12, -0.25, 1.7],
     [14, 16, -85, 14, 0.2, 3.1],
@@ -574,22 +534,64 @@ export function createGulls(keep: Keep) {
     [-8, 19, -110, 16, 0.18, 2.4],
     [60, 21, -95, 15, 0.22, 5.2],
   ];
-  const gulls = paths.map((p) => {
-    const s = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })));
-    group.add(s);
-    return { s, p };
+  interface Gull {
+    o: THREE.Object3D;
+    mixer: THREE.AnimationMixer;
+    flap: THREE.AnimationAction;
+    glide: THREE.AnimationAction;
+    w: number;
+    p: (typeof paths)[number];
+  }
+  const gulls: Gull[] = [];
+  void loadModel(keep, 'seagull/seagull.glb', alive).then((gltf) => {
+    if (!gltf) return;
+    const flapClip = THREE.AnimationClip.findByName(gltf.animations, 'flap');
+    const glideClip = THREE.AnimationClip.findByName(gltf.animations, 'glide');
+    if (!flapClip || !glideClip) return;
+    paths.forEach((p, k) => {
+      const o = cloneSkinned(gltf.scene);
+      o.rotation.order = 'YXZ';
+      if (layer != null) o.traverse((c) => c.layers.enable(layer));
+      group.add(o);
+      const mixer = new THREE.AnimationMixer(o);
+      const flap = mixer.clipAction(flapClip);
+      const glide = mixer.clipAction(glideClip);
+      // 每只扇翅的快慢、起始的相位都不一样
+      flap.timeScale = 0.9 + 0.25 * ((k * 0.37) % 1);
+      flap.time = (k * 0.13) % flapClip.duration;
+      glide.time = (k * 0.7) % glideClip.duration;
+      flap.play();
+      glide.play();
+      gulls.push({ o, mixer, flap, glide, w: 0, p });
+    });
   });
+  const pos = new THREE.Vector3();
+  let last = 0;
   return {
     group,
     update(t: number) {
-      for (const { s, p } of gulls) {
-        const [x, y, z, rad, w, ph] = p;
+      const dt = Math.min(0.1, Math.max(0, t - last));
+      last = t;
+      for (const g of gulls) {
+        const [x, y, z, rad, w, ph] = g.p;
         const a = ph + t * w;
-        s.position.set(x + Math.cos(a) * rad, y + Math.sin(t * 0.4 + ph) * 1.2, z + Math.sin(a) * rad);
-        // 扇翅膀：每隔一阵扇几下，其余时间滑翔（翅膀平展）
-        const flapping = Math.sin(t * 0.5 + ph * 3) > 0.2;
-        const flap = flapping ? Math.sin(t * 9 + ph * 5) : 0.15;
-        s.scale.set(1.25, 0.62 * (0.75 + 0.35 * flap), 1);
+        // 扇一阵（约 4~6s）、滑翔一阵；两段动作的权重慢慢过渡
+        const flapping = Math.sin(t * 0.5 + ph * 3) > 0.1;
+        g.w += ((flapping ? 1 : 0) - g.w) * Math.min(1, dt * 2.5);
+        g.flap.setEffectiveWeight(g.w);
+        g.glide.setEffectiveWeight(1 - g.w);
+        g.mixer.update(dt);
+        // 扇翅时往上爬、滑翔时往下滑（一个慢的起伏，跟着扇 / 滑的节奏：高度 ∝ -cos，爬升速度 ∝ sin）
+        const climb = -Math.cos(t * 0.5 + ph * 3) * 1.4;
+        pos.set(x + Math.cos(a) * rad, y + climb, z + Math.sin(a) * rad);
+        g.o.position.copy(pos);
+        // 头朝前进方向；往圈里侧身（转弯时里侧的翅膀低）；爬升时抬头、下滑时低头
+        const fx = -Math.sin(a) * Math.sign(w);
+        const fz = Math.cos(a) * Math.sign(w);
+        const yaw = Math.atan2(-fz, fx);
+        const inside = (x - pos.x) * fz + (z - pos.z) * -fx > 0;
+        const bank = THREE.MathUtils.degToRad(14 + 6 * (1 - g.w));
+        g.o.rotation.set(inside ? -bank : bank, yaw, Math.sin(t * 0.5 + ph * 3) * 0.12);
       }
     },
   };
