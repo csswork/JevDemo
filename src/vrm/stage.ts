@@ -20,11 +20,13 @@ export interface CameraView {
 const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, park: createPark };
 /** 相机默认看多远（室内够了；室外场景自己给，见 Backdrop.far） */
 const FAR = 20;
+/** 像素比的上限：再高肉眼分不出，GPU 白干活 */
+const MAX_PIXEL_RATIO = 2;
 
 /** three.js 场景骨架：相机、灯光、背景、resize。与 VRM 无关，便于单独调。 */
 export function createStage(canvas: HTMLCanvasElement) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   // 软阴影一直开着；投不投影由主光的 castShadow 决定（只有背景场景里才投）
   renderer.shadowMap.enabled = true;
@@ -206,6 +208,21 @@ export function createStage(canvas: HTMLCanvasElement) {
       key.shadow.normalBias = sun ? 0.04 : 0.02;
       key.shadow.radius = sun ? 3 : 4;
     }
+    // 像素预算是场景给的（公园有、咖啡店和纯色没有）：换背景时按当前画布大小重算一次像素比
+    const size = renderer.getSize(_size);
+    if (size.x > 0 && size.y > 0) applyPixelRatio(size.x, size.y);
+  }
+
+  /**
+   * 像素比：默认 min(dpr, 2)；当前背景给了像素预算（Backdrop.pixelBudget）时再压到预算以内。
+   * w、h 是画布的 CSS 尺寸。setPixelRatio 内部会按旧的 CSS 尺寸重设一次画布，所以 resize 里要在 setSize 之前调
+   */
+  const _size = new THREE.Vector2();
+  function applyPixelRatio(w: number, h: number) {
+    let ratio = Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO);
+    const budget = backdrop?.pixelBudget;
+    if (budget) ratio = Math.min(ratio, Math.sqrt(budget / (w * h)));
+    if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
   }
 
   /** 当前视角（存下来，下次打开 / 换回这个角色时恢复） */
@@ -234,6 +251,8 @@ export function createStage(canvas: HTMLCanvasElement) {
     const w = parent.clientWidth;
     const h = parent.clientHeight;
     if (w === 0 || h === 0) return;
+    // 每次都按当前的 dpr 和预算重算（审计工具截图时临时把像素比改成 1，截完调 resize 就复原了）
+    applyPixelRatio(w, h);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -265,6 +284,22 @@ export function createStage(canvas: HTMLCanvasElement) {
     blocked.position.copy(controls.target).addScaledVector(toCam, Math.max(0.35, hit.distance - 0.2));
     return blocked;
   }
+
+  // 把这次渲染的视锥交给场景，让它自己剔除合批的东西（Backdrop.beforeRender）。
+  // 挂在 scene.onBeforeRender 上：three 这时已经更新完相机矩阵，拿到的就是这次实际用的相机（可能是替身）；
+  // 阴影相机的矩阵平时在阴影通道里才更新，这里先更新一次（太阳不动，结果和阴影通道里一样）
+  const viewFrustum = new THREE.Frustum();
+  const _viewProj = new THREE.Matrix4();
+  scene.onBeforeRender = (_r, _s, cam) => {
+    if (!backdrop?.beforeRender) return;
+    viewFrustum.setFromProjectionMatrix(_viewProj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    let shadow: THREE.Frustum | null = null;
+    if (key.castShadow) {
+      key.shadow.updateMatrices(key);
+      shadow = key.shadow.getFrustum();
+    }
+    backdrop.beforeRender(viewFrustum, shadow);
+  };
 
   const clock = new THREE.Clock();
   function render() {

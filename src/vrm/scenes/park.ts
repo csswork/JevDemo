@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canvasTexture, rng, type Backdrop } from './common';
 import { AMBIENCE_VOLUME } from '../../speech/ambience';
 import { createDust, createLightShafts, type Shaft } from './sunlight';
@@ -8,7 +9,8 @@ import { createDust, createLightShafts, type Shaft } from './sunlight';
  * 背景场景：城市公园里的木栈道（照着一张实拍的公园照片搭的），全 3D：
  *
  *   树 / 灌木  ez-tree（npm @dgreenheck/ez-tree，MIT）程序生成：真实的树皮贴图、一片片的叶子卡片、自然分叉，
- *             叶子随风轻轻摆。一棵大树 1.4 万~2.2 万个三角形、生成 6~30ms。生成几个变体，几十棵树共用几何体。
+ *             叶子随风轻轻摆（影子也跟着摆）、逆光时透光。一棵大树 1.4 万~2.2 万个三角形、生成 6~30ms。
+ *             生成几个变体，同一个变体的几十棵树合成一批画（见 batch）。
  *             模块 4MB（树皮和树叶贴图打包在里面），只在选了公园时才动态加载
  *   草坪      近处是一丛丛 3D 的草（ez-tree 演示场景里的草丛模型，public/scene/eztree/，MIT），也随风摆；
  *             远处铺 Poly Haven 的草地材质（aerial_grass_rock）
@@ -197,6 +199,19 @@ function windShader(mat: THREE.Material, uniforms: { uTime: { value: number } },
         `,
       );
   };
+  // 高度、幅度是直接写进代码的常量，缓存键要带上它们：默认的键是 onBeforeCompile 的源码（每次都一样），
+  // 几种花的材质类型相同，会共用第一种编译出来的程序、用错高度
+  mat.customProgramCacheKey = () => `park-wind:${height}:${amp}`;
+}
+
+/**
+ * 随风摆的东西投出的影子也要跟着摆：阴影用的深度材质注入同一段风的代码、读同一个 uTime。
+ * 贴图和 alphaTest（叶片、花瓣的镂空）不用设 —— three 画阴影时每次都从物体自己的材质抄过来
+ */
+function windDepth(uniforms: { uTime: { value: number } }, height?: number, amp?: number) {
+  const mat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  windShader(mat, uniforms, height, amp);
+  return mat;
 }
 
 export function createPark(): Backdrop {
@@ -732,12 +747,12 @@ export function createPark(): Backdrop {
     const parkBench = (x0: number, z0: number) => {
       const [x, z] = pushClear(x0, z0, 0.45);
       const np = nearestPath(x, z);
-      const g = new THREE.Group();
+      // 十三块方块按材质合成两个网格：各画各的话，加上阴影一张长椅一帧要画二十多次
+      const parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
+      const m = new THREE.Matrix4();
       const box = (w: number, h: number, d: number, px: number, py: number, pz: number, mat: THREE.Material, rx = 0) => {
-        const m = new THREE.Mesh(keep(new THREE.BoxGeometry(w, h, d)), mat);
-        m.position.set(px, py, pz);
-        m.rotation.x = rx;
-        g.add(m);
+        const geo = new THREE.BoxGeometry(w, h, d).applyMatrix4(m.makeRotationX(rx).setPosition(px, py, pz));
+        parts.set(mat, [...(parts.get(mat) ?? []), geo]);
       };
       for (const k of [0, 1, 2]) box(1.5, 0.035, 0.11, 0, 0.44, 0.14 - k * 0.135, deckMat);
       for (const k of [0, 1]) box(1.5, 0.1, 0.03, 0, 0.6 + k * 0.15, -0.21 - k * 0.025, deckMat, -0.17);
@@ -746,6 +761,11 @@ export function createPark(): Backdrop {
         box(0.05, 0.86, 0.05, sx, 0.43, -0.21, iron, -0.12);
         box(0.05, 0.04, 0.42, sx, 0.4, -0.02, iron);
         box(0.05, 0.035, 0.4, sx, 0.64, 0.0, iron);
+      }
+      const g = new THREE.Group();
+      for (const [mat, geos] of parts) {
+        g.add(new THREE.Mesh(keep(mergeGeometries(geos)), mat));
+        for (const geo of geos) geo.dispose();
       }
       g.position.set(x, groundY(x, z), z);
       // 局部 +Z（座位正面）朝着最近的路
@@ -807,9 +827,8 @@ export function createPark(): Backdrop {
     group.add(m);
   }
 
-  // ---- 风 ----
+  // ---- 风：草、花、树叶和它们的影子都读这一个 uTime ----
   const wind = { uTime: { value: 0 } };
-  const windTrees: Array<{ update(t: number): void }> = [];
 
   // ---- 草丛（3D）----
   const loader = new GLTFLoader();
@@ -938,6 +957,9 @@ export function createPark(): Backdrop {
           const mat = mesh.material as THREE.Material;
           windShader(mat, wind, height, 0.03);
           const im = new THREE.InstancedMesh(mesh.geometry, mat, mine.length);
+          // 每个部件一个，不共用：three 画阴影时把各自材质的贴图抄到深度材质上，但贴图从有到无不会触发重新编译，
+          // 花瓣（有贴图）和茎（可能没有）共用一个会用错程序
+          im.customDepthMaterial = keep(windDepth(wind, height, 0.03));
           mine.forEach((s, i) => im.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(s.m, unit).multiply(nodeRot)));
           im.computeBoundingSphere();
           add(im);
@@ -946,9 +968,130 @@ export function createPark(): Backdrop {
     });
   }
 
+  // ---- 合批（树、灌木、路灯）----
+  /** 合批的东西：每次渲染前按视锥逐个剔除（见 batch） */
+  const batches: Array<(view: THREE.Frustum, shadow: THREE.Frustum | null) => void> = [];
+  /**
+   * 同一个几何体 + 材质的一批树（灌木、路灯同理）合成 InstancedMesh，几十棵一次绘制（之前每棵树的树干、树冠各画一次，
+   * 主画面加阴影一帧要画近两百次）。
+   * 合成之后 three 只能按整体的包围球剔除，镜头背后的树也照画、三角形反而更多 —— 所以每次渲染前按这次的视锥
+   * 在 CPU 上逐棵剔除，只把看得见的写进实例缓冲（几十个包围球和视锥比一下；看得见的那批没变就不重新上传）。
+   * 投影的另用一个 InstancedMesh（同一份几何体和材质），只在阴影通道里画：
+   * 一个 InstancedMesh 在两个通道里画的是同一批实例，合用的话要么主画面多画镜头外的树，要么镜头外的树没了影子。
+   * 投影的这批除了要在阴影相机的视锥里，影子还得落进画面：树冠沿着阳光往下扫到地面是一条胶囊，
+   * 影子只可能落在这条胶囊里，它整个在视锥外（镜头背后的树，影子也落在背后）就不画 —— 阴影通道的树省掉一大半，画面一点不变
+   */
+  const batch = (geo: THREE.BufferGeometry, mat: THREE.Material, matrices: THREE.Matrix4[], shadow: { depth?: THREE.Material } | null) => {
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    const spheres = matrices.map((m) => geo.boundingSphere!.clone().applyMatrix4(m));
+    // three 给物体排先后（不透明的由近到远、半透明的由远到近）用整体的包围球。不设的话它在第一帧按当时的实例数算一次，可能是空的
+    const bounds = spheres.reduce((u, s) => u.union(s), spheres[0].clone());
+    // 胶囊的下端：从包围球心逆着阳光走到地面以下（地面最低 -0.1，留点余量）
+    const ends = spheres.map((s) => s.center.clone().addScaledVector(SUN_DIR, -(s.center.y + 0.3) / SUN_DIR.y));
+    /** 第 i 棵的影子会不会落进视锥：胶囊整个在视锥某一个面的外侧就不会 */
+    const shadowInView = (view: THREE.Frustum, i: number) => {
+      const r = spheres[i].radius;
+      for (const p of view.planes) if (p.distanceToPoint(spheres[i].center) < -r && p.distanceToPoint(ends[i]) < -r) return false;
+      return true;
+    };
+    const part = (cast: boolean) => {
+      const im = keep(new THREE.InstancedMesh(geo, mat, matrices.length));
+      im.count = 0;
+      im.frustumCulled = false; // 自己逐棵剔
+      im.boundingSphere = bounds;
+      im.castShadow = cast;
+      im.receiveShadow = !cast;
+      group.add(im);
+      const ids = new Int32Array(matrices.length);
+      let shown = 0;
+      /** frustum = 这一批按哪个视锥剔；view = 投影的那批还要看影子落不落进画面 */
+      const cull = (frustum: THREE.Frustum | null, view?: THREE.Frustum) => {
+        let n = 0;
+        let changed = false;
+        if (frustum) {
+          for (let i = 0; i < spheres.length; i++) {
+            if (!frustum.intersectsSphere(spheres[i]) || (view && !shadowInView(view, i))) continue;
+            if (n >= shown || ids[n] !== i) changed = true;
+            ids[n++] = i;
+          }
+        }
+        if (!changed && n === shown) return;
+        for (let k = 0; k < n; k++) im.setMatrixAt(k, matrices[ids[k]]);
+        im.count = shown = n;
+        im.instanceMatrix.needsUpdate = true;
+      };
+      return { im, cull };
+    };
+    const view = part(false);
+    const cast = shadow ? part(true) : null;
+    if (cast) {
+      if (shadow?.depth) cast.im.customDepthMaterial = shadow.depth;
+      // 主通道里 three 也会走到它：画之前把实例数置 0（three 遇到 0 个实例直接跳过，不发绘制），画完恢复
+      let n = 0;
+      cast.im.onBeforeRender = () => {
+        n = cast.im.count;
+        cast.im.count = 0;
+      };
+      cast.im.onAfterRender = () => {
+        cast.im.count = n;
+      };
+    }
+    batches.push((v, s) => {
+      view.cull(v);
+      cast?.cull(s, v);
+    });
+  };
+
   // ---- 树、灌木（ez-tree，动态加载）----
   void import('@dgreenheck/ez-tree').then(({ Tree }) => {
     if (disposed) return;
+    /**
+     * ez-tree 树叶的风是它自己的 onBeforeCompile（整段替换了 project_vertex）。这里先调它，再补两处：
+     * 1. 它没乘 instanceMatrix（ez-tree 是一棵树一个 Mesh 的用法），合批之后补上；风还是在树自己的坐标里算，和之前一样
+     * 2. uTime 换成场景共用的那一个：树叶的颜色材质和阴影的深度材质读同一个值，影子和叶子一起摆
+     *    （ez-tree 的 Tree.update 也是写这个值，所以不用再逐棵调它）
+     * 两种材质都过这一遍，风的代码是同一份
+     */
+    const leafWind = (ez: THREE.Material['onBeforeCompile'], shader: THREE.WebGLProgramParametersWithUniforms, renderer: THREE.WebGLRenderer) => {
+      ez(shader, renderer);
+      shader.uniforms.uTime = wind.uTime;
+      const vs = shader.vertexShader;
+      shader.vertexShader = vs.replace(
+        'mvPosition = modelViewMatrix * mvPosition;',
+        `#ifdef USE_INSTANCING
+          mvPosition = instanceMatrix * mvPosition;
+        #endif
+        mvPosition = modelViewMatrix * mvPosition;`,
+      );
+      if (shader.vertexShader === vs) console.warn('park: ez-tree 树叶的风代码变了，合批的树叶没乘 instanceMatrix');
+    };
+    /**
+     * 树叶逆光透光（假的次表面散射，写法参考 Stillwater）：Phong 只算朝着光的那一面，逆光看树冠是一片暗绿。
+     * 两项：视线对着太阳（叶子在人和太阳之间）时最亮；叶子背面朝着太阳时透一点。乘太阳的阴影 ——
+     * 树冠里面被别的叶子挡住的暗下去，留 25% 当作天光透过来的。只加在 directDiffuse 上，顺光看不变。
+     * Phong 默认不带 getShadowMask()，在 shadowmap_pars_fragment 后面补上
+     */
+    const sunDir = { value: SUN_DIR };
+    const translucent = (shader: THREE.WebGLProgramParametersWithUniforms) => {
+      shader.uniforms.uSunDir = sunDir;
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <shadowmap_pars_fragment>',
+          `#include <shadowmap_pars_fragment>
+          #include <shadowmask_pars_fragment>
+          uniform vec3 uSunDir;`,
+        )
+        .replace(
+          '#include <lights_fragment_end>',
+          `#include <lights_fragment_end>
+          {
+            vec3 sunDirView = normalize( ( viewMatrix * vec4( uSunDir, 0.0 ) ).xyz );
+            float translucency = pow( max( dot( - geometryViewDir, sunDirView ), 0.0 ), 2.0 ) * 0.6
+              + max( dot( - normal, sunDirView ), 0.0 ) * 0.24;
+            reflectedLight.directDiffuse += diffuseColor.rgb * vec3( 1.9, 1.6, 0.85 ) * translucency * ( 0.25 + 0.75 * getShadowMask() );
+          }`,
+        );
+    };
     const make = (preset: string, seed: number, height: number, tint: number | null, leaves = 1) => {
       const t = new Tree();
       t.loadPreset(preset);
@@ -958,44 +1101,62 @@ export function createPark(): Backdrop {
       t.generate();
       const leafMat = t.leavesMesh.material as THREE.MeshPhongMaterial;
       if (tint == null) leafMat.color.multiply(LEAF_TINT);
-      // 逆光下的树叶是透光发亮的（Phong 没有透光），补一点自发光：看到的大多是背光面，不补就是一片暗橄榄绿
+      // 背光的叶子补一点自发光（不补就是一片暗橄榄绿）。逆光透亮交给上面的透光，这里只托底，比之前（0.55）低
       leafMat.emissive.set(tint == null ? 0x4a6a14 : 0x5a1a0a);
-      leafMat.emissiveIntensity = 0.55;
+      leafMat.emissiveIntensity = 0.3;
       leafMat.emissiveMap = leafMat.map;
+      const ez = leafMat.onBeforeCompile.bind(leafMat);
+      leafMat.onBeforeCompile = (shader, renderer) => {
+        leafWind(ez, shader, renderer);
+        translucent(shader);
+      };
+      leafMat.customProgramCacheKey = () => 'park-leaf';
+      // 树叶的影子：同一套风、同一个 uTime（每个变体一个，这个变体的树叶共用）
+      const depth = keep(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
+      depth.onBeforeCompile = (shader, renderer) => leafWind(ez, shader, renderer);
+      depth.customProgramCacheKey = () => 'park-leaf-depth';
       for (const mesh of [t.branchesMesh, t.leavesMesh]) {
         keep(mesh.geometry);
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const mm of mats) keep(mm);
       }
       const box = new THREE.Box3().setFromObject(t);
-      windTrees.push(t);
-      return { tree: t, scale: height / Math.max(1e-3, box.max.y - box.min.y), trunk: (t.options.branch.radius as Record<string, number>)['0'] ?? 1 };
+      return {
+        tree: t,
+        depth,
+        scale: height / Math.max(1e-3, box.max.y - box.min.y),
+        trunk: (t.options.branch.radius as Record<string, number>)['0'] ?? 1,
+      };
     };
-    const place = (v: ReturnType<typeof make>, spot: Spot, solid: boolean) => {
-      const o = new THREE.Group();
-      for (const mesh of [v.tree.branchesMesh, v.tree.leavesMesh]) o.add(new THREE.Mesh(mesh.geometry, mesh.material));
-      const s = v.scale * spot.scale;
-      o.scale.setScalar(s);
-      o.position.set(spot.x, groundY(spot.x, spot.z) - 0.05, spot.z);
-      o.rotation.y = spot.ry;
-      add(o);
-      // 近处的树干挡镜头
-      if (solid && Math.hypot(spot.x, spot.z) < 10) {
-        const rr = Math.max(0.2, v.trunk * s * 1.3);
-        collider(new THREE.CylinderGeometry(rr, rr, 6, 8), spot.x, 3, spot.z);
-      }
-      return o;
+    const up = new THREE.Vector3(0, 1, 0);
+    /** 一个变体种在这几处：树干、树冠各合一批。shadow = 投不投影；solid = 近处的树干挡镜头 */
+    const plant = (v: ReturnType<typeof make>, spots: Spot[], shadow: boolean, solid: boolean) => {
+      if (!spots.length) return;
+      const matrices = spots.map((spot) => {
+        const s = v.scale * spot.scale;
+        if (solid && Math.hypot(spot.x, spot.z) < 10) {
+          const rr = Math.max(0.2, v.trunk * s * 1.3);
+          collider(new THREE.CylinderGeometry(rr, rr, 6, 8), spot.x, 3, spot.z);
+        }
+        return new THREE.Matrix4().compose(
+          new THREE.Vector3(spot.x, groundY(spot.x, spot.z) - 0.05, spot.z),
+          new THREE.Quaternion().setFromAxisAngle(up, spot.ry),
+          new THREE.Vector3(s, s, s),
+        );
+      });
+      const { branchesMesh: b, leavesMesh: l } = v.tree;
+      batch(b.geometry, b.material as THREE.Material, matrices, shadow ? {} : null);
+      batch(l.geometry, l.material as THREE.Material, matrices, shadow ? { depth: v.depth } : null);
     };
     const tv = TREE_VARIANTS.map((v) => make(v.preset, v.seed, v.height, null, v.leaves));
-    for (const spot of trees) place(tv[spot.variant], spot, true);
-    // 远处的树用不加叶子的版本（看不清，省三角形）
-    const fv = new Map(FAR_VARIANTS.map((i) => [i, make(TREE_VARIANTS[i].preset, TREE_VARIANTS[i].seed + 1000, TREE_VARIANTS[i].height, null)]));
-    for (const spot of far) {
-      const o = place(fv.get(spot.variant as (typeof FAR_VARIANTS)[number])!, spot, false);
-      o.traverse((c) => (c.castShadow = false));
+    tv.forEach((v, i) => plant(v, trees.filter((s) => s.variant === i), true, true));
+    // 远处的树用不加叶子的版本（看不清，省三角形），不投影
+    for (const i of FAR_VARIANTS) {
+      const v = make(TREE_VARIANTS[i].preset, TREE_VARIANTS[i].seed + 1000, TREE_VARIANTS[i].height, null);
+      plant(v, far.filter((s) => s.variant === i), false, false);
     }
     const bv = BUSH_VARIANTS.map((v) => make(v.preset, v.seed, v.height, v.tint));
-    for (const spot of bushes) place(bv[spot.variant], spot, false);
+    bv.forEach((v, i) => plant(v, bushes.filter((s) => s.variant === i), true, false));
   });
 
   // ---- 模型：路灯、石头 ----
@@ -1007,15 +1168,18 @@ export function createPark(): Backdrop {
     o.traverse((c) => {
       const mesh = c as THREE.Mesh;
       if (!mesh.isMesh) return;
-      mesh.castShadow = !(mesh.material as THREE.Material).transparent; // 玻璃灯罩不投影
+      mesh.castShadow = !(mesh.material as THREE.Material).transparent; // 半透明的不投影
       mesh.receiveShadow = true;
     });
     group.add(o);
     return o;
   };
+  // 路灯八盏一样的：灯柱、灯罩、灯泡各合一批（和树一样逐盏剔除，见 batch）。灯柱一根三万个三角形，
+  // 之前八根全画进阴影图；现在影子落不进画面的不画
   loader.load(`${BASE}models/street_lamp_01/street_lamp_01.gltf`, (gltf) => {
     own(gltf.scene);
     if (disposed) return;
+    const places: THREE.Matrix4[] = [];
     for (const [x0, z0, ry] of [
       [2.3, -2.7, 0.4],
       [-3.1, -7.4, -0.3],
@@ -1028,9 +1192,17 @@ export function createPark(): Backdrop {
     ]) {
       const [x, z] = pushClear(x0, z0, 0.35);
       const y = groundY(x, z);
-      placeModel(gltf.scene, x, y, z, 1, ry);
+      places.push(new THREE.Matrix4().makeRotationY(ry).setPosition(x, y, z));
       collider(new THREE.CylinderGeometry(0.12, 0.12, 3.9, 6), x, y + 1.95, z);
     }
+    gltf.scene.updateMatrixWorld(true);
+    gltf.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mat = mesh.material as THREE.Material;
+      // 玻璃灯罩（半透明）不投影
+      batch(mesh.geometry, mat, places.map((p) => p.clone().multiply(mesh.matrixWorld)), mat.transparent ? null : {});
+    });
   });
   loader.load(`${BASE}models/rock_moss_set_01/rock_moss_set_01.gltf`, (gltf) => {
     own(gltf.scene);
@@ -1080,12 +1252,17 @@ export function createPark(): Backdrop {
     shadowBounds: 3,
     sun: { color: 0xfff1dc, intensity: 2.2, bounds: 18, position: SUN_POS, fill: 0.25, rim: 0.35 },
     far: 170,
+    // 满屏的树叶、草都是逐像素算光的：Retina 大窗口（画布 2232×1960，四百多万像素）时像素比压到约 1.76，
+    // 要画的像素少两成多，实测 GPU 每帧少 3~4ms，看不出差别。普通屏（dpr 1）、小窗口不受影响
+    pixelBudget: 3.4e6,
     update(dt: number) {
       time += dt;
       wind.uTime.value = time;
-      for (const t of windTrees) t.update(time);
       shafts.update(time);
       dust.update(time);
+    },
+    beforeRender(view, shadow) {
+      for (const b of batches) b(view, shadow);
     },
     dispose() {
       disposed = true;
