@@ -36,6 +36,8 @@ export interface LightAnchor {
   follow?: THREE.Object3D;
   /** 闪：周期（秒）、亮的比例、相位 */
   blink?: [number, number, number];
+  /** 每帧再乘一个亮度（灯塔：光束转到正对这边的那一下最亮） */
+  gain?: () => number;
 }
 
 interface Live {
@@ -227,6 +229,7 @@ export function createLights(keep: <T extends { dispose(): void }>(x: T) => T, o
         const k = (((time + ph) % period) + period) % period;
         f *= k < period * duty ? 1 : 0.04;
       }
+      if (a.gain) f *= a.gain();
       L.f = f;
       if (a.follow) L.world.copy(a.pos).applyMatrix4(a.follow.matrixWorld);
     }

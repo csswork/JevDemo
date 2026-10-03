@@ -313,8 +313,9 @@ export function createStage(canvas: HTMLCanvasElement) {
       key.shadow.updateMatrices(key);
       shadow = key.shadow.getFrustum();
     }
-    backdrop.beforeRender(viewFrustum, shadow);
+    backdrop.beforeRender(viewFrustum, shadow, cam, renderer.getDrawingBufferSize(_buf));
   };
+  const _buf = new THREE.Vector2();
 
   /**
    * 场景按时间给的灯光（Backdrop.lighting）：主光、补光、轮廓光、半球光、环境光每帧照着设；

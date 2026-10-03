@@ -7,6 +7,7 @@ import { motionSource, motionTalk } from '../vrm/motion';
 import { GESTURES } from '../vrm/gestures';
 import { isProceduralMotion } from '../act/schema';
 import { parseTestCommand } from '../jev/testCommand';
+import type { TimeMode } from '../vrm/timeOfDay';
 
 /**
  * 开发用的观察工具（仅 dev，动态 import，不进生产包）。控制台里：
@@ -20,6 +21,7 @@ import { parseTestCommand } from '../jev/testCommand';
  *   __closeup([x, y, z], fov) / __closeup(null)   替身相机特写 / 换回主相机
  *   await __views('cafe.jpg')              场景截图：几个固定机位（半身 / 全身 / 侧面 / 背后 / 俯视）拼一张图
  *   await __shots('street_close.jpg')      场景特写：替身相机放在固定的世界坐标（默认是街景的玻璃 / 海 / 楼 / 路 / 山），拼一张图
+ *   await __times('street_times.jpg')      街景的昼夜：同一组机位在清晨 / 白天 / 黄昏 / 夜晚各拍一张（也可以给钟点，比如 [19.2, 23]）
  *   await __hands('hands.jpg', [0, 3, 6])  双手特写：每一行一个时刻，左右手各一张正面、一张外侧、再加一张上半身
  *   await __hands('talk.jpg', [1, 3, 6], '开心 40% | 我跟你说，今天店里来了一只小猫！它就坐在窗台上晒太阳，可爱吧？')
  *                                          边说边截（测试指令语法，不花钱）。结果存成文件，屏幕上看不到变化
@@ -567,7 +569,72 @@ export function installAudit(rt: Runtime) {
     return rows.length ? rows.join('\n') : '没有穿模（手指都在脸表面前面）';
   };
 
+  /**
+   * 街景的昼夜：同一组机位在几个时间点各拍一张，一行一个时间、一列一个机位，拼成一张图存到 dev-out/。
+   * times = 时段（'dawn' 'day' 'dusk' 'night'）或钟点（太阳时，比如 19.2）；
+   * shots = [标题, 相机位置, 看向哪, 视角°]，null = 主相机现在的样子。拍完回到原来的时间模式
+   */
+  const times = async (
+    name: string,
+    list: Array<TimeMode | number> = ['dawn', 'day', 'dusk', 'night'],
+    shots: Array<[string, [number, number, number], [number, number, number], number] | null> = [
+      null,
+      ['海', [4.2, 1.5, -6], [30, -1.2, -40], 30],
+      ['街', [2.5, 1.6, -4], [-5, 2.5, -22], 34],
+    ],
+    size: [number, number] = [800, 450],
+  ) => {
+    const stage = rt.stage!;
+    const r = stage.renderer;
+    const cvs = r.domElement;
+    const before = stage.timeOfDay;
+    const pr = r.getPixelRatio();
+    r.setPixelRatio(1);
+    r.setSize(size[0], size[1], false);
+    stage.camera.aspect = size[0] / size[1];
+    stage.camera.updateProjectionMatrix();
+    const [tw, th] = size;
+    const sheet = document.createElement('canvas');
+    sheet.width = tw * shots.length;
+    sheet.height = th * list.length;
+    const g = sheet.getContext('2d')!;
+    const cam = new THREE.PerspectiveCamera(30, tw / th, 0.1, stage.camera.far);
+    const label = (t: TimeMode | number) => (typeof t === 'number' ? `${Math.floor(t)}:${String(Math.round((t % 1) * 60)).padStart(2, '0')}` : t);
+    for (const [row, t] of list.entries()) {
+      stage.setTimeOfDay(t, true);
+      // 环境贴图重烘有节流（100ms 一次）：等一下再拍
+      for (let i = 0; i < 3; i++) stage.render();
+      await new Promise((res) => setTimeout(res, 130));
+      for (const [col, shot] of shots.entries()) {
+        if (shot) {
+          const [, pos, look, fov] = shot;
+          cam.position.set(...pos);
+          cam.fov = fov;
+          cam.updateProjectionMatrix();
+          cam.lookAt(...look);
+          stage.view.camera = cam;
+        } else stage.view.camera = null;
+        for (let i = 0; i < 6; i++) {
+          rt.step(1 / 60);
+          stage.render();
+        }
+        g.drawImage(cvs, col * tw, row * th);
+        g.fillStyle = '#ff0';
+        g.font = 'bold 22px sans-serif';
+        g.fillText(`${label(t)} ${shot ? shot[0] : '主相机'}  太阳 ${stage.time.sunElev.toFixed(1)}°`, col * tw + 10, row * th + 28);
+      }
+    }
+    stage.view.camera = null;
+    stage.setTimeOfDay(before, true);
+    r.setPixelRatio(pr);
+    stage.resize();
+    const blob = await new Promise<Blob>((res) => sheet.toBlob((b) => res(b!), 'image/jpeg', 0.88));
+    const res = await fetch(`/__dev/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
+    return res.json();
+  };
+
   const w = window as unknown as Record<string, unknown>;
+  w.__times = times;
   w.__views = views;
   w.__shots = shots;
   w.__hands = hands;

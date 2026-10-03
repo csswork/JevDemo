@@ -184,7 +184,7 @@ const KEYS: Key[] = [
     hemiI: 0.42,
     fog: 0x4c5276,
     env: 0.9,
-    cloud: 0x8a7c94,
+    cloud: 0x9a8090,
     deep: 0x0d2a50,
     shallow: 0x102e40,
     scatter: 0x3a3050,
@@ -215,7 +215,7 @@ const KEYS: Key[] = [
     hemiI: 0.38,
     fog: 0x1e2644,
     env: 1,
-    cloud: 0x4a5068,
+    cloud: 0x363c54,
     deep: 0x06183a,
     shallow: 0x08202e,
     scatter: 0x1a2040,
@@ -246,7 +246,7 @@ const KEYS: Key[] = [
     hemiI: 0.36,
     fog: 0x121a32,
     env: 1,
-    cloud: 0x323a52,
+    cloud: 0x242a3e,
     deep: 0x041430,
     shallow: 0x061a26,
     scatter: 0x101830,
@@ -325,14 +325,39 @@ export function createSkyMapping(sunPos: [number, number, number]) {
     sun(t: TimeState, out: THREE.Vector3) {
       return dirOf(t.sunAz + offset, t.sunElev, out);
     },
-    /** 月亮：夜里从左边（海那一侧偏左）升起、往右挪，最高 14°；白天在地平线以下 */
+    /**
+     * 月亮：夜里从正前方（海上）升起、往右挪，最高 11.5°；白天在地平线以下。
+     * 21:30 左右在默认机位里她头的右上方（正前方偏右 12°、离地 8~9°），不被头挡住
+     */
     moon(t: TimeState, out: THREE.Vector3) {
       if (t.nightP < 0) return dirOf(-85, -10, out);
       const p = t.nightP;
-      return dirOf(-112 + 52 * p, 1.5 + 12.5 * Math.sin(Math.PI * p), out);
+      return dirOf(-88 + 40 * p, 1.5 + 10 * Math.sin(Math.PI * p), out);
     },
   };
 }
 
 /** 月亮被照亮的比例（0 新月 … 1 满月） */
 export const moonIllum = (phase: number) => (1 - Math.cos(phase * Math.PI * 2)) / 2;
+
+const _m = new THREE.Color();
+/**
+ * 清晨和黄昏的太阳高度一样，颜色不一样：清晨偏粉、偏冷，雾是淡淡的蓝灰，太阳没那么红；
+ * 黄昏更橙、更浓。按调色表（黄昏的那一套）往清晨的颜色拉，只在太阳离地平线不远的时候拉（-8° 到 20°）
+ */
+export function morningTint(pal: Palette, hours: number, elev: number) {
+  const k = (1 - smoothstep(10.5, 12.5, hours)) * smoothstep(-8, -2, elev) * (1 - smoothstep(8, 20, elev));
+  if (k <= 0) return;
+  pal.glow.lerp(_m.setHex(0xffd0c0), 0.5 * k);
+  pal.horizon.lerp(_m.setHex(0xf2d4cc), 0.4 * k);
+  pal.band *= 1 - 0.35 * k;
+  pal.sunCol.lerp(_m.setHex(0xffd6b8), 0.45 * k);
+  pal.rimCol.lerp(_m.setHex(0xffd8c8), 0.4 * k);
+  pal.fog.lerp(_m.setHex(0xd2d6e2), 0.45 * k);
+  pal.cloud.lerp(_m.setHex(0xffdcd4), 0.35 * k);
+  pal.scatter.lerp(_m.setHex(0x5a7a8a), 0.4 * k);
+}
+function smoothstep(a: number, b: number, x: number) {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}

@@ -87,9 +87,10 @@ export interface Backdrop {
   lighting?: LiveLighting;
   /**
    * 每次渲染前调一次，传进这次渲染的视锥（实际用的相机：主相机、防穿墙的替身或调试相机）
-   * 和主光阴影相机的视锥（主光不投影时为 null）。场景拿来自己剔除合批的东西（公园的树，见 park.ts）
+   * 和主光阴影相机的视锥（主光不投影时为 null）。场景拿来自己剔除合批的东西（公园的树，见 park.ts）。
+   * camera = 这次的相机，size = 画布的像素大小（街景的光晕按它算最小尺寸）
    */
-  beforeRender?(view: THREE.Frustum, shadow: THREE.Frustum | null): void;
+  beforeRender?(view: THREE.Frustum, shadow: THREE.Frustum | null, camera: THREE.Camera, size: THREE.Vector2): void;
   dispose(): void;
 }
 

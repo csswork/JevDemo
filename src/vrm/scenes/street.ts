@@ -19,7 +19,7 @@ import {
   fbm,
   skyUniforms,
 } from './seaside';
-import { createPalette, createSkyMapping, dirOf, moonIllum, samplePalette } from './streetTime';
+import { createPalette, createSkyMapping, dirOf, moonIllum, morningTint, samplePalette } from './streetTime';
 import { createLights, lampLit, type LightAnchor } from './streetLights';
 import type { TimeState } from '../timeOfDay';
 import { F, WINDOWS, bannerUV, cellUV, chalkboard, facadeAtlas, holeRects, signAtlas, signUV, type Cell } from './streetTextures';
@@ -812,6 +812,7 @@ export function createStreet(): Backdrop {
         const xa = -hw + i * bw;
         facade.quad(v3(xa, ya, 0), v3(xa + bw, ya, 0), v3(xa + bw, yb, 0), v3(xa, yb, 0), cellUV(cell), tint);
         if (WINDOWS[cell]) windowModule(cell, xa, bw, ya, yb, floorRooms[f]);
+        if (f === 0) cellLights(cell, xa, bw);
       }
     }
     // 侧墙、后墙：素墙为主，偶尔一扇小窗、一根落水管（windowModule、floorRoom 在下面，函数声明会提升）
@@ -832,6 +833,27 @@ export function createStreet(): Backdrop {
       for (let i = 0; i < backBays; i++) {
         const xa = hw - i * bbw;
         facade.quad(v3(xa, ya, -d), v3(xa - bbw, ya, -d), v3(xa - bbw, yb, -d), v3(xa, yb, -d), cellUV(pickSide()), tint);
+      }
+    }
+    /**
+     * 一楼这一格夜里的灯（登记成光源，见 streetLights.ts）：店的橱窗透出来的光（按营业时间）、暖帘里的光、
+     * 居酒屋的红灯笼、玄关的门灯。位置按立面图集里画的地方估的（第 3 期换成构件以后由模型里标的点给）
+     */
+    function cellLights(cell: Cell, xa: number, bw: number) {
+      const at3 = (x: number, y: number, z: number) => v3(x, y, z).applyMatrix4(M);
+      const cx = xa + bw / 2;
+      if (b.interior) return; // 她身边那家咖啡店单独登记（店里有真的灯）
+      if (cell === F.SHOP_WIN || cell === F.SOUVENIR || cell === F.GLASS_SHOP || cell === F.FLOWER) {
+        light({ pos: at3(cx, 1.4, 0.9), color: 0xfff0d8, intensity: 3.5, radius: 6, glow: 0, hours: [7, 21], onAt: 0.1 + rl() * 0.3 });
+      } else if (cell === F.CAFE_WIN || cell === F.CAFE_DOOR) {
+        light({ pos: at3(cx, 1.4, 0.9), color: 0xffd9a8, intensity: 3.5, radius: 6, glow: 0, hours: [7, 22], onAt: 0.1 + rl() * 0.3 });
+      } else if (cell === F.NOREN) {
+        light({ pos: at3(cx, 1.2, 0.7), color: 0xffd8a0, intensity: 3, radius: 5, glow: 0, hours: [11, 21], onAt: 0.1 + rl() * 0.3 });
+      } else if (cell === F.IZAKAYA) {
+        light({ pos: at3(xa + 0.86 * bw, 1.75, 0.35), color: 0xff5a3c, intensity: 2, radius: 4, glow: 0.55, glowGain: 1.3, hours: [17, 1], onAt: 0.05 });
+        light({ pos: at3(cx, 1.2, 0.7), color: 0xffc080, intensity: 3, radius: 5, glow: 0, hours: [17, 1], onAt: 0.05 });
+      } else if (cell === F.GENKAN) {
+        light({ pos: at3(xa + 0.867 * bw, 2.05, 0.22), color: 0xffe2b0, intensity: 1.4, radius: 4, glow: 0.35, hours: [17, 24], onAt: 0.2 + rl() * 0.5 });
       }
     }
     /**
@@ -1273,6 +1295,10 @@ export function createStreet(): Backdrop {
       const doorBay = b.ground.indexOf(F.CAFE_DOOR);
       const bw = built.w / b.ground.length;
       heroCafe = { M: built.M, w: built.w, d: built.d, door: [-built.w / 2 + doorBay * bw, -built.w / 2 + (doorBay + 1) * bw] };
+      // 咖啡店的大玻璃窗透出来的暖光：照在门口的人行道上，也照在她身上（离她最近的光源，第 1 档的真实点光源）
+      for (const x of [-4.4, 0, 4.4]) {
+        light({ pos: v3(x, 1.6, 1.0).applyMatrix4(built.M), color: 0xffcf96, intensity: 5.5, radius: 9, glow: 0, hours: [7, 23], onAt: 0.05 });
+      }
     }
   }
 
@@ -1569,6 +1595,9 @@ export function createStreet(): Backdrop {
       bushes.push({ x: p.x, z: p.z, y: KERB_H + 0.4, variant: 2 + sp.variant, scale: sp.h, ry: r() * Math.PI * 2 });
     }
   }
+  /** 树叶透光乘多少（太阳的亮度）、树叶的材质（按时间调自发光） */
+  const leafLight = { value: 1 };
+  let leafMats: THREE.MeshPhongMaterial[] = [];
   const TREE_VARIANTS = [
     { preset: 'Ash Medium', seed: 37, height: 8.5, leaves: 1.4 },
     { preset: 'Oak Medium', seed: 41, height: 7.5, leaves: 1.4 },
@@ -1622,6 +1651,8 @@ export function createStreet(): Backdrop {
       }
     });
   const LAMP_SCALE = 1.25;
+  /** 路灯的灯泡、灯罩材质（夜里发光）和各自最亮时的自发光强度 */
+  const lampGlow: Array<[THREE.MeshStandardMaterial, number]> = [];
   {
     lampSpots.forEach(({ s, p, l }) => {
       // 旗子挂在灯杆朝路的那一侧，旗面朝着街的方向
@@ -1646,7 +1677,18 @@ export function createStreet(): Backdrop {
     gltf.scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      const mat = mesh.material as THREE.Material;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      // 夜里灯泡、灯罩发光（第 2 期换成 Blender 做的路灯）；灯泡的位置就是光源
+      if (/bulb/.test(mat.name)) {
+        mat.emissive.set(0xffd9a0);
+        lampGlow.push([mat, 3]);
+        mesh.geometry.computeBoundingBox();
+        const c = mesh.geometry.boundingBox!.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld);
+        for (const m of places) light({ pos: c.clone().applyMatrix4(m), color: 0xffd6a0, intensity: 40, radius: 22, glow: 0.9, onAt: 0.15 + rl() * 0.4 });
+      } else if (/glass/.test(mat.name)) {
+        mat.emissive.set(0xffe6c0);
+        lampGlow.push([mat, 0.7]);
+      }
       batch(mesh.geometry, mat, places.map((m) => m.clone().multiply(mesh.matrixWorld)), mat.transparent ? null : {});
     });
   });
@@ -1730,33 +1772,221 @@ export function createStreet(): Backdrop {
     group.add(m);
   }
 
+  // ---- 按时间变的灯光（舞台每帧照着 lighting 设主光、补光、轮廓光、半球光、环境光，见 common.ts 的 LiveLighting）----
+  const fog = new THREE.Fog(HAZE, 100, 2800);
+  const lighting: LiveLighting = {
+    sun: { color: new THREE.Color(0xfff3e0), intensity: 2.5, position: new THREE.Vector3(...SUN_POS), shadow: 1 },
+    fill: { color: new THREE.Color(0xdfe8ff), intensity: 0.3 },
+    rim: { color: new THREE.Color(0xffe9d6), intensity: 0.4 },
+    hemisphere: { sky: new THREE.Color(0xdcecff), ground: new THREE.Color(0x8f8a84), intensity: 0.5 },
+    environmentIntensity: 0.35,
+    envScene,
+    envVersion: 0,
+  };
+  const pal = createPalette();
+  const mapping = createSkyMapping(SUN_POS);
+  const sunW = new THREE.Vector3();
+  const moonW = new THREE.Vector3();
+  const keyDir = new THREE.Vector3();
+  const glintDir = new THREE.Vector3();
+  const MOON_COL = new THREE.Color(0xb4c4ec);
+  const wu = water.uniforms;
+  let envSig = '';
+  let lastHours = -1;
+  /** 街道的材质加上轻量灯（第 2 档）：新载入的模型（路灯、盆栽、树……）隔一会儿补一遍。远景（反射层）、店里不加 */
+  const lampDone = new WeakSet<THREE.Material>();
+  const noLamps = new Set<THREE.Material>([interiorGlassMat, clearGlassMat]);
+  let lampScan = 0;
+  const litAll = () => {
+    group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || mesh.layers.isEnabled(REFLECT_LAYER) || mesh === nightLights.glow) return;
+      for (let p: THREE.Object3D | null = mesh; p; p = p.parent) if (p.name === 'cafe-interior') return;
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        if (lampDone.has(m) || noLamps.has(m)) continue;
+        if (!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && !(m as THREE.MeshPhongMaterial).isMeshPhongMaterial && !(m as THREE.MeshLambertMaterial).isMeshLambertMaterial) continue;
+        lampDone.add(m);
+        lampLit(m, nightLights.uniforms);
+        m.needsUpdate = true;
+      }
+    });
+  };
+  litAll();
+  /** 渔船的航行灯（模型载入以后按顶点色找：桅顶最高处白灯、绿的右舷灯、和它一样高的红的左舷灯；第 5 期重建时由模型标出来） */
+  let boatLights = false;
+  const findBoatLights = () => {
+    const boat0 = boats.group.children[0];
+    if (!boat0) return;
+    boatLights = true;
+    let mesh: THREE.Mesh | null = null;
+    boat0.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && !mesh) mesh = o as THREE.Mesh;
+    });
+    if (!mesh) return;
+    const g = (mesh as THREE.Mesh).geometry;
+    const pos = g.attributes.position;
+    const colA = g.attributes.color;
+    if (!colA) return;
+    const top = new THREE.Vector3(0, -1e9, 0);
+    const green = new THREE.Vector3();
+    const red: THREE.Vector3[] = [];
+    let ng = 0;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      if (v.y > top.y) top.copy(v);
+      const r = colA.getX(i);
+      const gg = colA.getY(i);
+      const bb = colA.getZ(i);
+      if (gg > 0.25 && r < 0.15 && bb < 0.35) {
+        green.add(v);
+        ng++;
+      } else if (r > 0.35 && gg < 0.12 && bb < 0.12) red.push(v.clone());
+    }
+    if (!ng) return;
+    green.divideScalar(ng);
+    const port = red.filter((p) => Math.abs(p.y - green.y) < 0.25 && Math.abs(p.x - green.x) < 0.6);
+    const portC = port.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(Math.max(1, port.length));
+    top.y -= 0.05;
+    for (const b of boats.group.children) {
+      light({ pos: top.clone(), follow: b, color: 0xfff6e8, intensity: 0, radius: 0, glow: 1.6, glowGain: 1.6, onAt: 0.2 });
+      light({ pos: green.clone(), follow: b, color: 0x40ff70, intensity: 0, radius: 0, glow: 1.1, glowGain: 1.4, onAt: 0.2 });
+      if (port.length) light({ pos: portC.clone(), follow: b, color: 0xff3a30, intensity: 0, radius: 0, glow: 1.1, glowGain: 1.4, onAt: 0.2 });
+    }
+  };
+
   let time = 0;
   return {
     group,
-    // 咖啡店里的一盏暖光（照不出店外，见 streetInterior.ts）
-    lights: interiorLights,
+    // 4 盏真实点光源（夜里分给离她最近的灯）+ 咖啡店里的一盏暖光
+    lights: [...nightLights.real, ...interiorLights],
     colliders,
-    // 天光偏蓝、地面反光偏暖灰（柏油和石板）。和公园一样压低环境光、太阳调亮，影子才清楚
+    // 下面几样是刚换上这个背景那一刻的值；之后每帧由 lighting 按时间盖掉
     hemisphere: { sky: 0xdcecff, ground: 0x8f8a84, intensity: 0.5 },
-    // 雾只管远景：100m 以内不受影响，对岸的小镇（1km）淡三成，山再淡一层，和地平线同色
-    fog: new THREE.Fog(HAZE, 100, 2800),
-    // 海边晴天的 HDRI（Poly Haven Furry Clouds）：玻璃、铁件反射的是它。转 20°：让它里面的太阳和舞台主光（太阳）在同一个方位
-    environment: { url: `${BASE}hdri/furry_clouds_1k.hdr`, intensity: 0.35, rotation: THREE.MathUtils.degToRad(20) },
+    // 雾只管远景：100m 以内不受影响，对岸的小镇（1km）淡三成，山再淡一层，和地平线同色（颜色按时间变）
+    fog,
     shadowBounds: 3,
     sun: { color: 0xfff3e0, intensity: 2.5, bounds: 22, position: SUN_POS, fill: 0.3, rim: 0.4 },
+    lighting,
     far: SKY_R + 200,
     // 不设像素预算：满屏逐像素算光的只有右上角那点树叶，GPU 每帧 2~4ms（同样 340 万像素下公园要 8ms），
     // 留着 Retina 的满分辨率，旗子和招牌上的字更清楚
-    update(dt: number) {
+    update(dt: number, t: TimeState) {
       time += dt;
       wind.uTime.value = time;
       water.update(time);
       boats.update(time);
       gulls.update(time);
+      if (!boatLights) findBoatLights();
+      if ((lampScan -= dt) <= 0) {
+        lampScan = 0.5;
+        litAll();
+      }
+
+      // ---- 时间 → 颜色、方向 ----
+      const elev = t.sunElev;
+      samplePalette(elev, pal);
+      morningTint(pal, t.hours, elev);
+      mapping.sun(t, sunW);
+      mapping.moon(t, moonW);
+      const moonElev = Math.asin(moonW.y) / (Math.PI / 180);
+      const illum = moonIllum(t.moonPhase);
+      /** 天黑了多少（开灯）：太阳 +4° 开始，-5° 全开 */
+      const lightsOn = smoothstep(4, -5, elev);
+      // 主光：太阳还在天上就是太阳；落下去以后换成月亮（光照方向按月亮的方位、但抬高到 30° 以上 ——
+      // 月亮挂得很低，真按它的高度打光，整条街的影子都拖得老长）。换灯的那一下亮度、影子都淡到 0
+      const w = smoothstep(-3, 1, elev);
+      if (w >= 0.5) {
+        keyDir.copy(sunW);
+        lighting.sun.color.copy(pal.sunCol);
+        lighting.sun.intensity = pal.sunI * smoothstep(0.5, 1, w);
+        lighting.sun.shadow = smoothstep(0.5, 0.9, w);
+      } else {
+        dirOf(Math.atan2(moonW.z, moonW.x) / (Math.PI / 180), Math.max(moonElev, 32), keyDir);
+        const k = smoothstep(0.5, 1, 1 - w);
+        lighting.sun.color.copy(MOON_COL);
+        lighting.sun.intensity = (0.22 + 0.2 * illum) * k;
+        lighting.sun.shadow = 0.5 * k;
+      }
+      SUN_DIR.copy(keyDir);
+      lighting.sun.position.copy(keyDir).multiplyScalar(3.2);
+      lighting.fill.color.copy(pal.fillCol);
+      lighting.fill.intensity = pal.fillI;
+      lighting.rim.color.copy(pal.rimCol);
+      lighting.rim.intensity = pal.rimI;
+      lighting.hemisphere.sky.copy(pal.hemiSky);
+      lighting.hemisphere.ground.copy(pal.hemiGround);
+      lighting.hemisphere.intensity = pal.hemiI;
+      lighting.environmentIntensity = pal.env;
+
+      // 天空
+      skyU.uZenith.value.copy(pal.zenith);
+      skyU.uMid.value.copy(pal.mid);
+      skyU.uHorizon.value.copy(pal.horizon);
+      skyU.uGlow.value.copy(pal.glow);
+      skyU.uGlowAmt.value = pal.glowAmt;
+      skyU.uBand.value = pal.band;
+      skyU.uSunDir.value.copy(sunW);
+      skyU.uSunDisk.value = smoothstep(-1.5, 0.5, elev) * (1 - smoothstep(12, 25, elev));
+      skyU.uMoonDir.value.copy(moonW);
+      skyU.uMoon.value = (1 - smoothstep(-5, 3, elev)) * smoothstep(-1, 1.5, moonElev) * smoothstep(0.02, 0.1, illum);
+      skyU.uMoonPhase.value = t.moonPhase;
+      skyU.uStars.value = smoothstep(-5, -14, elev);
+      skyU.uTime.value = time;
+      skyU.uHdriMix.value = hdriReady ? pal.hdri : 0;
+      skyU.uHdriTint.value.copy(pal.cloud);
+      skyU.uGround.value.copy(pal.ground);
+      skyU.uTownGlow.value = lightsOn * 0.05;
+      // 环境贴图：太阳高度每变 0.25° 重烘一次（切时段的 3 秒里舞台限到 10 次 / 秒）
+      const sig = `${Math.round(elev * 4)}|${hdriReady}|${Math.round(t.moonPhase * 20)}|${Math.round(moonElev)}`;
+      if (sig !== envSig) {
+        envSig = sig;
+        lighting.envVersion++;
+      }
+      fog.color.copy(pal.fog);
+      for (const m of cloudMats) m.color.copy(pal.cloud);
+      (farTown.material as THREE.MeshLambertMaterial).emissiveIntensity = pal.town;
+
+      // 海：颜色、浪花；高光白天按太阳（离地最多 18°，原来那条光带），夜里按月亮（碎光宽一些、暗一些）
+      wu.uDeep.value.copy(pal.deep);
+      wu.uShallow.value.copy(pal.shallow);
+      wu.uScatter.value.copy(pal.scatter);
+      wu.uFoam.value = pal.foam;
+      wu.uStretch.value = lightsOn;
+      if (w >= 0.5) {
+        glintDir.copy(sunW).setY(0).normalize().multiplyScalar(Math.cos(Math.min(elev, 18) * (Math.PI / 180)));
+        glintDir.y = Math.sin(Math.min(elev, 18) * (Math.PI / 180));
+        wu.uSunDir.value.copy(glintDir);
+        wu.uSunColor.value.copy(pal.sunCol).multiplyScalar(pal.sunI / 2.5);
+        wu.uGlint.value.set(900, 30, 90, 0.35);
+      } else {
+        wu.uSunDir.value.copy(moonW);
+        wu.uSunColor.value.copy(MOON_COL).multiplyScalar(0.55 * illum * skyU.uMoon.value);
+        wu.uGlint.value.set(260, 14, 28, 0.3);
+      }
+      gulls.group.visible = elev > -3;
+
+      // 窗里的店内、树叶、立面上画的灯（暖帘、灯笼、售货机）、店里的灯
+      night.uLights.value = lightsOn;
+      night.uHour.value = t.hours;
+      leafLight.value = pal.leaf;
+      for (const m of leafMats) m.emissiveIntensity = 0.3 * pal.leafE;
+      facadeMat.emissiveIntensity = 0.85 + 0.5 * lightsOn;
+      for (const l of interiorLights) l.intensity = 7 * (1 + 0.8 * lightsOn);
+      const lampK = smoothstep(0.15, 0.5, lightsOn);
+      for (const [m, k] of lampGlow) m.emissiveIntensity = k * lampK;
+      // 灯：时间是一下跳过去的（截图、刚打开）就不闪
+      let dh = Math.abs(t.hours - lastHours);
+      if (dh > 12) dh = 24 - dh;
+      const jump = lastHours < 0 || dh > 0.25;
+      lastHours = t.hours;
+      nightLights.update(lightsOn, t.hours, time, dt, jump);
+      lighthouse.update(time, lightsOn);
     },
-    beforeRender(view, shadow) {
+    beforeRender(view, shadow, camera, size) {
       // 海面反射那一趟嵌套渲染也会走到这里：镜像相机只画远景那一层，合批的树不用按它剔除（剔了主画面的树会闪）
       if (water.reflecting) return;
+      if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) nightLights.setPixel((camera as THREE.PerspectiveCamera).fov, size.y);
       cull(view, shadow);
     },
     dispose() {

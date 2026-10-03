@@ -168,7 +168,9 @@ const SKY_COMMON = /* glsl */ `
     // 黄昏：贴着地平线、朝太阳那一侧的一条暖色带（背着太阳的那边也有一点）
     vec2 dh = normalize( d.xz + 1e-5 );
     vec2 sh = normalize( uSunDir.xz + 1e-5 );
-    float side = pow( dot( dh, sh ) * 0.5 + 0.5, 2.5 );
+    // 底数要夹到 0 以上：两个单位向量的点积会略小于 -1，负数开 2.5 次方是 NaN —— 正背着太阳的那一两个像素，
+    // 烘环境贴图时 PMREM 的模糊会把它摊到整张图上，所有吃环境光的材质一片黑
+    float side = pow( clamp( dot( dh, sh ) * 0.5 + 0.5, 0.0, 1.0 ), 2.5 );
     c = mix( c, uGlow, uBand * ( 0.25 + 0.75 * side ) * ( 1.0 - smoothstep( 0.0, 0.32, e ) ) );
     // 太阳盘（只在太阳附近，白天几乎不会转到它）
     c += uGlow * uSunDisk * smoothstep( 0.99985, 0.99993, sd ) * 6.0;
@@ -237,7 +239,7 @@ const ENV_FRAG = /* glsl */ `
   void main() {
     vec3 d = normalize( vDir );
     vec3 c = skyGradient( d );
-    c = mix( c, uGround, smoothstep( 0.0, -0.25, d.y ) );
+    c = mix( c, uGround, 1.0 - smoothstep( -0.25, 0.0, d.y ) );
     // 地平线上一圈小镇的灯（夜里反射里的暖光）
     c += vec3( 1.0, 0.72, 0.42 ) * uTownGlow * exp( -abs( d.y ) * 28.0 );
     if ( uHdriMix > 0.0 ) {
@@ -493,7 +495,7 @@ export function createFarLand(keep: Keep, from: number, to: number) {
  * 对岸的小镇：贴着海岸线的一条白房子（远看就是一排白的、米色的方块），一部分往山脚爬一点。
  * 一个 InstancedMesh，每栋一个颜色；盒子顶面压暗当屋顶
  */
-export function createFarTown(keep: Keep, from: number, to: number, count = 900) {
+export function createFarTown(keep: Keep, from: number, to: number, count = 900, lights?: { value: number }) {
   const r = rng(404);
   const geo = keep(new THREE.BoxGeometry(1, 1, 1));
   geo.translate(0, 0.5, 0);
@@ -507,6 +509,7 @@ export function createFarTown(keep: Keep, from: number, to: number, count = 900)
   geo.setAttribute('color', new THREE.Float32BufferAttribute(vc, 3));
   // 自发光托一点底：背阴面不至于发灰（远看应该是一片白）
   const mat = keep(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x8a96a2, emissiveIntensity: 0.45 }));
+  if (lights) farWindows(mat, lights);
   const im = keep(new THREE.InstancedMesh(geo, mat, count));
   const palette = [0xffffff, 0xfbf6ec, 0xf1f3f5, 0xfdf8f0, 0xeaf0f5, 0xf5ebdd, 0xffffff, 0xe6eaee, 0xf3e4d4];
   const m = new THREE.Matrix4();
@@ -538,6 +541,47 @@ export function createFarTown(keep: Keep, from: number, to: number, count = 900)
   im.computeBoundingSphere();
   im.name = 'far-town';
   return im;
+}
+
+/**
+ * 对岸小镇夜里的窗灯：盒子的四个侧面按米分成一层层、一格格，随机一部分格子亮着暖黄的灯（每栋、每格固定）。
+ * 1km 外一扇窗只有两三个像素：格子比像素还小的时候（掠射角、更远）淡成平均的亮度，不然转镜头时一片闪
+ */
+function farWindows(mat: THREE.MeshLambertMaterial, lights: { value: number }) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uLights = lights;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBox;\nvarying vec3 vBoxN;\nvarying float vSeed;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        {
+          vec3 sz = vec3( length( instanceMatrix[ 0 ].xyz ), length( instanceMatrix[ 1 ].xyz ), length( instanceMatrix[ 2 ].xyz ) );
+          vBox = position * sz;
+          vBoxN = normal;
+          vSeed = float( gl_InstanceID );
+        }`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vBox;\nvarying vec3 vBoxN;\nvarying float vSeed;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        if ( uLights > 0.0 && abs( vBoxN.y ) < 0.5 ) {
+          float u = abs( vBoxN.x ) > 0.5 ? vBox.z : vBox.x;
+          float face = vBoxN.x + vBoxN.z * 2.0;
+          vec2 g = vec2( u / 2.6, ( vBox.y - 0.7 ) / 2.8 );
+          vec2 cell = floor( g );
+          vec2 f = fract( g );
+          float h = fract( sin( dot( vec3( cell, vSeed * 0.731 + face * 3.1 ), vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+          float win = step( 0.28, f.x ) * step( f.x, 0.72 ) * step( 0.3, f.y ) * step( f.y, 0.78 ) * step( 0.0, cell.y ) * step( h, 0.34 );
+          float fw = max( fwidth( g.x ), fwidth( g.y ) );
+          win = mix( win, 0.07, smoothstep( 0.35, 1.0, fw ) );
+          totalEmissiveRadiance += vec3( 1.0, 0.72, 0.38 ) * win * uLights * 1.6;
+        }`,
+      );
+  };
+  mat.customProgramCacheKey = () => 'far-town-windows';
 }
 
 /** 远处的跨海桥：一条长的桥面 + 一排桥墩，白灰色 */
@@ -590,7 +634,7 @@ function mergeBoxes(parts: THREE.BufferGeometry[]) {
  * 防波堤 + 灯塔（插画右边那座白灯塔）：一条低矮的混凝土堤，尽头一座白色的圆塔，
  * 上面一圈深色的回廊、玻璃灯室、深色的圆顶。from → to 是堤的两头（世界 xz），灯塔在 to 那头
  */
-export function createLighthouse(keep: Keep, from: [number, number], to: [number, number]) {
+export function createLighthouse(keep: Keep, from: [number, number], to: [number, number], lights: { value: number }) {
   const group = new THREE.Group();
   group.name = 'lighthouse';
   const concrete = keep(new THREE.MeshStandardMaterial({ color: 0xcfcac0, roughness: 0.95 }));
@@ -630,7 +674,75 @@ export function createLighthouse(keep: Keep, from: [number, number], to: [number
   // 门朝着角色这边
   tower.rotation.y = Math.atan2(-b.x, -b.y);
   group.add(tower);
-  return group;
+
+  // 夜里：灯室亮起来，两道光束绕着转（10 秒一圈）。光束是两个开口的长锥，加法混合，越远越淡、边缘柔
+  const beamMat = keep(
+    new THREE.ShaderMaterial({
+      uniforms: { uOn: { value: 0 } },
+      vertexShader: `
+        varying float vAlong;
+        varying vec3 vN;
+        varying vec3 vV;
+        void main() {
+          vAlong = uv.y;
+          vec4 wp = modelMatrix * vec4( position, 1.0 );
+          vN = normalize( mat3( modelMatrix ) * normal );
+          vV = normalize( cameraPosition - wp.xyz );
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }`,
+      fragmentShader: `
+        uniform float uOn;
+        varying float vAlong;
+        varying vec3 vN;
+        varying vec3 vV;
+        void main() {
+          float edge = pow( abs( dot( normalize( vN ), normalize( vV ) ) ), 1.5 );
+          float a = pow( vAlong, 2.6 ) * edge * uOn * 0.11;
+          gl_FragColor = vec4( vec3( 1.0, 0.95, 0.82 ) * a, 1.0 );
+          #include <colorspace_fragment>
+        }`,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  // 锥：顶点在灯上，往 +X 伸 160m、口径 5.5m（uv.y = 1 在顶点那头）
+  const cone = keep(new THREE.ConeGeometry(5.5, 160, 20, 1, true));
+  cone.rotateZ(Math.PI / 2);
+  cone.translate(80, 0, 0);
+  const beam = new THREE.Group();
+  beam.position.set(b.x, SEA_Y + 1.6 + 12.95, b.y);
+  for (const ry of [0, Math.PI]) {
+    const m = new THREE.Mesh(cone, beamMat);
+    m.rotation.y = ry;
+    m.frustumCulled = false;
+    m.renderOrder = 3;
+    beam.add(m);
+  }
+  beam.visible = false;
+  group.add(beam);
+  const lamp = beam.position.clone();
+  // 光束转到正对着她（原点）那一下最亮：两道光束，任一道对上都算
+  const toChar = Math.atan2(-lamp.z, -lamp.x);
+  let angle = 0;
+  return {
+    group,
+    /** 灯室的位置（世界坐标） */
+    lamp,
+    /** 光束对着这边有多正（0..1） */
+    facing() {
+      // 光束在 +X 上，绕 Y 转 angle 以后朝向的方位角（atan2(z, x)）是 -angle
+      const d = Math.cos(-angle - toChar);
+      return 0.25 + 0.75 * Math.pow(Math.abs(d), 24);
+    },
+    update(time: number, on: number) {
+      angle = -(time / 10) * Math.PI * 2;
+      beam.rotation.y = angle;
+      beam.visible = on > 0.01;
+      beamMat.uniforms.uOn.value = smoothstep(0.2, 0.6, on) * lights.value;
+    },
+  };
 }
 
 // ---- 渔船、海鸥（Blender 做的模型，生成脚本见 scripts/blender/）----
