@@ -697,7 +697,7 @@ export function createLighthouse(keep: Keep, from: [number, number], to: [number
         varying vec3 vV;
         void main() {
           float edge = pow( abs( dot( normalize( vN ), normalize( vV ) ) ), 1.5 );
-          float a = pow( vAlong, 2.6 ) * edge * uOn * 0.11;
+          float a = pow( vAlong, 4.0 ) * edge * uOn * 0.05;
           gl_FragColor = vec4( vec3( 1.0, 0.95, 0.82 ) * a, 1.0 );
           #include <colorspace_fragment>
         }`,

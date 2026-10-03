@@ -184,7 +184,18 @@ const FRAG = /* glsl */ `
     // 真实的海远看也是这样，倒影是竖着的长条，远处的海比"镜子里的地平线"蓝得多
     ruv.y -= length( slope ) * ( 0.6 * smoothstep( 20.0, 400.0, dist ) + uStretch * 0.12 );
     // 倒影往蓝里推一点（水面会吸掉一点红光）
-    vec3 refl = texture2D( uReflection, ruv ).rgb * vec3( 0.86, 0.95, 1.05 );
+    vec3 refl = texture2D( uReflection, ruv ).rgb;
+    // 夜里：倒影沿竖直方向抹开（上下各 5 个采样），岸上、对岸的灯在海面上拉成一条条光柱；白天不做（uStretch = 0）
+    if ( uStretch > 0.01 ) {
+      vec3 acc = refl;
+      float spread = uStretch * ( 0.004 + 0.02 * length( slope ) ) * mix( 1.0, 0.45, far );
+      for ( int i = 1; i <= 5; i ++ ) {
+        float o = float( i ) * spread;
+        acc += texture2D( uReflection, ruv + vec2( 0.0, o ) ).rgb + texture2D( uReflection, ruv - vec2( 0.0, o ) ).rgb;
+      }
+      refl = mix( refl, acc * ( 2.0 / 11.0 ), uStretch );
+    }
+    refl *= vec3( 0.86, 0.95, 1.05 );
 
     // ---- 海水本身：离护岸越远越深；迎着太阳的波面透一点青绿的光 ----
     vec2 suv = ( p - uShoreBounds.xy ) * uShoreBounds.zw;

@@ -844,11 +844,11 @@ export function createStreet(): Backdrop {
       const cx = xa + bw / 2;
       if (b.interior) return; // 她身边那家咖啡店单独登记（店里有真的灯）
       if (cell === F.SHOP_WIN || cell === F.SOUVENIR || cell === F.GLASS_SHOP || cell === F.FLOWER) {
-        light({ pos: at3(cx, 1.4, 0.9), color: 0xfff0d8, intensity: 3.5, radius: 6, glow: 0, hours: [7, 21], onAt: 0.1 + rl() * 0.3 });
+        light({ pos: at3(cx, 1.4, 0.9), color: 0xfff0d8, intensity: 3.5, radius: 6, glow: 0, hours: [7, 22], onAt: 0.1 + rl() * 0.3 });
       } else if (cell === F.CAFE_WIN || cell === F.CAFE_DOOR) {
-        light({ pos: at3(cx, 1.4, 0.9), color: 0xffd9a8, intensity: 3.5, radius: 6, glow: 0, hours: [7, 22], onAt: 0.1 + rl() * 0.3 });
+        light({ pos: at3(cx, 1.4, 0.9), color: 0xffd9a8, intensity: 3.5, radius: 6, glow: 0, hours: [7, 23], onAt: 0.1 + rl() * 0.3 });
       } else if (cell === F.NOREN) {
-        light({ pos: at3(cx, 1.2, 0.7), color: 0xffd8a0, intensity: 3, radius: 5, glow: 0, hours: [11, 21], onAt: 0.1 + rl() * 0.3 });
+        light({ pos: at3(cx, 1.2, 0.7), color: 0xffd8a0, intensity: 3, radius: 5, glow: 0, hours: [11, 22], onAt: 0.1 + rl() * 0.3 });
       } else if (cell === F.IZAKAYA) {
         light({ pos: at3(xa + 0.86 * bw, 1.75, 0.35), color: 0xff5a3c, intensity: 2, radius: 4, glow: 0.55, glowGain: 1.3, hours: [17, 1], onAt: 0.05 });
         light({ pos: at3(cx, 1.2, 0.7), color: 0xffc080, intensity: 3, radius: 5, glow: 0, hours: [17, 1], onAt: 0.05 });
@@ -1297,7 +1297,7 @@ export function createStreet(): Backdrop {
       heroCafe = { M: built.M, w: built.w, d: built.d, door: [-built.w / 2 + doorBay * bw, -built.w / 2 + (doorBay + 1) * bw] };
       // 咖啡店的大玻璃窗透出来的暖光：照在门口的人行道上，也照在她身上（离她最近的光源，第 1 档的真实点光源）
       for (const x of [-4.4, 0, 4.4]) {
-        light({ pos: v3(x, 1.6, 1.0).applyMatrix4(built.M), color: 0xffcf96, intensity: 5.5, radius: 9, glow: 0, hours: [7, 23], onAt: 0.05 });
+        light({ pos: v3(x, 1.6, 1.0).applyMatrix4(built.M), color: 0xffcf96, intensity: 7, radius: 9, glow: 0, hours: [7, 23], onAt: 0.05 });
       }
     }
   }
@@ -1684,7 +1684,7 @@ export function createStreet(): Backdrop {
         lampGlow.push([mat, 3]);
         mesh.geometry.computeBoundingBox();
         const c = mesh.geometry.boundingBox!.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld);
-        for (const m of places) light({ pos: c.clone().applyMatrix4(m), color: 0xffd6a0, intensity: 40, radius: 22, glow: 0.9, onAt: 0.15 + rl() * 0.4 });
+        for (const m of places) light({ pos: c.clone().applyMatrix4(m), color: 0xffd6a0, intensity: 75, radius: 24, glow: 0.9, onAt: 0.15 + rl() * 0.4 });
       } else if (/glass/.test(mat.name)) {
         mat.emissive.set(0xffe6c0);
         lampGlow.push([mat, 0.7]);
@@ -1905,7 +1905,7 @@ export function createStreet(): Backdrop {
         dirOf(Math.atan2(moonW.z, moonW.x) / (Math.PI / 180), Math.max(moonElev, 32), keyDir);
         const k = smoothstep(0.5, 1, 1 - w);
         lighting.sun.color.copy(MOON_COL);
-        lighting.sun.intensity = (0.22 + 0.2 * illum) * k;
+        lighting.sun.intensity = (0.12 + 0.12 * illum) * k;
         lighting.sun.shadow = 0.5 * k;
       }
       SUN_DIR.copy(keyDir);

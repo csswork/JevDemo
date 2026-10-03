@@ -304,7 +304,7 @@ export function roomAtlas() {
  */
 const GLASS_REFLECTION = (k: number) => `reflectedLight.indirectSpecular = min( reflectedLight.indirectSpecular * ${k.toFixed(1)}, vec3( 0.32 ) );`;
 
-/** 玻璃里的店内按时间变：uLights = 天黑了多少（0 白天 … 1 夜里，开灯的程度），uHour = 几点（太阳时） */
+/** 玻璃里的店内按时间变（商店 22 点关门、咖啡店 23 点，和 street.ts 登记的店门口的光源一致）：uLights = 天黑了多少（0 白天 … 1 夜里，开灯的程度），uHour = 几点（太阳时） */
 export interface GlassNight {
   uLights: { value: number };
   uHour: { value: number };
@@ -425,13 +425,13 @@ export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture, night: G
             }
           }
           // 夜里这间开不开灯：住家按房间的随机值和钟点（傍晚七成亮着，夜深了越来越少），
-          // 商店 21 点关门（咖啡店 22 点），清晨还没开门。开着的比白天亮（外面黑了），关着的几乎全黑
+          // 商店 22 点关门（咖啡店 23 点），清晨还没开门。开着的比白天亮（外面黑了），关着的几乎全黑
           float kind = floor( vRoomInfo.x + 0.5 );
           float isHome = step( 4.5, kind );
           float rnd = fract( vRoomInfo.y * 91.7 );
           float ev = uHour < 12.0 ? uHour + 24.0 : uHour;
           float pHome = ev < 22.0 ? 0.72 : ev < 24.0 ? mix( 0.72, 0.45, ( ev - 22.0 ) / 2.0 ) : ev < 26.0 ? mix( 0.45, 0.15, ( ev - 24.0 ) / 2.0 ) : ev < 29.0 ? 0.1 : 0.22;
-          float shopOpen = step( ev, kind < 0.5 ? 22.0 : 21.0 );
+          float shopOpen = step( ev, kind < 0.5 ? 23.0 : 22.0 );
           float lit = isHome > 0.5 ? step( rnd, pHome ) : shopOpen;
           float bright = mix( vRoomInfo.z, lit > 0.5 ? max( vRoomInfo.z, isHome > 0.5 ? 0.75 : 0.95 ) : 0.03, uLights );
           // 越往里越暗（窗边亮，屋子深处暗）；店里的灯整体乘一个亮度
