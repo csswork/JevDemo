@@ -16,21 +16,8 @@ import {
   createSky,
   fbm,
 } from './seaside';
-import {
-  F,
-  asphalt,
-  bannerUV,
-  cellUV,
-  chalkboard,
-  facadeAtlas,
-  granite,
-  pavers,
-  roofTiles,
-  seawall,
-  signAtlas,
-  signUV,
-  type Cell,
-} from './streetTextures';
+import { F, bannerUV, cellUV, chalkboard, facadeAtlas, signAtlas, signUV, type Cell } from './streetTextures';
+import { asphaltMaterial, concreteMaterial, facadeMaterial, metalMaterial, paverMaterial, roofMaterial, woodMaterial } from './streetMaterials';
 
 /**
  * 背景场景：海边小镇的街道（照着一张二次元风格的插画搭的），全 3D：
@@ -159,22 +146,27 @@ interface BuildingSpec {
 }
 
 /**
- * 一个网格的数据：位置、法线、uv、颜色（可选：旗子的摆动参数）。所有房子按材质各攒一个，最后各合成一个几何体。
- * poly 的点按"从正面看逆时针"给，法线由前三个点算
+ * 一个网格的数据：位置、法线、uv、颜色（可选：旗子的摆动参数、按米铺的第二套 uv）。所有房子按材质各攒一个，最后各合成一个几何体。
+ * poly 的点按"从正面看逆时针"给，法线由前三个点算。
+ * uv1：墙面的灰泥贴图用（立面图集用 uv）。按变换前的局部坐标算：u = 沿着这个面的水平方向（米），v = 高度（米），
+ * 同一面墙上一格挨一格的接得上
  */
 class Mesher {
   pos: number[] = [];
   nrm: number[] = [];
   uv: number[] = [];
+  uv1: number[] | null;
   col: number[] = [];
   idx: number[] = [];
   sway: number[] | null;
   private m = new THREE.Matrix4();
   private readonly a = new THREE.Vector3();
   private readonly b = new THREE.Vector3();
+  private readonly t = new THREE.Vector3();
   private readonly w = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-  constructor(withSway = false) {
-    this.sway = withSway ? [] : null;
+  constructor({ sway = false, uv1 = false }: { sway?: boolean; uv1?: boolean } = {}) {
+    this.sway = sway ? [] : null;
+    this.uv1 = uv1 ? [] : null;
   }
   setTransform(m: THREE.Matrix4) {
     this.m.copy(m);
@@ -190,6 +182,13 @@ class Mesher {
     const n = this.a.subVectors(w[1], w[0]).cross(this.b.subVectors(w[2], w[0]));
     if (n.lengthSq() < 1e-12 && w.length > 3) n.subVectors(w[2], w[0]).cross(this.b.subVectors(w[3], w[0]));
     n.normalize();
+    if (this.uv1) {
+      // 沿这个面的水平方向：第一条边投到水平面上（三角形山墙的第一条边也是水平的）
+      const t = this.t.subVectors(pts[1], pts[0]).setY(0);
+      if (t.lengthSq() < 1e-8) t.set(1, 0, 0);
+      t.normalize();
+      for (const p of pts) this.uv1.push(p.x * t.x + p.z * t.z, p.y);
+    }
     w.forEach((p, i) => {
       this.pos.push(p.x, p.y, p.z);
       this.nrm.push(n.x, n.y, n.z);
@@ -236,6 +235,7 @@ class Mesher {
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nrm, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    if (this.uv1) g.setAttribute('uv1', new THREE.Float32BufferAttribute(this.uv1, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     if (this.sway) g.setAttribute('aSway', new THREE.Float32BufferAttribute(this.sway, 4));
     g.setIndex(this.idx);
@@ -344,24 +344,17 @@ export function createStreet(): Backdrop {
     return -0.05 + hill + bumps;
   };
 
-  // ---- 材质 ----
+  // ---- 材质（PBR 贴图和着色器里的"旧"，见 streetMaterials.ts）----
   const atlas = facadeAtlas();
   keep(atlas.map);
   keep(atlas.emissive);
-  const facadeMat = keep(
-    new THREE.MeshStandardMaterial({
-      map: atlas.map,
-      emissiveMap: atlas.emissive,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.85,
-      vertexColors: true,
-      roughness: 0.85,
-    }),
-  );
-  const roofTex = keep(roofTiles());
-  const roofMat = keep(new THREE.MeshStandardMaterial({ map: roofTex, vertexColors: true, roughness: 0.6, metalness: 0.05 }));
-  /** 木头、铁、水泥的小部件（不贴图，靠顶点色）：檐口板、檐底、阳台、栏杆、电线杆…… */
-  const trimMat = keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }));
+  keep(atlas.mask);
+  const facadeMat = facadeMaterial(keep, atlas);
+  const roofMat = roofMaterial(keep);
+  const woodMat = woodMaterial(keep);
+  const metalMat = metalMaterial(keep);
+  /** 刷了漆的小部件（不贴图，靠顶点色）：屋脊、平顶的女儿墙、水箱、售货机的侧面、旗杆…… */
+  const trimMat = keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }));
   const fabricMat = keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }));
   const signTex = keep(signAtlas());
   const wind = { uTime: { value: 0 } };
@@ -380,11 +373,17 @@ export function createStreet(): Backdrop {
   };
   signMat.customProgramCacheKey = () => 'street-sign-sway';
 
-  const facade = new Mesher();
+  const facade = new Mesher({ uv1: true });
   const roof = new Mesher();
   const trim = new Mesher();
+  const wood = new Mesher();
+  const metal = new Mesher();
   const fabric = new Mesher();
-  const signs = new Mesher(true);
+  const signs = new Mesher({ sway: true });
+  /** 木件的颜色（乘在木纹贴图上）：深棕的梁和檐口板、浅一点的檐底板 */
+  const WOOD = col(0xb08a6e);
+  const SOFFIT = col(0xd2b89e);
+  const IRON = col(0x3a3d42);
 
   // ---- 天空、云、海、远景 ----
   group.add(createSky(keep, SUN_DIR, SKY_R));
@@ -523,12 +522,30 @@ export function createStreet(): Backdrop {
     const parapet = new Mesher();
     const wallFace = new Mesher();
     const rails = new Mesher();
-    const grey = col(0xc9c6bf);
+    const gutters = new Mesher();
+    // uv 都按米（贴图的实际尺寸在材质里换算，见 streetMaterials.ts）
     // 路面一直铺到两头（雾里），路牙、人行道、矮墙在近处 800m 里
-    strip(road, 0, LEN, [-ROAD_HALF, 0], [ROAD_HALF, 0], 'up', WHITE, 4, 4);
-    // 白色的路边线；人行横道那一段断开
+    strip(road, 0, LEN, [-ROAD_HALF, 0], [ROAD_HALF, 0], 'up', WHITE);
+    // 侧沟：路牙外面一条 42cm 宽的混凝土（日本街道路边常见的 L 形侧沟），隔 15m 一个铁格栅
+    const GUTTER = 0.42;
+    strip(gutters, NEAR0, NEAR1, [ROAD_HALF - GUTTER, 0.004], [ROAD_HALF, 0.004], 'up', WHITE);
+    strip(gutters, NEAR0, NEAR1, [-ROAD_HALF, 0.004], [-ROAD_HALF + GUTTER, 0.004], 'up', WHITE);
+    {
+      const gm = new THREE.Matrix4();
+      const dark = col(0x2b2d30);
+      for (let s = NEAR0 + 3; s < NEAR1; s += 15) {
+        for (const side of [1, -1]) {
+          const a = at(s);
+          const p = a.p.clone().addScaledVector(a.l, side * (ROAD_HALF - GUTTER / 2));
+          metal.setTransform(gm.makeRotationY(Math.atan2(a.l.x, a.l.z)).setPosition(p.x, 0.004, p.z));
+          metal.box(-0.17, 0, -0.32, 0.17, 0.012, 0.32, dark);
+          for (let k = -4; k <= 4; k++) metal.box(-0.16, 0.012, k * 0.07 - 0.012, 0.16, 0.018, k * 0.07 + 0.012, IRON);
+        }
+      }
+    }
+    // 白色的路边线（侧沟里面一点）；人行横道那一段断开
     const CROSS = S0 + 28;
-    for (const d of [ROAD_HALF - 0.38, -(ROAD_HALF - 0.38)]) {
+    for (const d of [ROAD_HALF - 0.55, -(ROAD_HALF - 0.55)]) {
       strip(marks, NEAR0, CROSS - 4.2, [d - 0.075, 0.004], [d + 0.075, 0.004], 'up', WHITE);
       strip(marks, CROSS + 4.2, NEAR1, [d - 0.075, 0.004], [d + 0.075, 0.004], 'up', WHITE);
     }
@@ -537,25 +554,25 @@ export function createStreet(): Backdrop {
     strip(marks, CROSS - 3.6, CROSS - 3.3, [0.1, 0.004], [ROAD_HALF - 0.3, 0.004], 'up', WHITE);
     strip(marks, CROSS + 3.3, CROSS + 3.6, [-(ROAD_HALF - 0.3), 0.004], [-0.1, 0.004], 'up', WHITE);
     // 路牙（左右各一条，右边那条顶上刷黄线：禁止停车）
-    strip(curbs, NEAR0, NEAR1, [ROAD_HALF, 0], [ROAD_HALF, KERB_H], 'right', grey, 1, 2);
-    strip(curbs, NEAR0, NEAR1, [ROAD_HALF, KERB_H], [ROAD_HALF + CURB, KERB_H], 'up', grey, 1, 2);
-    strip(curbs, NEAR0, NEAR1, [-ROAD_HALF, KERB_H], [-ROAD_HALF, 0], 'left', grey, 1, 2);
-    strip(curbs, NEAR0, NEAR1, [-ROAD_HALF - CURB, KERB_H], [-ROAD_HALF, KERB_H], 'up', col(0xf2c94c), 1, 2);
+    strip(curbs, NEAR0, NEAR1, [ROAD_HALF, 0], [ROAD_HALF, KERB_H], 'right', WHITE);
+    strip(curbs, NEAR0, NEAR1, [ROAD_HALF, KERB_H], [ROAD_HALF + CURB, KERB_H], 'up', WHITE);
+    strip(curbs, NEAR0, NEAR1, [-ROAD_HALF, KERB_H], [-ROAD_HALF, 0], 'left', WHITE);
+    strip(curbs, NEAR0, NEAR1, [-ROAD_HALF - CURB, KERB_H], [-ROAD_HALF, KERB_H], 'up', col(0xf2c94c));
     // 人行道（方石板）：左边一直铺到门脸线里面一点（房子压在上面）
-    strip(walks, NEAR0, NEAR1, [ROAD_HALF + CURB, KERB_H], [FRONT + 1.2, KERB_H], 'up', WHITE, 2.4, 2.4);
-    strip(walks, NEAR0, NEAR1, [WALL_IN, KERB_H], [-ROAD_HALF - CURB, KERB_H], 'up', WHITE, 2.4, 2.4);
-    // 花岗岩矮墙：内侧面、顶面；外侧面一直到水下（下面那段是护岸的混凝土）
-    strip(parapet, NEAR0, NEAR1, [WALL_IN, KERB_H], [WALL_IN, WALL_TOP], 'left', WHITE, 2, 2);
-    strip(parapet, NEAR0, NEAR1, [WALL_OUT, WALL_TOP], [WALL_IN, WALL_TOP], 'up', WHITE, 2, 2);
-    strip(parapet, NEAR0, NEAR1, [WALL_OUT, WALL_TOP], [WALL_OUT, KERB_H], 'right', WHITE, 2, 2);
-    strip(wallFace, NEAR0, NEAR1, [WALL_OUT, KERB_H], [WALL_OUT, SEA_Y - 0.6], 'right', WHITE, 3.2, 4);
+    strip(walks, NEAR0, NEAR1, [ROAD_HALF + CURB, KERB_H], [FRONT + 1.2, KERB_H], 'up', WHITE);
+    strip(walks, NEAR0, NEAR1, [WALL_IN, KERB_H], [-ROAD_HALF - CURB, KERB_H], 'up', WHITE);
+    // 矮墙（一块块预制的混凝土块）：内侧面、顶面、外侧面；护岸从矮墙外侧一直到水下
+    strip(parapet, NEAR0, NEAR1, [WALL_IN, KERB_H], [WALL_IN, WALL_TOP], 'left', WHITE);
+    strip(parapet, NEAR0, NEAR1, [WALL_OUT, WALL_TOP], [WALL_IN, WALL_TOP], 'up', WHITE);
+    strip(parapet, NEAR0, NEAR1, [WALL_OUT, WALL_TOP], [WALL_OUT, KERB_H], 'right', WHITE);
+    strip(wallFace, NEAR0, NEAR1, [WALL_OUT, KERB_H], [WALL_OUT, SEA_Y - 0.6], 'right', WHITE);
     // 远处（近处 800m 以外）的护岸只要一道竖墙，不然路外面是悬空的
-    strip(wallFace, 0, NEAR0, [WALL_OUT, 0], [WALL_OUT, SEA_Y - 0.6], 'right', WHITE, 3.2, 4);
-    strip(wallFace, NEAR1, LEN, [WALL_OUT, 0], [WALL_OUT, SEA_Y - 0.6], 'right', WHITE, 3.2, 4);
-    strip(walks, 0, NEAR0, [WALL_OUT, 0], [-ROAD_HALF, 0], 'up', WHITE, 2.4, 2.4);
-    strip(walks, NEAR1, LEN, [WALL_OUT, 0], [-ROAD_HALF, 0], 'up', WHITE, 2.4, 2.4);
-    strip(walks, 0, NEAR0, [ROAD_HALF, 0], [FRONT + 7, 0], 'up', WHITE, 2.4, 2.4);
-    strip(walks, NEAR1, LEN, [ROAD_HALF, 0], [FRONT + 7, 0], 'up', WHITE, 2.4, 2.4);
+    strip(wallFace, 0, NEAR0, [WALL_OUT, 0], [WALL_OUT, SEA_Y - 0.6], 'right', WHITE);
+    strip(wallFace, NEAR1, LEN, [WALL_OUT, 0], [WALL_OUT, SEA_Y - 0.6], 'right', WHITE);
+    strip(walks, 0, NEAR0, [WALL_OUT, 0], [-ROAD_HALF, 0], 'up', WHITE);
+    strip(walks, NEAR1, LEN, [WALL_OUT, 0], [-ROAD_HALF, 0], 'up', WHITE);
+    strip(walks, 0, NEAR0, [ROAD_HALF, 0], [FRONT + 7, 0], 'up', WHITE);
+    strip(walks, NEAR1, LEN, [ROAD_HALF, 0], [FRONT + 7, 0], 'up', WHITE);
     // 铁栏杆：两道横杆（细的方管）+ 每 2m 一根立柱
     const iron = col(0x2c3036);
     const RAIL_D = (WALL_IN + WALL_OUT) / 2;
@@ -574,11 +591,6 @@ export function createStreet(): Backdrop {
       rails.setTransform(m.makeRotationY(Math.atan2(a.l.x, a.l.z)).setPosition(p.x, WALL_TOP, p.z));
       rails.box(-0.03, 0, -0.03, 0.03, 0.6, 0.03, iron);
     }
-    const tl = (t: THREE.Texture) => {
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.anisotropy = 8;
-      return keep(t);
-    };
     const meshOf = (mm: Mesher, mat: THREE.Material, cast: boolean, name: string) => {
       const mesh = new THREE.Mesh(keep(mm.build()), mat);
       mesh.castShadow = cast;
@@ -587,18 +599,21 @@ export function createStreet(): Backdrop {
       group.add(mesh);
       return mesh;
     };
-    meshOf(road, keep(new THREE.MeshStandardMaterial({ map: tl(asphalt()), roughness: 0.92 })), false, 'road');
+    meshOf(road, asphaltMaterial(keep, ROAD_HALF), false, 'road');
+    const gutterMat = concreteMaterial(keep, 'plain');
+    Object.assign(gutterMat, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+    meshOf(gutters, gutterMat, false, 'gutters');
     meshOf(
       marks,
       keep(new THREE.MeshStandardMaterial({ color: 0xf6f5f0, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })),
       false,
       'road-marks',
     );
-    meshOf(curbs, keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 })), false, 'curbs');
-    meshOf(walks, keep(new THREE.MeshStandardMaterial({ map: tl(pavers()), roughness: 0.88 })), false, 'sidewalks');
-    meshOf(parapet, keep(new THREE.MeshStandardMaterial({ map: tl(granite()), roughness: 0.8 })), true, 'parapet');
-    meshOf(wallFace, keep(new THREE.MeshStandardMaterial({ map: tl(seawall()), roughness: 0.9 })), false, 'seawall');
-    meshOf(rails, keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.6 })), true, 'railing');
+    meshOf(curbs, concreteMaterial(keep, 'curb'), false, 'curbs');
+    meshOf(walks, paverMaterial(keep), false, 'sidewalks');
+    meshOf(parapet, concreteMaterial(keep, 'parapet'), true, 'parapet');
+    meshOf(wallFace, concreteMaterial(keep, 'seawall'), false, 'seawall');
+    meshOf(rails, metalMat, true, 'railing');
   }
 
   // ---- 房子 ----
@@ -611,11 +626,9 @@ export function createStreet(): Backdrop {
     const w = b.w;
     const y0 = b.y ?? -0.1;
     const M = new THREE.Matrix4().makeRotationY(Math.atan2(zAxis.x, zAxis.z)).setPosition(center.x, y0, center.z);
-    for (const m of [facade, roof, trim, fabric, signs]) m.setTransform(M);
+    for (const m of [facade, roof, trim, wood, metal, fabric, signs]) m.setTransform(M);
     const tint = col(b.tint);
     const roofC = col(b.roofTint);
-    const wood = col(0x4e3729);
-    const soffit = col(0x6b5240);
     const hw = w / 2;
     const d = b.depth;
     const bays = b.ground.length;
@@ -657,28 +670,32 @@ export function createStreet(): Backdrop {
     // 屋顶
     const pitch = THREE.MathUtils.degToRad(b.pitch ?? 24);
     const tan = Math.tan(pitch);
-    /** 带厚度的瓦面：顶面铺瓦（uv 沿檐口 / 沿坡，2m 一张），底面是檐底的木板，四边是檐口板 */
+    /** 带厚度的瓦面：顶面铺瓦（uv 按米：沿檐口 / 沿坡），底面是檐底的木板，四边是檐口板 */
     const slab = (pts: THREE.Vector3[], t = 0.12, c = roofC) => {
       const n = new THREE.Vector3().subVectors(pts[1], pts[0]).cross(new THREE.Vector3().subVectors(pts[2], pts[0])).normalize();
       const ua = new THREE.Vector3().subVectors(pts[1], pts[0]).normalize();
       const va = new THREE.Vector3().crossVectors(n, ua);
-      roof.poly(
-        pts,
-        pts.map((p): [number, number] => {
-          const q = p.clone().sub(pts[0]);
-          return [q.dot(ua) / 2, q.dot(va) / 2];
-        }),
-        c,
-      );
+      const inPlane = (p: THREE.Vector3): [number, number] => {
+        const q = p.clone().sub(pts[0]);
+        return [q.dot(ua), q.dot(va)];
+      };
+      roof.poly(pts, pts.map(inPlane), c);
       const low = pts.map((p) => p.clone().addScaledVector(n, -t));
-      trim.poly(
-        [...low].reverse(),
-        low.map((): [number, number] => [0, 0]),
-        soffit,
-      );
+      const lowR = [...low].reverse();
+      wood.poly(lowR, lowR.map(inPlane), SOFFIT);
       for (let i = 0; i < pts.length; i++) {
         const j = (i + 1) % pts.length;
-        trim.poly([low[i], low[j], pts[j], pts[i]], [[0, 0], [0, 0], [0, 0], [0, 0]], wood);
+        const len = pts[i].distanceTo(pts[j]);
+        wood.poly(
+          [low[i], low[j], pts[j], pts[i]],
+          [
+            [0, 0],
+            [len, 0],
+            [len, t],
+            [0, t],
+          ],
+          WOOD,
+        );
       }
     };
     const gableTri = (p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3) => {
@@ -710,15 +727,15 @@ export function createStreet(): Backdrop {
       const len = Math.hypot(hw + ov, rise + ov * tan);
       const ang = Math.atan2(rise + ov * tan, hw + ov);
       for (const sx of [1, -1]) {
-        trim.setTransform(
+        wood.setTransform(
           tmpM
             .copy(M)
             .multiply(new THREE.Matrix4().makeTranslation((sx * (hw + ov)) / 2, (ye + yr) / 2 + 0.06, so + 0.03))
             .multiply(new THREE.Matrix4().makeRotationZ(sx > 0 ? -ang + Math.PI : ang - Math.PI)),
         );
-        trim.box(-len / 2, -0.12, -0.04, len / 2, 0.12, 0.04, wood);
+        wood.box(-len / 2, -0.12, -0.04, len / 2, 0.12, 0.04, WOOD, 1);
       }
-      trim.setTransform(M);
+      wood.setTransform(M);
     } else if (b.roof === 'yose') {
       const rise = (d / 2) * tan;
       const ye = H - ov * tan;
@@ -753,11 +770,11 @@ export function createStreet(): Backdrop {
       const xb = -hw + i1 * bw - 0.05;
       const yb = GH;
       const dd = 0.95;
-      trim.box(xa, yb - 0.12, 0, xb, yb, dd, wood);
-      trim.box(xa, yb + 0.92, dd - 0.06, xb, yb + 1.0, dd, wood);
-      trim.box(xa, yb + 0.05, dd - 0.05, xb, yb + 0.1, dd - 0.01, wood);
-      for (const x of [xa, xb - 0.06]) trim.box(x, yb, 0, x + 0.06, yb + 1.0, dd, wood);
-      for (let x = xa + 0.12; x < xb - 0.06; x += 0.13) trim.box(x, yb + 0.1, dd - 0.045, x + 0.035, yb + 0.92, dd - 0.015, wood);
+      wood.box(xa, yb - 0.12, 0, xb, yb, dd, WOOD, 1);
+      wood.box(xa, yb + 0.92, dd - 0.06, xb, yb + 1.0, dd, WOOD, 1);
+      wood.box(xa, yb + 0.05, dd - 0.05, xb, yb + 0.1, dd - 0.01, WOOD, 1);
+      for (const x of [xa, xb - 0.06]) wood.box(x, yb, 0, x + 0.06, yb + 1.0, dd, WOOD, 1);
+      for (let x = xa + 0.12; x < xb - 0.06; x += 0.13) wood.box(x, yb + 0.1, dd - 0.045, x + 0.035, yb + 0.92, dd - 0.015, WOOD, 1);
     }
     // 布遮阳篷：从墙上斜着伸出来，前面一圈垂边，两头三角形的侧片
     if (b.awning != null) {
@@ -773,10 +790,10 @@ export function createStreet(): Backdrop {
       fabric.poly([v3(xa, top - 0.2, 0), v3(xa, low - 0.28, out), v3(xa, low, out), v3(xa, top, 0)], [[0, 0], [0, 0], [0, 0], [0, 0]], ac.clone().multiplyScalar(0.8));
       // 支架（两根细铁杆）
       for (const x of [xa + 0.1, xb - 0.1]) {
-        trim.setTransform(tmpM.copy(M).multiply(new THREE.Matrix4().makeTranslation(x, (top + low) / 2 - 0.05, out / 2).multiply(new THREE.Matrix4().makeRotationX(Math.atan2(top - low, out)))));
-        trim.box(-0.015, -0.015, -out / 2, 0.015, 0.015, out / 2, col(0x2a2a2e));
+        metal.setTransform(tmpM.copy(M).multiply(new THREE.Matrix4().makeTranslation(x, (top + low) / 2 - 0.05, out / 2).multiply(new THREE.Matrix4().makeRotationX(Math.atan2(top - low, out)))));
+        metal.box(-0.015, -0.015, -out / 2, 0.015, 0.015, out / 2, IRON);
       }
-      trim.setTransform(M);
+      metal.setTransform(M);
     }
     // 横招牌：一楼上方（有瓦檐的立在瓦檐后面，二楼窗台下面）
     if (b.sign != null) {
@@ -785,7 +802,7 @@ export function createStreet(): Backdrop {
       const sy = b.hisashi ? GH + 0.12 : GH - 0.72;
       const z = b.hisashi ? 0.06 : 0.04;
       signs.quad(v3(-sw / 2, sy, z), v3(sw / 2, sy, z), v3(sw / 2, sy + sw / 4, z), v3(-sw / 2, sy + sw / 4, z), [u0, v0, u1, v1], WHITE);
-      trim.box(-sw / 2 - 0.04, sy - 0.04, 0, sw / 2 + 0.04, sy + sw / 4 + 0.04, z - 0.01, wood);
+      wood.box(-sw / 2 - 0.04, sy - 0.04, 0, sw / 2 + 0.04, sy + sw / 4 + 0.04, z - 0.01, WOOD, 1);
     }
     // 挂在墙上的竖旗：门脸一头伸出一根铁臂，旗子挂在下面，旗面朝着街的方向
     if (b.banner) {
@@ -811,7 +828,7 @@ export function createStreet(): Backdrop {
     const za = z0 + 0.06;
     const zb = z0 + wide;
     signs.setTransform(M);
-    trim.setTransform(M);
+    metal.setTransform(M);
     // 法线方向（世界坐标）：局部 x
     const sw = { dir: v3(1, 0, 0).transformDirection(M), w: [1, 1, 0, 0] };
     signs.poly(
@@ -837,9 +854,8 @@ export function createStreet(): Backdrop {
       sw,
     );
     // 铁臂：上下两根（下面那根短，压着旗角）
-    const iron = col(0x2a2a2e);
-    trim.box(x - 0.02, top, 0, x + 0.02, top + 0.04, zb + 0.06, iron);
-    trim.box(x - 0.015, top - 0.02, 0, x + 0.015, top + 0.02, za, iron);
+    metal.box(x - 0.02, top, 0, x + 0.02, top + 0.04, zb + 0.06, IRON);
+    metal.box(x - 0.015, top - 0.02, 0, x + 0.015, top + 0.02, za, IRON);
   };
 
   // 近处这一排手摆（构图用），再往两头随机生成
@@ -1108,7 +1124,7 @@ export function createStreet(): Backdrop {
     mesh.name = 'props';
     group.add(mesh);
     // 自动售货机：立在住家和土特产店之间的缝里，面朝街
-    const vend = new Mesher();
+    const vend = new Mesher({ uv1: true });
     vend.setTransform(frameAt(S0 + 24.6, FRONT - 0.45));
     vend.quad(v3(-0.5, 0, 0.38), v3(0.5, 0, 0.38), v3(0.5, 1.83, 0.38), v3(-0.5, 1.83, 0.38), cellUV(F.VENDING), WHITE);
     facade.setTransform(frameAt(S0 + 24.6, FRONT - 0.45));
@@ -1135,8 +1151,8 @@ export function createStreet(): Backdrop {
 
   // ---- 电线杆 + 电线 ----
   {
+    // 杆身是混凝土（PBR），横担、绝缘子、变压器这些放进铁件那一批
     const poles = new Mesher();
-    const concrete = col(0xc4c0b8);
     const dark = col(0x55595e);
     const grey = col(0x8f9499);
     const wires: number[] = [];
@@ -1155,7 +1171,8 @@ export function createStreet(): Backdrop {
       if (inHeadCorridor(p)) continue;
       const M = new THREE.Matrix4().makeRotationY(Math.atan2(a.l.x, a.l.z)).setPosition(p.x, KERB_H, p.z);
       poles.setTransform(M);
-      // 杆子：8 边形的锥台（用盒子拼两段，远看是圆的就够了）
+      metal.setTransform(M);
+      // 杆子：8 边形的锥台（远看是圆的就够了），uv 按米：u 绕一圈、v 往上
       const H = 10.8;
       const seg = 8;
       for (let k = 0; k < seg; k++) {
@@ -1163,30 +1180,31 @@ export function createStreet(): Backdrop {
         const a1 = ((k + 1) / seg) * Math.PI * 2;
         const rb = 0.19;
         const rt = 0.13;
+        const perim = 2 * Math.PI * rb;
         poles.quad(
           v3(Math.cos(a1) * rb, 0, Math.sin(a1) * rb),
           v3(Math.cos(a0) * rb, 0, Math.sin(a0) * rb),
           v3(Math.cos(a0) * rt, H, Math.sin(a0) * rt),
           v3(Math.cos(a1) * rt, H, Math.sin(a1) * rt),
-          [0, 0, 0, 0],
-          concrete,
+          [((k + 1) / seg) * perim, 0, (k / seg) * perim, H],
+          WHITE,
         );
       }
       // 横担（垂直于路）+ 绝缘子；第二根短横担；隔一根挂一个变压器
-      poles.box(-0.12, H - 0.75, -0.95, 0.06, H - 0.6, 0.95, grey);
-      poles.box(-0.12, H - 1.65, -0.6, 0.06, H - 1.5, 0.6, grey);
+      metal.box(-0.12, H - 0.75, -0.95, 0.06, H - 0.6, 0.95, grey);
+      metal.box(-0.12, H - 1.65, -0.6, 0.06, H - 1.5, 0.6, grey);
       const top: THREE.Vector3[] = [];
       for (const z of [-0.85, 0, 0.85]) {
-        poles.box(-0.05, H - 0.6, z - 0.04, 0.03, H - 0.42, z + 0.04, col(0xeeeeec));
+        metal.box(-0.05, H - 0.6, z - 0.04, 0.03, H - 0.42, z + 0.04, col(0xeeeeec));
         top.push(v3(-0.01, H - 0.42, z).applyMatrix4(M));
       }
       if (list.length % 2 === 0) {
-        poles.box(0.2, H - 3.4, -0.32, 0.8, H - 2.4, 0.32, grey);
-        poles.box(0.12, H - 2.4, -0.04, 0.2, H - 2.3, 0.04, dark);
+        metal.box(0.2, H - 3.4, -0.32, 0.8, H - 2.4, 0.32, grey);
+        metal.box(0.12, H - 2.4, -0.04, 0.2, H - 2.3, 0.04, dark);
       }
       // 电话线（低一些、粗一点的黑线）挂在杆子朝路那一侧
       const tel = v3(0.2, 6.2, 0).applyMatrix4(M);
-      poles.box(0.12, 6.1, -0.05, 0.24, 6.3, 0.05, dark);
+      metal.box(0.12, 6.1, -0.05, 0.24, 6.3, 0.05, dark);
       list.push({ top, tel, p });
       if (r() < 0.6 && Math.abs(ss - S0) < 300) {
         // 引到房子墙上的入户线
@@ -1201,7 +1219,7 @@ export function createStreet(): Backdrop {
       for (let k = 0; k < 3; k++) sag(wires, a.top[k], b.top[k], 0.55);
       sag(wires, a.tel, b.tel, 0.7);
     }
-    const pm = new THREE.Mesh(keep(poles.build()), keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 })));
+    const pm = new THREE.Mesh(keep(poles.build()), concreteMaterial(keep, 'plain'));
     pm.castShadow = true;
     pm.receiveShadow = true;
     pm.name = 'poles';
@@ -1410,6 +1428,8 @@ export function createStreet(): Backdrop {
   finish(facade, facadeMat, 'facades');
   finish(roof, roofMat, 'roofs');
   finish(trim, trimMat, 'trim');
+  finish(wood, woodMat, 'wood');
+  finish(metal, metalMat, 'metal');
   finish(fabric, fabricMat, 'awnings');
   finish(signs, signMat, 'signs');
 
@@ -1439,7 +1459,8 @@ export function createStreet(): Backdrop {
     hemisphere: { sky: 0xdcecff, ground: 0x8f8a84, intensity: 0.5 },
     // 雾只管远景：100m 以内不受影响，对岸的小镇（1km）淡三成，山再淡一层，和地平线同色
     fog: new THREE.Fog(HAZE, 100, 2800),
-    environment: { url: `${BASE}hdri/nagoya_wall_path_1k.hdr`, intensity: 0.25, rotation: THREE.MathUtils.degToRad(126) },
+    // 海边晴天的 HDRI（Poly Haven Furry Clouds）：玻璃、铁件反射的是它。转 20°：让它里面的太阳和舞台主光（太阳）在同一个方位
+    environment: { url: `${BASE}hdri/furry_clouds_1k.hdr`, intensity: 0.35, rotation: THREE.MathUtils.degToRad(20) },
     shadowBounds: 3,
     sun: { color: 0xfff3e0, intensity: 2.5, bounds: 22, position: SUN_POS, fill: 0.3, rim: 0.4 },
     far: SKY_R + 200,

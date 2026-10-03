@@ -91,6 +91,32 @@ export function canvasTexture(
   return t;
 }
 
+/**
+ * 一套 Poly Haven 的 PBR 贴图（public/scene/textures/<dir>/，由 scripts/fetch-scene-assets.mjs 下载）：
+ * 漫反射 + 法线（OpenGL）+ ARM（R = AO、G = 粗糙度、B = 金属度），平铺。
+ * repeat = 每个 uv 单位铺几张（uv 按米给的话就是 1 / 贴图的实际尺寸）；channel = 用第几套 uv（0 = uv，1 = uv1）。
+ * keep = 场景的"换走时释放"登记函数
+ */
+export function pbrTextures(
+  dir: string,
+  keep: <T extends { dispose(): void }>(x: T) => T,
+  { repeat = 1, channel = 0 }: { repeat?: number | [number, number]; channel?: number } = {},
+) {
+  const [rx, ry] = typeof repeat === 'number' ? [repeat, repeat] : repeat;
+  const t = (file: string, color = false) => {
+    const x = keep(textureLoader.load(`${import.meta.env.BASE_URL}scene/textures/${dir}/${file}`));
+    if (color) x.colorSpace = THREE.SRGBColorSpace;
+    x.wrapS = x.wrapT = THREE.RepeatWrapping;
+    x.repeat.set(rx, ry);
+    x.anisotropy = 8;
+    x.channel = channel;
+    return x;
+  };
+  const arm = t('arm.jpg');
+  return { map: t('diffuse.jpg', true), normalMap: t('nor_gl.jpg'), aoMap: arm, roughnessMap: arm, metalnessMap: arm };
+}
+const textureLoader = new THREE.TextureLoader();
+
 /** 可复现的伪随机数（同一个种子每次画出来一样） */
 export function rng(seed: number) {
   let s = seed;

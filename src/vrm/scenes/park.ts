@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { canvasTexture, rng, type Backdrop } from './common';
+import { canvasTexture, pbrTextures, rng, type Backdrop } from './common';
 import { AMBIENCE_VOLUME } from '../../speech/ambience';
 import { createDust, createLightShafts, type Shaft } from './sunlight';
 import { createBatcher, createTreeMaker, windDepth, windShader, type TreeVariant } from './foliage';
@@ -274,19 +274,7 @@ export function createPark(): Backdrop {
   };
 
   // ---- 材质 ----
-  const tl = new THREE.TextureLoader();
-  const pbr = (dir: string, repeat = 1) => {
-    const t = (file: string, color = false) => {
-      const x = keep(tl.load(`${BASE}textures/${dir}/${file}`));
-      if (color) x.colorSpace = THREE.SRGBColorSpace;
-      x.wrapS = x.wrapT = THREE.RepeatWrapping;
-      x.repeat.set(repeat, repeat);
-      x.anisotropy = 8;
-      return x;
-    };
-    const arm = t('arm.jpg');
-    return { map: t('diffuse.jpg', true), normalMap: t('nor_gl.jpg'), aoMap: arm, roughnessMap: arm, metalnessMap: arm };
-  };
+  const pbr = (dir: string) => pbrTextures(dir, keep);
   const deckMat = keep(new THREE.MeshStandardMaterial(pbr('weathered_brown_planks')));
   // 原图偏暗：亮一点，太阳照到的地方和影子才拉得开
   deckMat.color.setScalar(1.25);

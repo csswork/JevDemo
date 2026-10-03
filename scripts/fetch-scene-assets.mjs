@@ -31,10 +31,16 @@ const MANIFEST = {
   textures: [
     'weathered_brown_planks', // 公园：木平台、栈道
     'aerial_grass_rock', // 公园：远处的草地（近处是一丛丛 3D 的草）
+    'plastered_wall_02', // 街景：墙面的灰泥
+    'asphalt_02', // 街景：柏油路
+    'square_tiles_03', // 街景：人行道的方砖
+    'concrete_wall_008', // 街景：路牙、侧沟、矮墙、护岸、电线杆
+    'ceramic_roof_01', // 街景：屋瓦（只用法线和 AO 的瓦垄起伏，颜色在着色器里染成银灰瓦）
   ],
   hdris: [
     'wooden_lounge', // 咖啡店：只用来打光（环境光 / 反射），不显示
     'nagoya_wall_path', // 公园：打光
+    'furry_clouds', // 街景：打光和反射（海边、晴天、积云）。和 blue_lagoon 比过，亮度拉平后打光一样，留了反射里有云的这张
   ],
   // 显示出来的全景背景：Poly Haven 的 tonemapped JPG（8k、12MB 左右），本地缩到 BACKPLATE_W 宽再存。
   // 现在没有在用的：公园试过用全景照片当背景（nagoya_wall_path），太糊，换成了 3D 的树和草；
@@ -83,6 +89,23 @@ const POLY_PIZZA = [
   ['analog_clock', '5gAoMR2YHs3', '83ac02a5-b467-464a-b874-17317b9e5dac', 'Analog clock', 'Poly by Google', 'CC-BY 3.0'],
   ['vase', '7img3RnfCzZ', 'aa2dc7de-d0cc-4c4f-bdae-e702effbd553', 'Vase', 'Poly by Google', 'CC-BY 3.0'],
 ];
+
+/**
+ * 场景背景音（public/audio/）不是这个脚本下的（Freesound 要登录才能下原文件，是手动放进去的），
+ * 但 CREDITS.md 整个文件由这里生成：署名写在这里，重新生成时才不会丢
+ */
+const AUDIO_CREDITS = `
+## 场景背景音（\`public/audio/\`）
+
+每个场景一条循环环境音（咖啡店人声 / 公园鸟鸣），**CC0**（公有领域，可商用、可再分发、不要求署名）。
+播放见 \`src/speech/ambience.ts\`：整段解码成 AudioBuffer 之后按缓冲区循环 —— 浏览器在**样本级**绕回开头。
+
+> **素材必须是 OGG（Opus/Vorbis），不能用 MP3。** MP3 编码器的补零会在每圈接缝处留一小段静音，
+> 循环时"咔"一下。换素材时注意这一点。
+
+- 咖啡店 [coffee shop ambience](https://freesound.org/people/waweee/sounds/370973/) — waweee，CC0（4:56）
+- 公园 [Spring Birds & Woodpeckers (Loop)](https://freesound.org/people/Resaural/sounds/634511/) — Resaural，CC0（7:11，作者录的就是无缝循环）
+`;
 
 async function api(p) {
   const r = await fetch(`https://api.polyhaven.com/${p}`, { headers: UA });
@@ -166,7 +189,8 @@ async function main() {
       `\n公园的树和灌木由 [ez-tree](https://github.com/dgreenheck/ez-tree)（npm \`@dgreenheck/ez-tree\`，© 2024 Daniel Greenheck，**MIT**）生成，` +
       `树皮和树叶贴图打包在那个 npm 包里；\`eztree/grass.glb\`（草丛模型）来自 ez-tree 的演示场景，授权原文见 \`eztree/LICENSE\`。\n` +
       `\n## 咖啡店的小物件（\`polypizza/\`）\n\n来自 [Poly Pizza](https://poly.pizza)。CC0 的不要求署名；` +
-      `CC-BY（[Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/)）的必须署名，就是下面这样：\n\n${ppCredits.join('\n')}\n`,
+      `CC-BY（[Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/)）的必须署名，就是下面这样：\n\n${ppCredits.join('\n')}\n` +
+      AUDIO_CREDITS,
   );
   console.log(`完成：新下载 ${downloaded} 个文件（${(bytes / 1e6).toFixed(1)}MB），跳过已有 ${skipped} 个`);
 }

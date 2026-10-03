@@ -11,8 +11,14 @@
 - 模型 [Rock Moss Set 01](https://polyhaven.com/a/rock_moss_set_01) — Kless Gyzen
 - 材质 [Weathered Brown Planks](https://polyhaven.com/a/weathered_brown_planks) — Dimitrios Savva, Rico Cilliers
 - 材质 [Aerial Grass Rock](https://polyhaven.com/a/aerial_grass_rock) — Rob Tuytel
+- 材质 [Plastered Wall 02](https://polyhaven.com/a/plastered_wall_02) — Charlotte Baglioni
+- 材质 [Asphalt 02](https://polyhaven.com/a/asphalt_02) — Rob Tuytel
+- 材质 [Square Tiles 03](https://polyhaven.com/a/square_tiles_03) — Charlotte Baglioni
+- 材质 [Concrete Wall 008](https://polyhaven.com/a/concrete_wall_008) — Dario Barresi, Charlotte Baglioni
+- 材质 [Ceramic Roof 01](https://polyhaven.com/a/ceramic_roof_01) — Rob Tuytel
 - HDRI [Wooden Lounge](https://polyhaven.com/a/wooden_lounge) — Greg Zaal
 - HDRI [Nagoya Wall Path](https://polyhaven.com/a/nagoya_wall_path) — Greg Zaal
+- HDRI [Furry Clouds](https://polyhaven.com/a/furry_clouds) — Greg Zaal, Rico Cilliers
 
 公园的树和灌木由 [ez-tree](https://github.com/dgreenheck/ez-tree)（npm `@dgreenheck/ez-tree`，© 2024 Daniel Greenheck，**MIT**）生成，树皮和树叶贴图打包在那个 npm 包里；`eztree/grass.glb`（草丛模型）来自 ez-tree 的演示场景，授权原文见 `eztree/LICENSE`。
 
@@ -63,4 +69,3 @@
 
 - 咖啡店 [coffee shop ambience](https://freesound.org/people/waweee/sounds/370973/) — waweee，CC0（4:56）
 - 公园 [Spring Birds & Woodpeckers (Loop)](https://freesound.org/people/Resaural/sounds/634511/) — Resaural，CC0（7:11，作者录的就是无缝循环）
-

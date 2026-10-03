@@ -19,6 +19,7 @@ import { parseTestCommand } from '../jev/testCommand';
  *   __clip('laugh_cover')                  穿模检测：手指有没有插进脸里（逐帧，按脸表面算深度）
  *   __closeup([x, y, z], fov) / __closeup(null)   替身相机特写 / 换回主相机
  *   await __views('cafe.jpg')              场景截图：几个固定机位（半身 / 全身 / 侧面 / 背后 / 俯视）拼一张图
+ *   await __shots('street_close.jpg')      场景特写：替身相机放在固定的世界坐标（默认是街景的玻璃 / 海 / 楼 / 路 / 山），拼一张图
  *   await __hands('hands.jpg', [0, 3, 6])  双手特写：每一行一个时刻，左右手各一张正面、一张外侧、再加一张上半身
  *   await __hands('talk.jpg', [1, 3, 6], '开心 40% | 我跟你说，今天店里来了一只小猫！它就坐在窗台上晒太阳，可爱吧？')
  *                                          边说边截（测试指令语法，不花钱）。结果存成文件，屏幕上看不到变化
@@ -366,6 +367,58 @@ export function installAudit(rt: Runtime) {
   };
 
   /**
+   * 场景特写：替身相机按 [标题, 相机位置, 看向哪, 视角°] 摆在世界坐标里，逐个渲染拼成一张图存到 dev-out/。
+   * 和 __views 不同，机位不绕着角色转，用来对比材质的近景（每一期改完拍同一组，前后并排看）。默认是街景那一组
+   */
+  const shots = async (
+    name: string,
+    list: Array<[string, [number, number, number], [number, number, number], number]> = [
+      ['玻璃', [-1.0, 1.6, -0.6], [-4.0, 1.6, -3.4], 34],
+      ['海', [4.2, 1.5, -6], [30, -1.2, -40], 30],
+      ['楼', [2.5, 1.6, -4], [-5, 2.5, -22], 34],
+      ['路', [1.5, 1.5, 2], [1.0, 0, -8], 40],
+      ['山', [2.6, 1.6, -3], [150, 40, -1200], 8],
+      ['屋顶', [3.8, 2.4, -9], [-6, 6.5, -16], 36],
+    ],
+    size: [number, number] = [960, 540],
+    cols = 2,
+  ) => {
+    const stage = rt.stage!;
+    const r = stage.renderer;
+    const cvs = r.domElement;
+    const pr = r.getPixelRatio();
+    r.setPixelRatio(1);
+    r.setSize(size[0], size[1], false);
+    const [tw, th] = size;
+    const sheet = document.createElement('canvas');
+    sheet.width = tw * cols;
+    sheet.height = th * Math.ceil(list.length / cols);
+    const g = sheet.getContext('2d')!;
+    const cam = new THREE.PerspectiveCamera(30, tw / th, 0.1, stage.camera.far);
+    list.forEach(([label, pos, look, fov], k) => {
+      cam.position.set(...pos);
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+      cam.lookAt(...look);
+      stage.view.camera = cam;
+      for (let i = 0; i < 10; i++) {
+        rt.step(1 / 60);
+        stage.render();
+      }
+      g.drawImage(cvs, (k % cols) * tw, Math.floor(k / cols) * th);
+      g.fillStyle = '#ff0';
+      g.font = 'bold 26px sans-serif';
+      g.fillText(label, (k % cols) * tw + 12, Math.floor(k / cols) * th + 34);
+    });
+    stage.view.camera = null;
+    r.setPixelRatio(pr);
+    stage.resize();
+    const blob = await new Promise<Blob>((res) => sheet.toBlob((b) => res(b!), 'image/jpeg', 0.88));
+    const res = await fetch(`/__dev/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
+    return res.json();
+  };
+
+  /**
    * 双手特写：从现在起逐帧推进，到 times 里的每个时刻（秒）截一行 —— 左手正面、右手正面、左手外侧、右手外侧、上半身。
    * 看手指的自然弯曲和随机变化（hands.ts）。正面看到的是手指弯曲的侧影，外侧看到的是手背。
    * say = 测试指令（同 __trace），第 0 秒开口，看说话时手上的小动作
@@ -516,6 +569,7 @@ export function installAudit(rt: Runtime) {
 
   const w = window as unknown as Record<string, unknown>;
   w.__views = views;
+  w.__shots = shots;
   w.__hands = hands;
   w.__clip = clip;
   w.__faces = faces;

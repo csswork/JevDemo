@@ -2,19 +2,18 @@ import * as THREE from 'three';
 import { canvasTexture, rng } from './common';
 
 /**
- * 街景（street.ts）的贴图，全部 canvas 现画（和咖啡店的墙、黑板一个路子，没有外部文件）：
+ * 街景（street.ts）里要"画"的贴图，canvas 现画（墙、路、瓦这些表面是 Poly Haven 的 PBR 贴图，见 streetMaterials.ts）：
  *
  *   立面图集  一张 2048×1024 的图，切成 8×4 格，每格是"一个开间 × 一层"（约 2.8m 宽、3m 高）：
  *            一楼的店面（咖啡店的大玻璃窗、陶器店、暖帘、格子门、卷帘门、住家的玄关……）、
- *            二楼的窗（木框窗、铝窗、格子窗、落地门……）、侧墙、山墙、自动售货机。
+ *            二楼的窗（木框窗、铝窗、格子窗、落地门……）、侧墙、山墙、自动售货机。墙面本身只是一层底色，
+ *            按颜色算出遮罩，着色器里遮罩为 0 的地方露出 PBR 灰泥。
  *            房子的立面按开间一格一格拼（同一个材质，所有房子合成一个网格画一次）。
  *            同样布局的另一张图是自发光：店里暖黄的灯光、售货机的灯箱 —— 遮阳篷底下的阴影里也是亮的
- *   屋瓦      日式的波形瓦（栈瓦），一排排横的瓦垄，可平铺
- *   路面      柏油（偏紫灰，插画里的颜色）、人行道的方石板、护栏底下的花岗岩条石、护岸的混凝土
  *   旗子      竖的布旗（海のカフェ、やきもの、海の見える街……）和横的招牌，一张图集
  *   黑板      咖啡店门口的立式小黑板
  *
- * 线条和配色往插画靠：轮廓干净、颜色饱和一点、玻璃上画天光的反光，不追求写实的脏和旧。
+ * 招牌、旗子的配色往插画靠（饱和、干净）；墙、路、瓦这些大面积的表面用实拍材质，和公园同一个写实档次。
  */
 
 export const FONT_JP =
@@ -78,24 +77,13 @@ const WOOD_LIGHT = '#94704f';
 const PLASTER = '#f4f0e7';
 const ALU = '#b7bcc1';
 
-function plaster(g: G, r: R, base = PLASTER) {
-  g.fillStyle = base;
+/**
+ * 墙面：只铺一层纯色。真正的灰泥是 Poly Haven 的 PBR 贴图（streetMaterials.ts），
+ * 这个颜色只用来认出"哪里是墙"：和它一样的像素遮罩为 0（露出灰泥），画了东西的为 1（见 facadeAtlas）
+ */
+function plaster(g: G, _r: R) {
+  g.fillStyle = PLASTER;
   g.fillRect(0, 0, CELL, CELL);
-  // 很淡的水渍和斑点：只是让墙面不死白，插画里的墙是干净的
-  for (let i = 0; i < 10; i++) {
-    const x = r() * CELL;
-    const y = r() * CELL;
-    const rad = 14 + r() * 40;
-    const grd = g.createRadialGradient(x, y, 0, x, y, rad);
-    grd.addColorStop(0, `rgba(150,135,115,${0.025 + r() * 0.03})`);
-    grd.addColorStop(1, 'rgba(150,135,115,0)');
-    g.fillStyle = grd;
-    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
-  }
-  for (let i = 0; i < 300; i++) {
-    g.fillStyle = r() < 0.5 ? 'rgba(0,0,0,0.035)' : 'rgba(255,255,255,0.08)';
-    g.fillRect(r() * CELL, r() * CELL, 1.5, 1.5);
-  }
 }
 
 /** 横梁（木） */
@@ -674,20 +662,10 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     g.fillRect(150, 110, 70, 6);
   },
   [F.SIDE]: (g, _e, r) => {
-    plaster(g, r, '#efeae0');
-    for (let k = 0; k < 6; k++) {
-      const x = r() * CELL;
-      const grd = g.createLinearGradient(0, 0, 0, 120 + r() * 100);
-      grd.addColorStop(0, 'rgba(120,110,100,0.07)');
-      grd.addColorStop(1, 'rgba(120,110,100,0)');
-      g.fillStyle = grd;
-      g.fillRect(x, 0, 6 + r() * 10, 220);
-    }
-    g.fillStyle = 'rgba(0,0,0,0.05)';
-    g.fillRect(0, 250, CELL, 6);
+    plaster(g, r);
   },
   [F.SIDE_WIN]: (g, _e, r) => {
-    plaster(g, r, '#efeae0');
+    plaster(g, r);
     g.fillStyle = ALU;
     g.fillRect(96, 84, 64, 72);
     g.fillStyle = '#e0e6ea';
@@ -695,11 +673,9 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     glass(g, 100, 88, 56, 64, 0.35);
     g.fillStyle = ALU;
     g.fillRect(126, 88, 3, 64);
-    g.fillStyle = 'rgba(0,0,0,0.05)';
-    g.fillRect(0, 250, CELL, 6);
   },
   [F.SIDE_PIPE]: (g, _e, r) => {
-    plaster(g, r, '#efeae0');
+    plaster(g, r);
     const grd = g.createLinearGradient(196, 0, 212, 0);
     grd.addColorStop(0, '#9aa0a4');
     grd.addColorStop(0.4, '#d9dcde');
@@ -710,8 +686,6 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
       g.fillStyle = '#7d8388';
       g.fillRect(193, y, 22, 6);
     }
-    g.fillStyle = 'rgba(0,0,0,0.05)';
-    g.fillRect(0, 250, CELL, 6);
   },
   [F.GABLE]: (g, _e, r) => {
     plaster(g, r);
@@ -890,7 +864,10 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
   },
 };
 
-/** 立面图集：map（颜色）+ emissive（店里的灯光、灯箱），同样的格子布局 */
+/**
+ * 立面图集：map（颜色）+ emissive（店里的灯光、灯箱）+ mask（1 = 画出来的构件，0 = 墙面，露出 PBR 灰泥），同样的格子布局。
+ * 遮罩按颜色自动算：和墙面底色（PLASTER）一样的像素是墙，差得越多越是构件（边缘按差值软过渡，抗锯齿的边不会有硬台阶）
+ */
 export function facadeAtlas() {
   const W = CELL * COLS;
   const H = CELL * ROWS;
@@ -924,175 +901,23 @@ export function facadeAtlas() {
   const emissive = new THREE.CanvasTexture(ec);
   emissive.colorSpace = THREE.SRGBColorSpace;
   emissive.anisotropy = 8;
-  return { map, emissive };
-}
-
-// ---------------------------------------------------------------- 平铺的材质
-
-/** 日式波形瓦：一排排横的瓦垄（一张图 = 2m 见方，8 排、每排 7 片） */
-export function roofTiles() {
-  const r = rng(31);
-  const t = canvasTexture(
-    256,
-    256,
-    (g) => {
-      const rows = 8;
-      const cols = 7;
-      const rh = 256 / rows;
-      const cw = 256 / cols;
-      for (let row = 0; row < rows; row++) {
-        const y = row * rh;
-        for (let k = 0; k < cols; k++) {
-          const x = k * cw;
-          const l = 52 + r() * 8;
-          // 一片瓦：左边亮（受光的弧面）、右边暗（凹下去的槽）
-          const grd = g.createLinearGradient(x, 0, x + cw, 0);
-          grd.addColorStop(0, `hsl(214, 14%, ${l - 10}%)`);
-          grd.addColorStop(0.3, `hsl(214, 14%, ${l + 8}%)`);
-          grd.addColorStop(0.65, `hsl(214, 14%, ${l - 4}%)`);
-          grd.addColorStop(1, `hsl(214, 16%, ${l - 18}%)`);
-          g.fillStyle = grd;
-          g.fillRect(x, y, cw, rh);
-        }
-        // 每排下沿：一道亮边（瓦的下口）+ 下面一道阴影
-        g.fillStyle = 'rgba(255,255,255,0.25)';
-        g.fillRect(0, y + rh - 5, 256, 2);
-        g.fillStyle = 'rgba(0,0,0,0.35)';
-        g.fillRect(0, y + rh - 3, 256, 3);
-      }
-    },
-    [1, 1],
-  );
-  return t;
-}
-
-/** 柏油：偏紫的灰（插画里的路是带点紫的浅灰）、细的颗粒、几块颜色稍深的补丁。一张图 = 4m 见方 */
-export function asphalt() {
-  const r = rng(17);
-  return canvasTexture(
-    512,
-    512,
-    (g) => {
-      g.fillStyle = '#9d98a0';
-      g.fillRect(0, 0, 512, 512);
-      // 补丁 / 深浅（可平铺：贴边的画三遍）
-      for (let k = 0; k < 18; k++) {
-        const x = r() * 512;
-        const y = r() * 512;
-        const rad = 30 + r() * 90;
-        for (const dx of [-512, 0, 512])
-          for (const dy of [-512, 0, 512]) {
-            const grd = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
-            const dark = r() < 0.6;
-            grd.addColorStop(0, dark ? 'rgba(70,64,78,0.08)' : 'rgba(255,250,255,0.06)');
-            grd.addColorStop(1, 'rgba(0,0,0,0)');
-            g.fillStyle = grd;
-            g.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
-          }
-      }
-      // 颗粒：按颜色分几批画（每换一次 fillStyle 都要解析一遍字符串，九千次很慢）
-      for (const style of ['rgba(60,55,70,0.14)', 'rgba(60,55,70,0.24)', 'rgba(240,236,245,0.12)', 'rgba(240,236,245,0.22)']) {
-        g.fillStyle = style;
-        for (let k = 0; k < 2200; k++) g.fillRect(r() * 512, r() * 512, 1 + r() * 1.5, 1 + r() * 1.5);
-      }
-    },
-    [1, 1],
-  );
-}
-
-/** 人行道的方石板：30cm 见方、错缝，浅暖灰、每块深浅不一。一张图 = 2.4m 见方 */
-export function pavers() {
-  const r = rng(23);
-  return canvasTexture(
-    512,
-    512,
-    (g) => {
-      g.fillStyle = '#8f877d';
-      g.fillRect(0, 0, 512, 512);
-      const s = 64;
-      for (let row = 0; row < 8; row++) {
-        const off = row % 2 ? s / 2 : 0;
-        for (let k = -1; k < 9; k++) {
-          const x = k * s + off;
-          const y = row * s;
-          const l = 74 + r() * 9;
-          g.fillStyle = `hsl(${30 + r() * 12}, ${8 + r() * 6}%, ${l}%)`;
-          g.fillRect(x + 2, y + 2, s - 4, s - 4);
-          g.fillStyle = 'rgba(255,255,255,0.18)';
-          g.fillRect(x + 2, y + 2, s - 4, 2);
-          g.fillStyle = 'rgba(0,0,0,0.08)';
-          g.fillRect(x + 2, y + s - 4, s - 4, 2);
-          for (let i = 0; i < 40; i++) {
-            g.fillStyle = `rgba(0,0,0,${r() * 0.06})`;
-            g.fillRect(x + 3 + r() * (s - 6), y + 3 + r() * (s - 6), 1.5, 1.5);
-          }
-        }
-      }
-    },
-    [1, 1],
-  );
-}
-
-/** 花岗岩条石（护栏底下那道矮墙）：浅灰、错缝。一张图 = 2m 宽 × 1m 高 */
-export function granite() {
-  const r = rng(29);
-  return canvasTexture(
-    512,
-    256,
-    (g) => {
-      g.fillStyle = '#8b8a86';
-      g.fillRect(0, 0, 512, 256);
-      const bw = 128;
-      const bh = 64;
-      for (let row = 0; row < 4; row++) {
-        const off = row % 2 ? bw / 2 : 0;
-        for (let k = -1; k < 5; k++) {
-          const x = k * bw + off;
-          const y = row * bh;
-          g.fillStyle = `hsl(40, 4%, ${78 + r() * 8}%)`;
-          g.fillRect(x + 2, y + 2, bw - 4, bh - 4);
-          g.fillStyle = 'rgba(255,255,255,0.3)';
-          g.fillRect(x + 2, y + 2, bw - 4, 3);
-          g.fillStyle = 'rgba(0,0,0,0.12)';
-          g.fillRect(x + 2, y + bh - 6, bw - 4, 4);
-          for (let i = 0; i < 120; i++) {
-            g.fillStyle = r() < 0.5 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.15)';
-            g.fillRect(x + 3 + r() * (bw - 6), y + 3 + r() * (bh - 6), 1.5, 1.5);
-          }
-        }
-      }
-    },
-    [1, 1],
-  );
-}
-
-/** 护岸的混凝土：竖的模板缝、贴水面那段湿的深色 + 一点青苔。一张图 = 4m 宽 × 3m 高（不竖着平铺） */
-export function seawall() {
-  const r = rng(37);
-  return canvasTexture(
-    256,
-    256,
-    (g) => {
-      g.fillStyle = '#c4c0b6';
-      g.fillRect(0, 0, 256, 256);
-      for (let x = 0; x < 256; x += 64) {
-        g.fillStyle = 'rgba(0,0,0,0.1)';
-        g.fillRect(x, 0, 2, 256);
-      }
-      for (let k = 0; k < 400; k++) {
-        g.fillStyle = r() < 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)';
-        g.fillRect(r() * 256, r() * 256, 2, 2);
-      }
-      // 下面（贴水面）：湿的、深一点，最下面一层青苔
-      const wet = g.createLinearGradient(0, 150, 0, 256);
-      wet.addColorStop(0, 'rgba(70,75,70,0)');
-      wet.addColorStop(0.6, 'rgba(70,75,70,0.35)');
-      wet.addColorStop(1, 'rgba(50,80,60,0.6)');
-      g.fillStyle = wet;
-      g.fillRect(0, 150, 256, 106);
-    },
-    [1, 1],
-  );
+  const mc = document.createElement('canvas');
+  mc.width = W;
+  mc.height = H;
+  const src = (map.image as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, W, H);
+  const out = mc.getContext('2d')!.createImageData(W, H);
+  const hex = parseInt(PLASTER.slice(1), 16);
+  const [sr, sg, sb] = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+  for (let i = 0; i < src.data.length; i += 4) {
+    const d = Math.abs(src.data[i] - sr) + Math.abs(src.data[i + 1] - sg) + Math.abs(src.data[i + 2] - sb);
+    const m = Math.round(255 * THREE.MathUtils.smoothstep(d, 4, 24));
+    out.data[i] = out.data[i + 1] = out.data[i + 2] = m;
+    out.data[i + 3] = 255;
+  }
+  mc.getContext('2d')!.putImageData(out, 0, 0);
+  const mask = new THREE.CanvasTexture(mc);
+  mask.anisotropy = 8;
+  return { map, emissive, mask };
 }
 
 // ---------------------------------------------------------------- 旗子、招牌
