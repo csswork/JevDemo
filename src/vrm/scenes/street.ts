@@ -12,11 +12,11 @@ import {
   createFarLand,
   createFarTown,
   createLighthouse,
-  createSea,
   createSky,
   fbm,
 } from './seaside';
 import { F, bannerUV, cellUV, chalkboard, facadeAtlas, signAtlas, signUV, type Cell } from './streetTextures';
+import { REFLECT_LAYER, createWater } from './water';
 import { asphaltMaterial, concreteMaterial, facadeMaterial, metalMaterial, paverMaterial, roofMaterial, woodMaterial } from './streetMaterials';
 
 /**
@@ -385,21 +385,29 @@ export function createStreet(): Backdrop {
   const SOFFIT = col(0xd2b89e);
   const IRON = col(0x3a3d42);
 
-  // ---- 天空、云、海、远景 ----
-  group.add(createSky(keep, SUN_DIR, SKY_R));
+  // ---- 天空、云、远景（都要倒映在海里：加进反射那一层，见 water.ts）----
+  /** 远景：加进场景，同时加进海面反射那一层 */
+  const far = <T extends THREE.Object3D>(o: T) => {
+    o.traverse((c) => c.layers.enable(REFLECT_LAYER));
+    group.add(o);
+    return o;
+  };
+  far(createSky(keep, SUN_DIR, SKY_R));
   // 海那一侧的方位角：从左前方（-150°）绕到右后方（80°）
   const SEA_FROM = THREE.MathUtils.degToRad(-150);
   const SEA_TO = THREE.MathUtils.degToRad(80);
-  group.add(createClouds(keep, SKY_R * 0.88, THREE.MathUtils.degToRad(-140), THREE.MathUtils.degToRad(40)));
-  const sea = createSea(keep, SUN_DIR);
-  group.add(sea.mesh);
-  group.add(createFarLand(keep, SEA_FROM, SEA_TO));
-  group.add(createFarTown(keep, THREE.MathUtils.degToRad(-128), THREE.MathUtils.degToRad(-40)));
-  group.add(createBridge(keep, THREE.MathUtils.degToRad(-128), THREE.MathUtils.degToRad(-108), 160));
+  far(createClouds(keep, SKY_R * 0.88, THREE.MathUtils.degToRad(-140), THREE.MathUtils.degToRad(40)));
+  far(createFarLand(keep, SEA_FROM, SEA_TO));
+  far(createFarTown(keep, THREE.MathUtils.degToRad(-128), THREE.MathUtils.degToRad(-40)));
+  far(createBridge(keep, THREE.MathUtils.degToRad(-128), THREE.MathUtils.degToRad(-108), 160));
   // 灯塔在画面右边、路灯和头之间（插画里的位置）
-  group.add(createLighthouse(keep, [-40, -206], [38, -218]));
+  const BREAKWATER: [[number, number], [number, number]] = [
+    [-40, -206],
+    [38, -218],
+  ];
+  far(createLighthouse(keep, ...BREAKWATER));
   const boats = createBoats(keep);
-  group.add(boats.group);
+  far(boats.group);
   const gulls = createGulls(keep);
   group.add(gulls.group);
 
@@ -436,12 +444,28 @@ export function createStreet(): Backdrop {
     const land = new THREE.Mesh(g, keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
     land.receiveShadow = true;
     land.name = 'land';
-    group.add(land);
+    far(land);
     // 防穿墙：脚下一块平地（镜头压到最低时不钻到地下）
     const cg = new THREE.PlaneGeometry(40, 40);
     cg.rotateX(-Math.PI / 2);
     collider(cg, new THREE.Matrix4());
   }
+
+  // ---- 海：专门的水面着色器（波浪法线、倒映远景的平面反射、菲涅耳、离岸深浅、浪花，见 water.ts）----
+  const water = createWater(keep, {
+    y: SEA_Y,
+    // 水面的高光按 HDRI 里那个低一点的太阳算（离地约 18°，方位和主光一样）：主光离地 46°，它在水面上的倒影
+    // 落在护岸脚下、被矮墙挡住，转向太阳那一侧也看不到碎光；低的太阳在海面上拉出一条闪闪的光带
+    sunDir: new THREE.Vector3(SUN_DIR.x, 0, SUN_DIR.z)
+      .normalize()
+      .multiplyScalar(Math.cos(THREE.MathUtils.degToRad(18)))
+      .setY(Math.sin(THREE.MathUtils.degToRad(18))),
+    sunColor: new THREE.Color(0xfff3e0),
+    // 离护岸多远：护岸外侧往海里为正（陆地上是负的，存成 0）。覆盖她附近的海湾，再远都当深水
+    shore: { bounds: [-300, -500, 300, 300], resolution: 256, max: 60, dist: (x, z) => WALL_OUT - project(x, z).d },
+    breakwater: BREAKWATER,
+  });
+  group.add(water.mesh);
 
   // ---- 路面、路牙、人行道、矮墙、护岸、栏杆：沿路铺的带子 ----
   /** 沿路的采样：近处 0.5m 一个，远处稀一点 */
@@ -1469,11 +1493,13 @@ export function createStreet(): Backdrop {
     update(dt: number) {
       time += dt;
       wind.uTime.value = time;
-      sea.update(time);
+      water.update(time);
       boats.update(time);
       gulls.update(time);
     },
     beforeRender(view, shadow) {
+      // 海面反射那一趟嵌套渲染也会走到这里：镜像相机只画远景那一层，合批的树不用按它剔除（剔了主画面的树会闪）
+      if (water.reflecting) return;
       cull(view, shadow);
     },
     dispose() {

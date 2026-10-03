@@ -3,11 +3,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { canvasTexture, rng } from './common';
 
 /**
- * 街景（street.ts）的远景：天空、积云、海、对岸的山和小镇、防波堤上的灯塔、远处的跨海桥，
+ * 街景（street.ts）的远景：天空、积云、对岸的山和小镇、防波堤上的灯塔、远处的跨海桥（海面本身见 water.ts），
  * 海上慢慢绕圈的几条渔船、头顶盘旋的海鸥。
  *
  * 照着一张二次元风格的海边小镇插画搭：深蓝的天、地平线发白，大朵的积云堆在山后面；
- * 海是亮的天蓝，越远越淡（菲涅耳：掠射角下反射的天光多），上面一闪一闪的碎光；
  * 对岸一条白色的小镇贴着海岸线，后面两层山（近的绿、远的发蓝）。
  *
  * 远景都很远（对岸 1km 外，山在 1.2~2km）：长焦（24°）会把远处的东西放大 —— 第一版对岸放在 430m，
@@ -226,116 +225,6 @@ export function createClouds(keep: Keep, dist: number, seaFrom: number, seaTo: n
     place(a, THREE.MathUtils.degToRad(14 + rc() * 22), dist * (0.35 + rc() * 0.3), mat(cirrus[k % 2], 0.5 + rc() * 0.3), dist * 0.95);
   }
   return group;
-}
-
-// ---- 海 ----
-const SEA_VERT = /* glsl */ `
-  varying vec3 vWorld;
-  #include <fog_pars_vertex>
-  void main() {
-    vec4 wp = modelMatrix * vec4( position, 1.0 );
-    vWorld = wp.xyz;
-    vec4 mvPosition = viewMatrix * wp;
-    gl_Position = projectionMatrix * mvPosition;
-    #include <fog_vertex>
-  }
-`;
-
-const SEA_FRAG = /* glsl */ `
-  uniform float uTime;
-  uniform vec3 uSunDir;
-  uniform vec3 uNear;
-  uniform vec3 uFar;
-  uniform vec3 uSky;
-  varying vec3 vWorld;
-  #include <common>
-  #include <fog_pars_fragment>
-
-  float hash12( vec2 p ) {
-    vec3 p3 = fract( vec3( p.xyx ) * 0.1031 );
-    p3 += dot( p3, p3.yzx + 33.33 );
-    return fract( ( p3.x + p3.y ) * p3.z );
-  }
-  // 一个方向的波：返回斜率（高度对 xz 的导数）
-  vec2 wave( vec2 p, vec2 dir, float len, float amp, float speed ) {
-    float k = 6.2831 / len;
-    float ph = dot( p, dir ) * k + uTime * speed;
-    return dir * ( amp * k * cos( ph ) );
-  }
-  void main() {
-    vec3 toCam = cameraPosition - vWorld;
-    float dist = length( toCam );
-    vec3 V = toCam / dist;
-    vec2 p = vWorld.xz;
-    // 几道不同方向、不同波长的波叠起来；远处的细波衰减掉（不然一片噪点）
-    float fine = 1.0 - smoothstep( 40.0, 220.0, dist );
-    vec2 s = wave( p, normalize( vec2( 0.8, 0.6 ) ), 9.0, 0.06, 1.1 )
-           + wave( p, normalize( vec2( -0.3, 1.0 ) ), 5.3, 0.035, 1.5 )
-           + wave( p, normalize( vec2( 1.0, -0.2 ) ), 3.1, 0.018 * ( 0.4 + 0.6 * fine ), 2.1 )
-           + wave( p, normalize( vec2( -0.7, -0.7 ) ), 1.7, 0.009 * fine, 2.9 );
-    vec3 N = normalize( vec3( -s.x, 1.0, -s.y ) );
-    float ndv = max( dot( N, V ), 0.0 );
-    // 菲涅耳：低头看是海水的颜色，越往远处（掠射角）反射的天光越多、越淡
-    // 只取一部分：全反射的话远处一片发白，插画里的海一直到对岸都是亮的天蓝
-    float fres = ( 0.02 + 0.98 * pow( 1.0 - ndv, 5.0 ) ) * 0.55;
-    vec3 water = mix( uNear, uFar, smoothstep( 15.0, 420.0, dist ) );
-    // 大块的深浅（缓慢流动），掠射角下被压成一道道横的明暗（变量别叫 patch：GLSL ES 3.0 的保留字，整个着色器编译不过）
-    float swell = sin( p.x * 0.07 + uTime * 0.05 + sin( p.y * 0.05 ) * 2.0 ) * sin( p.y * 0.09 - uTime * 0.04 + p.x * 0.02 );
-    water *= 1.0 + 0.08 * swell;
-    vec3 col = mix( water, uSky, clamp( fres, 0.0, 1.0 ) );
-    // 太阳的高光（转到太阳那一侧才看得到）
-    vec3 R = reflect( -V, N );
-    col += vec3( 1.0, 0.95, 0.85 ) * pow( max( dot( R, uSunDir ), 0.0 ), 180.0 ) * 2.5;
-    // 碎光：世界坐标里一格一个，随机的格子里有一颗，按自己的节奏一闪一闪。
-    // 半径随距离变大，保持一两个像素；太远的淡掉（不然闪成一片噪点）
-    vec2 cell = floor( p / 1.4 );
-    float h = hash12( cell );
-    float on = step( 0.82, h );
-    vec2 c = ( cell + 0.2 + 0.6 * vec2( hash12( cell + 7.1 ), hash12( cell + 3.7 ) ) ) * 1.4;
-    float rad = 0.05 + dist * 0.0022;
-    float d = length( ( p - c ) * vec2( 1.0, 0.6 ) );
-    float tw = pow( 0.5 + 0.5 * sin( uTime * ( 2.0 + 3.0 * h ) + h * 40.0 ), 6.0 );
-    float glint = on * tw * ( 1.0 - smoothstep( rad * 0.3, rad, d ) );
-    glint *= smoothstep( 6.0, 20.0, dist ) * ( 1.0 - smoothstep( 160.0, 320.0, dist ) );
-    // 朝着波峰的亮面多一点
-    glint *= 0.5 + 0.8 * max( dot( N, normalize( vec3( uSunDir.x, 0.6, uSunDir.z ) ) ), 0.0 );
-    col += vec3( 1.0, 0.98, 0.92 ) * glint * 1.6;
-    gl_FragColor = vec4( col, 1.0 );
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-    #include <fog_fragment>
-  }
-`;
-
-export function createSea(keep: Keep, sunDir: THREE.Vector3) {
-  const geo = keep(new THREE.PlaneGeometry(6000, 6000));
-  geo.rotateX(-Math.PI / 2);
-  const mat = keep(
-    new THREE.ShaderMaterial({
-      uniforms: THREE.UniformsUtils.merge([
-        THREE.UniformsLib.fog,
-        {
-          uTime: { value: 0 },
-          uSunDir: { value: sunDir.clone() },
-          uNear: { value: new THREE.Color(0x1d7fcc) },
-          uFar: { value: new THREE.Color(0x2f9ae2) },
-          uSky: { value: new THREE.Color(0x9fd2f2) },
-        },
-      ]),
-      vertexShader: SEA_VERT,
-      fragmentShader: SEA_FRAG,
-      fog: true,
-    }),
-  );
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.y = SEA_Y;
-  mesh.name = 'sea';
-  return {
-    mesh,
-    update(time: number) {
-      mat.uniforms.uTime.value = time;
-    },
-  };
 }
 
 // ---- 对岸：山 + 小镇 ----
