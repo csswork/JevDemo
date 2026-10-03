@@ -551,7 +551,11 @@ export function createGulls(keep: Keep, alive: () => boolean, layer?: number) {
     paths.forEach((p, k) => {
       const o = cloneSkinned(gltf.scene);
       o.rotation.order = 'YXZ';
-      if (layer != null) o.traverse((c) => c.layers.enable(layer));
+      o.traverse((c) => {
+        if (layer != null) c.layers.enable(layer);
+        // 每只的骨架各有一张骨骼矩阵的贴图（画过一次才建），场景换走时要一起释放
+        if ((c as THREE.SkinnedMesh).isSkinnedMesh) keep((c as THREE.SkinnedMesh).skeleton);
+      });
       group.add(o);
       const mixer = new THREE.AnimationMixer(o);
       const flap = mixer.clipAction(flapClip);
