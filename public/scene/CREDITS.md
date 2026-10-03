@@ -1,7 +1,8 @@
 # 场景素材
 
 咖啡店场景本身是程序生成的（src/vrm/scenes/cafe.ts），这里只有它打光用的 HDRI；
-公园（src/vrm/scenes/park.ts）用全景背景 + 真实模型。
+公园（src/vrm/scenes/park.ts）用全景背景 + 真实模型；
+街景（src/vrm/scenes/street.ts）除了借用公园的路灯、木板材质、打光的 HDR，咖啡店的几盆绿植，全部程序生成，没有自己的素材文件。
 
 全部来自 [Poly Haven](https://polyhaven.com)，**CC0**（公有领域，可商用、可再分发、不要求署名）。
 由 `scripts/fetch-scene-assets.mjs` 下载（1k 分辨率）。署名不是必须的，这里列出作者以示感谢：

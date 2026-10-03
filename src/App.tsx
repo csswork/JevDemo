@@ -73,6 +73,7 @@ function migratePrefs(id: string | null) {
 const BACKDROPS: Array<{ id: BackdropId; label: string }> = [
   { id: 'cafe', label: '咖啡店' },
   { id: 'park', label: '公园' },
+  { id: 'street', label: '街景' },
   { id: 'none', label: '纯色背景' },
 ];
 function savedBackdrop(): BackdropId | null {
