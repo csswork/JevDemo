@@ -7,6 +7,7 @@ import {
   type VRMAnimation,
 } from '@pixiv/three-vrm-animation';
 import { GESTURES } from './gestures';
+import { decryptModel, fetchBytes, isProtected } from './protect';
 import { MOTIONS, isProceduralMotion, type MotionId as AnyMotionId, type ProceduralMotionId } from '../act/schema';
 
 /** 动捕 .vrma 的动作 id（程序生成的在 gestures.ts） */
@@ -19,7 +20,8 @@ const CLIP_MOTIONS = MOTIONS.filter((id): id is ClipMotionId => !isProceduralMot
  *
  * 素材是 VRoid 官方免费的 7 个动作（public/motions/vroid/，VRMA_MotionPack）。
  * 规约：可商用，但要署名"キャラクターアニメーション: ピクシブ株式会社 VRoidプロジェクト"；
- * **禁止以可提取的形式再分发** —— 所以文件不进仓库（.gitignore）。
+ * **禁止以可提取的形式再分发** —— 所以仓库和网站上只放加密后的 .vrmax（见 protect.ts），
+ * 明文 .vrma 放在 private/vroid-motions/（gitignored），不在 public/ 下，构建产物里也没有。
  *
  * 试过腾讯混元文生动作（HY-Motion）生成的动作，放弃了：成年人比例的骨架换到这些角色身上，
  * 手一碰身体就穿模，动作本身也常有换步、张望、幅度过大 —— 见 README"动作"一节。
@@ -73,13 +75,13 @@ export interface MotionEdit {
 }
 
 export const MOTION_FILES: Record<MotionId, MotionEdit> = {
-  show_full_body: { file: 'vroid/VRMA_01.vrma', label: '展示全身' },
-  greeting: { file: 'vroid/VRMA_02.vrma', label: '打招呼', trim: { from: 2.6 } },
-  peace_sign: { file: 'vroid/VRMA_03.vrma', label: '比耶', talk: { to: 7 } },
-  shoot: { file: 'vroid/VRMA_04.vrma', label: '开枪' },
-  spin: { file: 'vroid/VRMA_05.vrma', label: '转圈' },
-  model_pose: { file: 'vroid/VRMA_06.vrma', label: '模特姿势' },
-  squat: { file: 'vroid/VRMA_07.vrma', label: '蹲下（深蹲）' },
+  show_full_body: { file: 'vroid/VRMA_01.vrmax', label: '展示全身' },
+  greeting: { file: 'vroid/VRMA_02.vrmax', label: '打招呼', trim: { from: 2.6 } },
+  peace_sign: { file: 'vroid/VRMA_03.vrmax', label: '比耶', talk: { to: 7 } },
+  shoot: { file: 'vroid/VRMA_04.vrmax', label: '开枪' },
+  spin: { file: 'vroid/VRMA_05.vrmax', label: '转圈' },
+  model_pose: { file: 'vroid/VRMA_06.vrmax', label: '模特姿势' },
+  squat: { file: 'vroid/VRMA_07.vrmax', label: '蹲下（深蹲）' },
   // pixiv ChatVRM 的站立待机循环（MIT，public/motions/chatvrm/，授权原文在同目录 LICENSE）。
   // 原片里人站在偏离中心 15.7cm 的地方（胯部从第一帧起就在 x = -15.7cm），实际左右晃动只有约 2.7cm
   // —— 以平均位置为中心。原片首尾两帧完全一样（所有骨骼差 < 0.05°），直接绕回开头。
@@ -95,7 +97,7 @@ export const MOTION_FILES: Record<MotionId, MotionEdit> = {
 
 /**
  * 底层循环待机用哪个动作。null = 用 idle 层的程序待机。
- * 文件不在时（新克隆的仓库）同样静默退回程序待机
+ * 文件加载失败时同样静默退回程序待机
  */
 export const IDLE_BASE: MotionId | null = 'idle_loop';
 
@@ -120,8 +122,12 @@ function loadSource(id: MotionId): Promise<VRMAnimation | null> {
   if (!p) {
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
-    p = loader
-      .loadAsync(motionUrl(id))
+    const url = motionUrl(id);
+    // 受保护的动作（.vrmax）先解密再 parse，见 protect.ts
+    const gltf = isProtected(url)
+      ? fetchBytes(url).then(decryptModel).then((data) => loader.parseAsync(data, ''))
+      : loader.loadAsync(url);
+    p = gltf
       .then((gltf) => (gltf.userData.vrmAnimations as VRMAnimation[] | undefined)?.[0] ?? null)
       .catch(() => null);
     sourceCache.set(id, p);

@@ -122,7 +122,7 @@ npm install && npm run dev
 | `tts/` | 本地语音服务（Python，mlx-audio）和试听测试脚本 | 保留 |
 | `src/runtime.ts` | 把上面几层串起来的运行时 | 改适配 |
 | `src/dev/` | 表情 / 动作的观察工具，只在开发模式下动态加载 | 重写 |
-| `public/motions/` | 动作素材（.vrma，gitignored，见"动作"一节） | 保留 |
+| `public/motions/` | 动作素材（VRoid 的加密成 .vrmax，ChatVRM 的 .vrma 明文，见"动作"一节） | 保留 |
 
 `act/` 和 `jev/` 不 import 任何 three.js 符号，这是有意为之：换成 Live2D 或
 AnimeActEngine 时，需要重写的只有 `vrm/`。
@@ -597,10 +597,18 @@ Jev 判成 relaxed → neutral 0.87 → neutral 0.69，第一段只有 1.7s，�
 ### 素材和授权
 
 - 从 VRoid 官方 BOOTH 免费下载（[VRMアニメーション7種セット](https://vroid.booth.pm/items/5512385)，
-  要登录），把 `VRMA_MotionPack/vrma/*.vrma` 放进 `public/motions/vroid/`
+  要登录）
 - 规约：可以商用，但要署名 **"キャラクターアニメーション: ピクシブ株式会社 VRoidプロジェクト"**
-  （面板底部已经挂上）；**禁止以可提取的形式再分发** —— 所以 `public/motions/` 在 `.gitignore` 里，
-  不进仓库。文件不在时动作静默跳过，其他一切照常
+  （面板底部已经挂上）；**禁止以可提取的形式再分发** —— 和 QUAPPA 模型同样处理：仓库和网站上只放
+  加密后的 `public/motions/vroid/VRMA_0*.vrmax`，浏览器里解密后直接 parse（格式见 `src/vrm/protect.ts`）。
+  明文 `.vrma` 放 `private/vroid-motions/`（gitignored，不在 `public/` 下，所以构建产物里也没有）。
+  换了新版动作包时重新加密：
+
+  ```bash
+  for i in 1 2 3 4 5 6 7; do node scripts/protect-model.ts private/vroid-motions/VRMA_0$i.vrma public/motions/vroid/VRMA_0$i.vrmax; done
+  ```
+
+  文件加载失败时动作静默跳过，其他一切照常
 
 ### 谁决定做不做
 
@@ -653,7 +661,7 @@ Jev 判成 relaxed → neutral 0.87 → neutral 0.69，第一段只有 1.7s，�
 
 - 来源：[pixiv/ChatVRM](https://github.com/pixiv/ChatVRM) 的 `public/idle_loop.vrma`（153KB，**MIT**，
   授权原文放在 `public/motions/chatvrm/LICENSE`）。和 VRoid 的 7 个动作一样是 `.vrma`、为 VRoid 体型的角色做的，
-  没有混元那种比例对不上的问题。放在 `public/motions/` 下，不进仓库
+  没有混元那种比例对不上的问题。MIT 允许再分发，明文 `.vrma` 直接入库
 - 原片里人站在偏离中心 15.7cm 的地方 → `hips.center` 以平均位置为中心；实际左右晃动只有约 2.8cm
 - 原片本身是无缝循环（首尾两帧所有骨骼差 < 0.05°）→ `loop: 'wrap'` 直接绕回开头。交叉淡化反而会
   把相差零点几秒的两个姿势混在一起。实测 25 秒（跨两次接缝）单帧最大转动 0.17°

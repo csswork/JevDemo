@@ -1,0 +1,8 @@
+# vercel deploy（CLI 本地上传）不带这些：明文素材、本地数据和工具
+private/
+public/models/quappa/*.vrm
+public/models/candidates/
+dev-out/
+data/
+tts/
+scripts/pmx2vrm/

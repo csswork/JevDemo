@@ -38,8 +38,10 @@ public/models/candidates/
 dev-out/
 # 聊天记录（server/chatStore.ts）：每个模型一个 session，不进仓库
 data/
-# VRoid 官方动作包（VRMA_MotionPack）：规约禁止以可提取的形式再分发，不进仓库
-public/motions/
+# VRoid 官方动作包（VRMA_MotionPack）：规约禁止以可提取的形式再分发。
+# 仓库里只放加密后的 public/motions/vroid/*.vrmax，明文 .vrma 放 private/（不在 public/ 下，不进构建产物）
+private/
+public/motions/vroid/*.vrma
 
 # PMX → VRM 转换脚本（scripts/pmx2vrm/）：Blender 跑脚本时生成的字节码
 __pycache__/

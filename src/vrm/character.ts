@@ -11,7 +11,7 @@ import { isProceduralMotion, type MotionId } from '../act/schema';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
 import { LipSyncLayer } from './lipsync';
-import { decryptModel, fetchBytes, isProtectedModel } from './protect';
+import { decryptModel, fetchBytes, isProtected } from './protect';
 
 /**
  * 角色控制器 —— Act IR 的消费端。
@@ -56,7 +56,7 @@ export class Character {
     loader.register((parser) => new VRMLoaderPlugin(parser));
 
     // 受保护的模型（.vrmx）先解密再 parse，见 protect.ts
-    const gltf = isProtectedModel(url)
+    const gltf = isProtected(url)
       ? await loader.parseAsync(await decryptModel(await fetchBytes(url, onProgress)), '')
       : await loader.loadAsync(url, (e) => {
           if (e.total > 0) onProgress?.(e.loaded / e.total);

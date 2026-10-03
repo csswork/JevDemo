@@ -9,6 +9,15 @@
         "dev"
       ],
       "autoPort": true
+    },
+    {
+      "name": "jev-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "preview"
+      ],
+      "port": 4173
     }
   ]
 }

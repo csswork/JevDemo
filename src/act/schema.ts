@@ -16,7 +16,8 @@ export type Emotion = (typeof EMOTIONS)[number];
 
 /**
  * 动作词表：VRoid 官方免费的 7 个动捕动作（.vrma，见 vrm/motion.ts）。
- * 新增动作 = 把 .vrma 放进 public/motions/，在 motion.ts 的 MOTION_FILES 里登记，再加到这里；
+ * 新增动作 = 把 .vrma 放进 public/motions/（规约不许再分发的先用 scripts/protect-model.ts 加密成 .vrmax），
+ * 在 motion.ts 的 MOTION_FILES 里登记，再加到这里；
  * 程序生成的在 gestures.ts 的 GESTURES 里登记，再加到这里和 PROCEDURAL_MOTIONS。
  *
  * 这几个都是全身的展示动作（7~12 秒），不是对话里的小手势 —— 对话里只有打招呼、

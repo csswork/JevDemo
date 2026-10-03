@@ -1,14 +1,16 @@
 /**
- * 受保护的模型文件（.vrmx）。
+ * 受保护的模型文件（.vrmx）和动作文件（.vrmax）。
  *
- * QUAPPA-EL 的模型规约要求：在交互内容里分发含模型的二进制数据时，必须采取措施让它无法被再利用。
- * 所以仓库和网站上只放加密后的文件，浏览器里用 WebCrypto 解密后直接交给 GLTFLoader.parse ——
- * 明文 VRM 不落盘、不生成 URL，网络面板里抓到的也只是密文。
+ * QUAPPA-EL 的模型规约要求：在交互内容里分发含模型的二进制数据时，必须采取措施让它无法被再利用；
+ * VRoid 的动作包规约禁止「以可提取的形式」再分发。两者同一种处理：
+ * 仓库和网站上只放加密后的文件，浏览器里用 WebCrypto 解密后直接交给 GLTFLoader.parse ——
+ * 明文 VRM / VRMA 不落盘、不生成 URL，网络面板里抓到的也只是密文。
  *
  * 前端解密绕不开把密钥带进页面，这一层挡的是「直接下载 / 另存下来拿去别的软件里用」，
  * 不是对抗专门逆向的人。密钥拆成两段异或，免得打包产物里有一整段好搜的字节。
  *
  * 格式：'JVX1'（4 字节）+ IV（12 字节）+ AES-256-GCM 密文（末尾含 16 字节校验）。
+ * 两种扩展名格式完全一样（都是 GLB 加密），分开只是为了一眼看出是模型还是动作。
  * 加密用 scripts/protect-model.ts（Node 也有 WebCrypto，和这里共用同一份代码）。
  */
 
@@ -22,8 +24,12 @@ const K2 = [
   6, 192, 22, 118, 179, 92,
 ];
 
-export const PROTECTED_EXT = '.vrmx';
-export const isProtectedModel = (url: string) => url.split(/[?#]/)[0].endsWith(PROTECTED_EXT);
+/** 模型 .vrmx、动作 .vrmax */
+export const PROTECTED_EXTS = ['.vrmx', '.vrmax'];
+export const isProtected = (url: string) => {
+  const path = url.split(/[?#]/)[0];
+  return PROTECTED_EXTS.some((ext) => path.endsWith(ext));
+};
 
 function key(usage: KeyUsage) {
   const raw = new Uint8Array(K1.map((b, i) => b ^ K2[i]));
@@ -42,14 +48,14 @@ export async function encryptModel(plain: Uint8Array<ArrayBuffer>): Promise<Uint
 
 export async function decryptModel(data: ArrayBuffer): Promise<ArrayBuffer> {
   const bytes = new Uint8Array(data);
-  if (bytes.length < 32 || MAGIC.some((b, i) => bytes[i] !== b)) throw new Error('不是受保护的模型文件');
+  if (bytes.length < 32 || MAGIC.some((b, i) => bytes[i] !== b)) throw new Error('不是受保护的文件');
   return crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(4, 16) }, await key('decrypt'), bytes.subarray(16));
 }
 
 /** 带进度的整文件下载（loadAsync 自带进度，parse 前得自己拉） */
 export async function fetchBytes(url: string, onProgress?: (ratio: number) => void): Promise<ArrayBuffer> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`模型下载失败：${res.status} ${url}`);
+  if (!res.ok) throw new Error(`下载失败：${res.status} ${url}`);
   const total = Number(res.headers.get('content-length')) || 0;
   if (!res.body || !total || !onProgress) return res.arrayBuffer();
   const reader = res.body.getReader();
