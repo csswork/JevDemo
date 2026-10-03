@@ -54,8 +54,19 @@ export interface Backdrop {
   };
   /** 相机看多远（米，默认 20，室内够了；室外要看到远处的树和天空） */
   far?: number;
+  /**
+   * 像素预算：画布最多画多少个像素（宽 × 高 × 像素比²）。省略 = 不限，像素比照常取 min(dpr, 2)。
+   * 满屏都是逐像素算光的树叶、草的场景，Retina 大窗口下像素比 2 要画四百多万像素；
+   * 给了预算，像素比就按窗口大小自动降一点（比如 1.76），肉眼几乎看不出，片元着色的开销按像素数降
+   */
+  pixelBudget?: number;
   /** 每帧调一次（风吹树叶、草） */
   update?(dt: number): void;
+  /**
+   * 每次渲染前调一次，传进这次渲染的视锥（实际用的相机：主相机、防穿墙的替身或调试相机）
+   * 和主光阴影相机的视锥（主光不投影时为 null）。场景拿来自己剔除合批的东西（公园的树，见 park.ts）
+   */
+  beforeRender?(view: THREE.Frustum, shadow: THREE.Frustum | null): void;
   dispose(): void;
 }
 
