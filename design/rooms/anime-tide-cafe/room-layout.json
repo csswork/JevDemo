@@ -2,7 +2,318 @@
   "schema": "game-room.layout.v1",
   "roomId": "anime-tide-cafe",
   "units": "meters",
-  "surfaces": [],
-  "instances": [],
-  "productionCamera": {"location": [0, 0, 0], "target": [0, 0, 0], "verticalFovDegrees": 60}
+  "surfaces": [
+    {
+      "id": "structural floor",
+      "blenderObject": "structural floor"
+    },
+    {
+      "id": "sealed main ceiling",
+      "blenderObject": "sealed main ceiling"
+    },
+    {
+      "id": "west window wall",
+      "blenderObject": "west window wall"
+    },
+    {
+      "id": "east wall",
+      "blenderObject": "east wall"
+    },
+    {
+      "id": "back wall with true arch",
+      "blenderObject": "back wall with true arch"
+    },
+    {
+      "id": "front return wall",
+      "blenderObject": "front return wall"
+    },
+    {
+      "id": "nook floor",
+      "blenderObject": "nook floor"
+    },
+    {
+      "id": "nook ceiling",
+      "blenderObject": "nook ceiling"
+    },
+    {
+      "id": "nook west wall",
+      "blenderObject": "nook west wall"
+    },
+    {
+      "id": "nook east wall",
+      "blenderObject": "nook east wall"
+    },
+    {
+      "id": "nook rear wall",
+      "blenderObject": "nook rear wall"
+    }
+  ],
+  "instances": [
+    {
+      "id": "counter-0",
+      "assetId": "counter",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "pastry-case-0",
+      "assetId": "pastry-case",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "espresso-0",
+      "assetId": "espresso",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "table-0",
+      "assetId": "table",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "table-1",
+      "assetId": "table",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "table-2",
+      "assetId": "table",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "table-3",
+      "assetId": "table",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "table-4",
+      "assetId": "table",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-0",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-1",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-2",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-3",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-4",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-5",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-6",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-7",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-8",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "chair-9",
+      "assetId": "chair",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "pendant-0",
+      "assetId": "pendant",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "pendant-1",
+      "assetId": "pendant",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "pendant-2",
+      "assetId": "pendant",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "pendant-3",
+      "assetId": "pendant",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "pendant-4",
+      "assetId": "pendant",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-0",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-1",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-2",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-3",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-4",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-5",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-6",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-7",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-8",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-9",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-10",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-11",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-12",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-13",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-14",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-15",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "greenery-16",
+      "assetId": "greenery",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    },
+    {
+      "id": "banquette-0",
+      "assetId": "banquette",
+      "source": "blender/tide-cafe.blend",
+      "placementAuthority": "blender/geometry-audit.json"
+    }
+  ],
+  "productionCamera": {
+    "viewport": [
+      1600,
+      1000
+    ],
+    "location": [
+      0,
+      1.42,
+      1.58
+    ],
+    "target": [
+      0,
+      1.395,
+      0
+    ],
+    "verticalFovDegrees": 24
+  },
+  "source": "blender/tide-cafe.blend",
+  "evaluatedGeometryAudit": "blender/geometry-audit.json",
+  "coordinateConvention": "Blender Z up; Three.js x=X, y=Z, z=-Y"
 }

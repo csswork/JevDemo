@@ -1,0 +1,92 @@
+{
+  "schema": "game-room.room-brief.v1",
+  "roomId": "anime-tide-cafe",
+  "family": "social-hub",
+  "purpose": "独立新增二次元海边咖啡馆，服务 VRM 角色对话与环绕观景。",
+  "runtimeSurface": "JevDemo React / Three.js Backdrop; proposed ID animeCafe",
+  "boundsMeters": [
+    10,
+    3.3,
+    10
+  ],
+  "hero": {
+    "id": "vrm-character",
+    "role": "主视觉与对话焦点；原点 +Z 朝向",
+    "reservedBoundsMeters": [
+      2.4,
+      2.2,
+      2.4
+    ]
+  },
+  "symmetry": {
+    "mode": "none",
+    "order": 1,
+    "appliesTo": [],
+    "exceptions": [
+      "左侧海景窗与靠窗双人桌，右侧独立会话组；有意不对称。"
+    ]
+  },
+  "circulation": {
+    "description": "正前 2.6m 入口 → 中央 2.4m 留白 → 后方吧台；桌椅位于两侧；人物后方保持 1.2m 服务净距。",
+    "minimumClearanceMeters": 1.2
+  },
+  "productionCamera": {
+    "viewport": [
+      1600,
+      900
+    ],
+    "location": [
+      0,
+      1.42,
+      1.58
+    ],
+    "target": [
+      0,
+      1.395,
+      0
+    ],
+    "verticalFovDegrees": 24
+  },
+  "performanceBudget": {
+    "maxSceneTriangles": 120000,
+    "maxVLowBytes": 8000000,
+    "maxHighTextureBytes": 24000000
+  },
+  "creditBudget": {
+    "maximumCredits": 0,
+    "approvalRequired": true
+  },
+  "environment": {
+    "type": "none",
+    "identity": "",
+    "source": "",
+    "assignmentKey": ""
+  },
+  "artifacts": {
+    "floorPlan": "plans/lower-room.svg",
+    "reflectedCeilingPlan": "plans/reflected-ceiling.svg",
+    "planMetadata": "plan-metadata.json",
+    "wallElevations": [
+      "plans/back-elevation.svg",
+      "plans/window-elevation.svg"
+    ],
+    "visualTarget": "review.html",
+    "openingContactSheet": "masks/contact-sheet.svg"
+  },
+  "styleReference": {
+    "sources": [
+      "../../../src/vrm/scenes/street.ts",
+      "../../../src/vrm/scenes/streetInterior.ts",
+      "../../../dev-out/street_v5_default.jpg"
+    ],
+    "direction": "海边日式小镇二次元插画，奶油墙、深木窗框、绿灰软装、暖灯、淡蓝海天；保留微弱材质细节与接触阴影。",
+    "palette": [
+      "#eee4ce",
+      "#976c47",
+      "#514039",
+      "#839b82",
+      "#91bfc7",
+      "#bc9163"
+    ]
+  }
+}

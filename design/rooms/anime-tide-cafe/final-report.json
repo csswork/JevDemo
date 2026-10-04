@@ -1,10 +1,93 @@
 {
   "schema": "game-room.room-final-report.v1",
   "roomId": "anime-tide-cafe",
-  "gates": {"function": false, "form": false, "runtime": false},
-  "formChecks": {"floorPlanParity": false, "primaryArrival": false, "symmetry": false, "shell": false, "manifold": false, "booleans": false, "collisions": false, "support": false, "attachmentOrientation": false, "ceilingAttachmentOrientation": false, "seatingOrientation": false, "focalDistribution": false, "heroClearance": false, "colonnades": false, "screenClearance": false, "scale": false, "camera": false, "ceilingCoverage": false, "environmentCoverage": false, "provenance": false},
-  "reviewRenders": {"corners": [], "ceiling": [], "environment": {}},
-  "runtimeChecks": {"vlow": false, "textureTiers": false, "lightmap": false, "lightingManifest": false, "performance": false, "browserCapture": "", "errors": []},
-  "postmortem": {"observations": [], "corrections": [], "remainingRisks": []},
-  "proposedLessons": []
+  "gates": {
+    "function": false,
+    "form": false,
+    "runtime": false
+  },
+  "formChecks": {
+    "floorPlanParity": false,
+    "primaryArrival": false,
+    "symmetry": false,
+    "shell": false,
+    "manifold": true,
+    "booleans": true,
+    "collisions": false,
+    "support": false,
+    "attachmentOrientation": false,
+    "ceilingAttachmentOrientation": false,
+    "seatingOrientation": false,
+    "focalDistribution": false,
+    "heroClearance": false,
+    "colonnades": false,
+    "screenClearance": false,
+    "scale": false,
+    "camera": false,
+    "ceilingCoverage": true,
+    "environmentCoverage": false,
+    "provenance": true
+  },
+  "reviewRenders": {
+    "corners": [
+      "renders/blender-corner-front-left.png",
+      "renders/blender-corner-front-right.png",
+      "renders/blender-corner-back-left.png",
+      "renders/blender-corner-back-right.png"
+    ],
+    "ceiling": [
+      "renders/blender-ceiling.png",
+      "renders/blender-ceiling-oblique-a.png",
+      "renders/blender-ceiling-oblique-b.png"
+    ],
+    "environment": {}
+  },
+  "runtimeChecks": {
+    "vlow": false,
+    "textureTiers": false,
+    "lightmap": false,
+    "lightingManifest": false,
+    "performance": false,
+    "browserCapture": "",
+    "errors": []
+  },
+  "postmortem": {
+    "observations": [
+      "用户要求的细节不能由简单几何草模证明；本轮以真实 Blender 建模和实际渲染为证据。"
+    ],
+    "corrections": [
+      "修复拱形 Boolean 切割体法线，确保真实通道。",
+      "让薄玻璃透过阴影射线，保留窗框日光阴影。",
+      "将简单咖啡机换为精细单独建模的双头机器。",
+      "在真实舞台机位中将咖啡机和磨豆机移向右侧，保留人物头部后方留白。"
+    ],
+    "remainingRisks": [
+      "Function/Form human review pending",
+      "Runtime camera fit, collision, texture tiers and draw-call budgets unverified",
+      "Skill validator mandates positive Meshy budget but project remains local modelling with zero spend"
+    ]
+  },
+  "proposedLessons": [
+    {
+      "id": "reference-detail-needs-authored-geometry",
+      "status": "pending",
+      "observation": "精细二次元室内参考中的构件层次不能由简陋程序草模表达；真实 Blender 多视角渲染揭露开口法线、透光与人物背景问题。",
+      "rule": "用户要求精细参考图建模时，以可编辑的 Blender 几何和真实审阅渲染作为交付证据，草模只作布局中间件。"
+    }
+  ],
+  "designVerification": {
+    "authoringTool": "Blender 5.2.2 LTS",
+    "reference": "reference/user-cafe.png",
+    "source": "blender/tide-cafe.blend",
+    "meshEvidence": "blender/geometry-audit.json",
+    "runtimeIntegrated": false,
+    "evaluatedVisibleMeshObjects": 3600,
+    "evaluatedTriangles": 212236,
+    "allApertureCentersClear": true,
+    "allStructuralMeshesManifold": true,
+    "sourceSha256": "e748af5a2d6601b25bb2f46cfb6aded11856eec8a87ee9330c4b19295a33a482",
+    "referenceSha256": "9eda55ad70a80a7b7aeedfcb130ced648ed18b793002f03759a77757feb8dd2b",
+    "fourViews": "renders/blender-review-sheet.jpg",
+    "reviewRenderCount": 12
+  }
 }

@@ -99,6 +99,7 @@ function migratePrefs(id: string | null) {
 }
 const BACKDROPS: Array<{ id: BackdropId; label: string; icon: React.ReactNode }> = [
   { id: 'cafe', label: '咖啡店', icon: <IconCoffee size={18} /> },
+  { id: 'animeCafe', label: '潮汐咖啡馆', icon: <IconCoffee size={18} /> },
   { id: 'park', label: '公园', icon: <IconTree size={18} /> },
   { id: 'street', label: '街景', icon: <IconCity size={18} /> },
   { id: 'none', label: '纯色', icon: <IconBlank size={18} /> },

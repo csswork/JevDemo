@@ -1,0 +1,39 @@
+{
+  "schema": "game-room.opening-cutter.v1",
+  "id": "entry",
+  "kind": "door",
+  "widthMeters": 2.41259842519685,
+  "heightMeters": 3.2550940438871474,
+  "sillMeters": 0.0,
+  "depthMeters": null,
+  "source": "authored-entry.png",
+  "sourceSha256": "d38400b159c837cb83cdadce0261577c14533ab6d77818e45a4289e91f753128",
+  "imageSize": [
+    384,
+    640
+  ],
+  "whitePixelRatio": 0.9932373,
+  "contours": [
+    {
+      "role": "outer",
+      "points": [
+        [
+          0.002611,
+          0.9984351
+        ],
+        [
+          0.002611,
+          0.0
+        ],
+        [
+          0.997389,
+          0.0
+        ],
+        [
+          0.997389,
+          0.9984351
+        ]
+      ]
+    }
+  ]
+}

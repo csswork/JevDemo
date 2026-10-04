@@ -1,7 +1,38 @@
 {
   "schema": "game-room.milestone-reviews.v1",
   "roomId": "anime-tide-cafe",
-  "function": {"status": "pending", "approvedBy": "", "approvedAt": "", "evidence": [], "strangestElement": "", "notes": ""},
-  "form": {"status": "pending", "approvedBy": "", "approvedAt": "", "evidence": [], "strangestElement": "", "notes": ""},
-  "runtime": {"status": "pending", "approvedBy": "", "approvedAt": "", "evidence": [], "strangestElement": "", "notes": ""}
+  "function": {
+    "status": "pending",
+    "approvedBy": "",
+    "approvedAt": "",
+    "evidence": [
+      "reference/user-cafe.png",
+      "blender/authoring-metadata.json"
+    ],
+    "strangestElement": "海景窗必须提供真正可见的外部景深，不能用实墙上的贴画冒充窗。",
+    "notes": "用户否决初版草模，并明确提供参考图要求使用 Blender 精细建模。本轮建模由该明确指令授权；没有将此指令伪记为 Function 门槛全项批准。"
+  },
+  "form": {
+    "status": "approved",
+    "approvedBy": "user",
+    "approvedAt": "2026-10-04T12:17:03.352067+00:00",
+    "evidence": [
+      "blender/tide-cafe.blend",
+      "renders/blender-main.png",
+      "renders/blender-window-seating.png",
+      "renders/blender-counter.png",
+      "renders/blender-depth.png",
+      "blender/geometry-audit.json"
+    ],
+    "strangestElement": "拱门承诺可穿越，已切开结构墙并连接真实纵深座位区；窗景来自三维室外几何。",
+    "notes": "用户在查看 Blender 四视角实际渲染后明确表示：看起来不错，加入场景列表看看。授权本地运行时导出、优化与加入场景列表。"
+  },
+  "runtime": {
+    "status": "pending",
+    "approvedBy": "",
+    "approvedAt": "",
+    "evidence": [],
+    "strangestElement": "",
+    "notes": ""
+  }
 }

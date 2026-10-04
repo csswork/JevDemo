@@ -1,0 +1,34 @@
+{
+  "schema": "game-room.milestone-reviews.v1",
+  "roomId": "anime-tide-cafe",
+  "function": {
+    "status": "pending",
+    "approvedBy": "",
+    "approvedAt": "",
+    "evidence": [
+      "review.html",
+      "images/contact-sheet.svg",
+      "plans/lower-room.svg",
+      "plans/reflected-ceiling.svg",
+      "masks/contact-sheet.svg"
+    ],
+    "strangestElement": "海景窗必须提供真正可见的外部景深，不能用实墙上的贴画冒充窗。",
+    "notes": "等待用户确认布局、道具和开口。预览是功能设计模型；最终 Blender 结构、材质、运行时接入均未开始。"
+  },
+  "form": {
+    "status": "pending",
+    "approvedBy": "",
+    "approvedAt": "",
+    "evidence": [],
+    "strangestElement": "",
+    "notes": ""
+  },
+  "runtime": {
+    "status": "pending",
+    "approvedBy": "",
+    "approvedAt": "",
+    "evidence": [],
+    "strangestElement": "",
+    "notes": ""
+  }
+}

@@ -1,0 +1,1539 @@
+{
+  "schema": "game-room.plan-metadata.v1",
+  "roomId": "anime-tide-cafe",
+  "style": "monochrome-engineering",
+  "projectionSource": "actual-meshes",
+  "layers": [
+    "lower-room",
+    "reflected-ceiling"
+  ],
+  "semanticLabelsOutsideImage": true,
+  "aiInspirationIncluded": false,
+  "aiInspirationReason": "",
+  "coverage": [
+    "room-outline",
+    "cutouts",
+    "openings",
+    "exterior-apron",
+    "main-sign",
+    "ingress-props",
+    "floor-markers",
+    "barriers",
+    "columns",
+    "circulation",
+    "placed-features"
+  ],
+  "geometrySource": "concept-geometry.json",
+  "features": [
+    {
+      "id": "floor",
+      "position": [
+        0,
+        -0.1,
+        0
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "back-wall",
+      "position": [
+        0,
+        1.65,
+        -5.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "right-wall",
+      "position": [
+        5.1,
+        1.65,
+        0
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "left-sill",
+      "position": [
+        -5.1,
+        0.4,
+        0
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "left-header",
+      "position": [
+        -5.1,
+        3.05,
+        0
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "left-pier",
+      "position": [
+        -5.1,
+        1.8,
+        -4.6
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "left-pier",
+      "position": [
+        -5.1,
+        1.8,
+        -0.2
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "left-pier",
+      "position": [
+        -5.1,
+        1.8,
+        4.4
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "front-wall",
+      "position": [
+        -3.15,
+        1.65,
+        5.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "front-wall",
+      "position": [
+        3.15,
+        1.65,
+        5.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "arrival-header",
+      "position": [
+        0,
+        3.05,
+        5.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "apron",
+      "position": [
+        0,
+        -0.08,
+        5.75
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "ceiling",
+      "position": [
+        0,
+        3.4,
+        0
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "ceiling-beam",
+      "position": [
+        0,
+        3.23,
+        -3.8
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "ceiling-beam",
+      "position": [
+        0,
+        3.23,
+        -1.4
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "ceiling-beam",
+      "position": [
+        0,
+        3.23,
+        1.4
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "ceiling-beam",
+      "position": [
+        0,
+        3.23,
+        3.8
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "window-frame",
+      "position": [
+        -4.98,
+        1.8,
+        -4.2
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-frame",
+      "position": [
+        -4.98,
+        1.8,
+        -0.8
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-frame",
+      "position": [
+        -4.98,
+        0.8,
+        -2.5
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-frame",
+      "position": [
+        -4.98,
+        2.8,
+        -2.5
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-mullion",
+      "position": [
+        -4.98,
+        1.8,
+        -2.5
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-transom",
+      "position": [
+        -4.98,
+        2.3,
+        -2.5
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "glass",
+      "position": [
+        -5.06,
+        1.8,
+        -2.5
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-frame",
+      "position": [
+        -4.98,
+        1.8,
+        0.40000000000000013
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-frame",
+      "position": [
+        -4.98,
+        1.8,
+        3.8
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-frame",
+      "position": [
+        -4.98,
+        0.8,
+        2.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-frame",
+      "position": [
+        -4.98,
+        2.8,
+        2.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-mullion",
+      "position": [
+        -4.98,
+        1.8,
+        2.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "window-transom",
+      "position": [
+        -4.98,
+        2.3,
+        2.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "glass",
+      "position": [
+        -5.06,
+        1.8,
+        2.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        0,
+        0.51,
+        -3.15
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        0,
+        1.055,
+        -3.15
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -3.1,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -2.9,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -2.7,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -2.5,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -2.3,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -2.1,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -1.9,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -1.7,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -1.5,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -1.3,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -1.1,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -0.8999999999999999,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -0.6999999999999997,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -0.5,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -0.2999999999999998,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        -0.10000000000000009,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        0.10000000000000009,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        0.30000000000000027,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        0.5,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        0.7000000000000002,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        0.8999999999999999,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        1.1,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        1.3000000000000003,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        1.5000000000000004,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        1.7000000000000006,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        1.9,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        2.1,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        2.3000000000000003,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        2.5000000000000004,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        2.7000000000000006,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        2.9,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        3.1,
+        0.55,
+        -2.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "counter",
+      "position": [
+        0,
+        0.13,
+        -2.53
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "back-shelf",
+      "position": [
+        2.5,
+        1.85,
+        -4.94
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "shelf-cup",
+      "position": [
+        1.6,
+        1.94,
+        -4.83
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "shelf-cup",
+      "position": [
+        1.9,
+        1.94,
+        -4.83
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "shelf-cup",
+      "position": [
+        2.2,
+        1.94,
+        -4.83
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "shelf-cup",
+      "position": [
+        2.5,
+        1.94,
+        -4.83
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "shelf-cup",
+      "position": [
+        2.8,
+        1.94,
+        -4.83
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "shelf-cup",
+      "position": [
+        3.1,
+        1.94,
+        -4.83
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "menu",
+      "position": [
+        -2.7,
+        2.05,
+        -4.94
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "menu",
+      "position": [
+        -2.7,
+        2.05,
+        -4.89
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "espresso",
+      "position": [
+        2.1,
+        1.33,
+        -3.15
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "espresso",
+      "position": [
+        2.1,
+        1.31,
+        -2.91
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "espresso",
+      "position": [
+        2.1,
+        1.1,
+        -2.8
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "espresso",
+      "position": [
+        1.91,
+        1.19,
+        -2.76
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "espresso",
+      "position": [
+        2.28,
+        1.19,
+        -2.76
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "pastry",
+      "position": [
+        -2.3,
+        1.11,
+        -3.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "pastry",
+      "position": [
+        -2.3,
+        1.17,
+        -3.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "pastry",
+      "position": [
+        -1.95,
+        1.11,
+        -3.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "pastry",
+      "position": [
+        -1.95,
+        1.17,
+        -3.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "pastry",
+      "position": [
+        -1.6,
+        1.11,
+        -3.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "pastry",
+      "position": [
+        -1.6,
+        1.17,
+        -3.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-0",
+      "position": [
+        -3.35,
+        0.755,
+        -1.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-0",
+      "position": [
+        -3.35,
+        0.37,
+        -1.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-0",
+      "position": [
+        -3.35,
+        0.04,
+        -1.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "cup",
+      "position": [
+        -3.35,
+        0.825,
+        -1.1
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-0",
+      "position": [
+        -3.35,
+        0.46,
+        -2.05
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-0",
+      "position": [
+        -3.35,
+        0.76,
+        -2.26
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-0",
+      "position": [
+        -3.52,
+        0.21,
+        -2.2199999999999998
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-0",
+      "position": [
+        -3.52,
+        0.21,
+        -1.88
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-0",
+      "position": [
+        -3.18,
+        0.21,
+        -2.2199999999999998
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-0",
+      "position": [
+        -3.18,
+        0.21,
+        -1.88
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-1",
+      "position": [
+        -3.35,
+        0.46,
+        -0.15000000000000013
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-1",
+      "position": [
+        -3.35,
+        0.76,
+        0.05999999999999986
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-1",
+      "position": [
+        -3.52,
+        0.21,
+        -0.3200000000000002
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-1",
+      "position": [
+        -3.52,
+        0.21,
+        0.01999999999999988
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-1",
+      "position": [
+        -3.18,
+        0.21,
+        -0.3200000000000002
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-0-1",
+      "position": [
+        -3.18,
+        0.21,
+        0.01999999999999988
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-1",
+      "position": [
+        -3.35,
+        0.755,
+        2.3
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-1",
+      "position": [
+        -3.35,
+        0.37,
+        2.3
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-1",
+      "position": [
+        -3.35,
+        0.04,
+        2.3
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "cup",
+      "position": [
+        -3.35,
+        0.825,
+        2.3
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-0",
+      "position": [
+        -3.35,
+        0.46,
+        1.3499999999999999
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-0",
+      "position": [
+        -3.35,
+        0.76,
+        1.14
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-0",
+      "position": [
+        -3.52,
+        0.21,
+        1.18
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-0",
+      "position": [
+        -3.52,
+        0.21,
+        1.5199999999999998
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-0",
+      "position": [
+        -3.18,
+        0.21,
+        1.18
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-0",
+      "position": [
+        -3.18,
+        0.21,
+        1.5199999999999998
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-1",
+      "position": [
+        -3.35,
+        0.46,
+        3.25
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-1",
+      "position": [
+        -3.35,
+        0.76,
+        3.46
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-1",
+      "position": [
+        -3.52,
+        0.21,
+        3.08
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-1",
+      "position": [
+        -3.52,
+        0.21,
+        3.42
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-1",
+      "position": [
+        -3.18,
+        0.21,
+        3.08
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-1-1",
+      "position": [
+        -3.18,
+        0.21,
+        3.42
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-2",
+      "position": [
+        3.4,
+        0.755,
+        1.8
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-2",
+      "position": [
+        3.4,
+        0.37,
+        1.8
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "table-2",
+      "position": [
+        3.4,
+        0.04,
+        1.8
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "cup",
+      "position": [
+        3.4,
+        0.825,
+        1.8
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-0",
+      "position": [
+        3.4,
+        0.46,
+        0.8500000000000001
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-0",
+      "position": [
+        3.4,
+        0.76,
+        0.6400000000000001
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-0",
+      "position": [
+        3.23,
+        0.21,
+        0.68
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-0",
+      "position": [
+        3.23,
+        0.21,
+        1.02
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-0",
+      "position": [
+        3.57,
+        0.21,
+        0.68
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-0",
+      "position": [
+        3.57,
+        0.21,
+        1.02
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-1",
+      "position": [
+        3.4,
+        0.46,
+        2.75
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-1",
+      "position": [
+        3.4,
+        0.76,
+        2.96
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-1",
+      "position": [
+        3.23,
+        0.21,
+        2.58
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-1",
+      "position": [
+        3.23,
+        0.21,
+        2.92
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-1",
+      "position": [
+        3.57,
+        0.21,
+        2.58
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "chair-2-1",
+      "position": [
+        3.57,
+        0.21,
+        2.92
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "pendant-0",
+      "position": [
+        -2.2,
+        2.94,
+        -3.15
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-0",
+      "position": [
+        -2.2,
+        3.27,
+        -3.15
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-0",
+      "position": [
+        -2.2,
+        2.57,
+        -3.15
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-1",
+      "position": [
+        2.2,
+        2.94,
+        -3.15
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-1",
+      "position": [
+        2.2,
+        3.27,
+        -3.15
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-1",
+      "position": [
+        2.2,
+        2.57,
+        -3.15
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-2",
+      "position": [
+        -3.35,
+        2.94,
+        -1.1
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-2",
+      "position": [
+        -3.35,
+        3.27,
+        -1.1
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-2",
+      "position": [
+        -3.35,
+        2.57,
+        -1.1
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-3",
+      "position": [
+        -3.35,
+        2.94,
+        2.3
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-3",
+      "position": [
+        -3.35,
+        3.27,
+        2.3
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-3",
+      "position": [
+        -3.35,
+        2.57,
+        2.3
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-4",
+      "position": [
+        3.4,
+        2.94,
+        1.8
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-4",
+      "position": [
+        3.4,
+        3.27,
+        1.8
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "pendant-4",
+      "position": [
+        3.4,
+        2.57,
+        1.8
+      ],
+      "layer": "reflected-ceiling"
+    },
+    {
+      "id": "planter-0",
+      "position": [
+        -4.3,
+        0.22,
+        -4.2
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-0",
+      "position": [
+        -4.41,
+        0.8200000000000001,
+        -4.2
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-0",
+      "position": [
+        -4.2,
+        0.9099999999999999,
+        -4.12
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-0",
+      "position": [
+        -4.3,
+        0.78,
+        -4.29
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-1",
+      "position": [
+        4.2,
+        0.22,
+        -4.2
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-1",
+      "position": [
+        4.09,
+        0.8200000000000001,
+        -4.2
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-1",
+      "position": [
+        4.3,
+        0.9099999999999999,
+        -4.12
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-1",
+      "position": [
+        4.2,
+        0.78,
+        -4.29
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-2",
+      "position": [
+        -1.85,
+        0.22,
+        5.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-2",
+      "position": [
+        -1.9600000000000002,
+        0.8200000000000001,
+        5.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-2",
+      "position": [
+        -1.75,
+        0.9099999999999999,
+        5.78
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-2",
+      "position": [
+        -1.85,
+        0.78,
+        5.61
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-3",
+      "position": [
+        1.85,
+        0.22,
+        5.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-3",
+      "position": [
+        1.74,
+        0.8200000000000001,
+        5.7
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-3",
+      "position": [
+        1.9500000000000002,
+        0.9099999999999999,
+        5.78
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "planter-3",
+      "position": [
+        1.85,
+        0.78,
+        5.61
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "shop-sign",
+      "position": [
+        -2.9,
+        2.1,
+        5.23
+      ],
+      "layer": "lower-room"
+    },
+    {
+      "id": "entry-marker",
+      "position": [
+        0,
+        0.007,
+        5.2
+      ],
+      "layer": "lower-room"
+    }
+  ],
+  "notes": {
+    "barriers": "continuous wall substrates with scheduled apertures",
+    "columns": "none",
+    "circulation": "central x ±1.2 corridor",
+    "heroReserve": "x/z ±1.2; only character permitted",
+    "planScope": "Function concept mesh projections, not final production meshes"
+  }
+}

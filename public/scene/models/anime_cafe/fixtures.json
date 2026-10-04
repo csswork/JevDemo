@@ -1,0 +1,171 @@
+{
+  "schema": "anime-cafe.fixtures.v1",
+  "coordinateSystem": "Blender Z up",
+  "fixtures": [
+    {
+      "id": "under shelf -3.68 1.56",
+      "position": [
+        -3.68,
+        4.46,
+        1.48
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf -3.68 2.2",
+      "position": [
+        -3.68,
+        4.46,
+        2.12
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf -3.68 2.86",
+      "position": [
+        -3.68,
+        4.46,
+        2.78
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf -3.68 3.47",
+      "position": [
+        -3.68,
+        4.46,
+        3.39
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf 2.18 1.56",
+      "position": [
+        2.18,
+        4.46,
+        1.48
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf 2.18 2.2",
+      "position": [
+        2.18,
+        4.46,
+        2.12
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf 2.18 2.86",
+      "position": [
+        2.18,
+        4.46,
+        2.78
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf 2.18 3.47",
+      "position": [
+        2.18,
+        4.46,
+        3.39
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 0",
+      "position": [
+        -2.85,
+        1.1,
+        2.91
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 1",
+      "position": [
+        0.9,
+        1.2,
+        2.91
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 2",
+      "position": [
+        -3.85,
+        -3.05,
+        2.82
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 3",
+      "position": [
+        3.8,
+        -2.0,
+        2.85
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 4",
+      "position": [
+        4,
+        6.7,
+        2.86
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "late afternoon sun",
+      "position": [
+        -10,
+        -6,
+        10
+      ],
+      "color": "#fff0cc",
+      "watts": 4.0,
+      "type": "SUN"
+    },
+    {
+      "id": "soft interior bounce",
+      "position": [
+        0,
+        -3.5,
+        3.5
+      ],
+      "color": "#fff0d5",
+      "watts": 90,
+      "type": "AREA"
+    }
+  ]
+}

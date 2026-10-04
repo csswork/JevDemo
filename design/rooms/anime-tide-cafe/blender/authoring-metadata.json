@@ -1,0 +1,347 @@
+{
+  "authoringTool": "Blender 5.2.2 LTS",
+  "script": "scripts/blender/anime_cafe_room.py",
+  "reference": "reference/user-cafe.png",
+  "appliedBooleanOpenings": [
+    "entry",
+    "window-1",
+    "window-2",
+    "window-3",
+    "rear-seat-arch",
+    "nook-window"
+  ],
+  "visibleMeshObjects": 3600,
+  "baseTriangles": 151084,
+  "fixtures": [
+    {
+      "id": "under shelf -3.68 1.56",
+      "position": [
+        -3.68,
+        4.46,
+        1.48
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf -3.68 2.2",
+      "position": [
+        -3.68,
+        4.46,
+        2.12
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf -3.68 2.86",
+      "position": [
+        -3.68,
+        4.46,
+        2.78
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf -3.68 3.47",
+      "position": [
+        -3.68,
+        4.46,
+        3.39
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf 2.18 1.56",
+      "position": [
+        2.18,
+        4.46,
+        1.48
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf 2.18 2.2",
+      "position": [
+        2.18,
+        4.46,
+        2.12
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf 2.18 2.86",
+      "position": [
+        2.18,
+        4.46,
+        2.78
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "under shelf 2.18 3.47",
+      "position": [
+        2.18,
+        4.46,
+        3.39
+      ],
+      "color": "#ffe2ac",
+      "watts": 15,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 0",
+      "position": [
+        -2.85,
+        1.1,
+        2.91
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 1",
+      "position": [
+        0.9,
+        1.2,
+        2.91
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 2",
+      "position": [
+        -3.85,
+        -3.05,
+        2.82
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 3",
+      "position": [
+        3.8,
+        -2.0,
+        2.85
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "pendant fixture 4",
+      "position": [
+        4,
+        6.7,
+        2.86
+      ],
+      "color": "#ffe1a8",
+      "watts": 55,
+      "type": "AREA"
+    },
+    {
+      "id": "late afternoon sun",
+      "position": [
+        -10,
+        -6,
+        10
+      ],
+      "color": "#fff0cc",
+      "watts": 4.0,
+      "type": "SUN"
+    },
+    {
+      "id": "soft interior bounce",
+      "position": [
+        0,
+        -3.5,
+        3.5
+      ],
+      "color": "#fff0d5",
+      "watts": 90,
+      "type": "AREA"
+    }
+  ],
+  "reviewCameras": {
+    "main": {
+      "location": [
+        2.8,
+        -4.85,
+        1.7
+      ],
+      "target": [
+        -0.15,
+        2.5,
+        1.57
+      ],
+      "lensMm": 22
+    },
+    "window-seating": {
+      "location": [
+        3.25,
+        1.8,
+        1.72
+      ],
+      "target": [
+        -4.25,
+        -0.45,
+        1.58
+      ],
+      "lensMm": 24
+    },
+    "counter": {
+      "location": [
+        -0.85,
+        -2.4,
+        1.75
+      ],
+      "target": [
+        -1.0,
+        3.0,
+        1.8
+      ],
+      "lensMm": 27
+    },
+    "depth": {
+      "location": [
+        -4.6,
+        -4.4,
+        1.75
+      ],
+      "target": [
+        3.5,
+        5.4,
+        1.65
+      ],
+      "lensMm": 24
+    },
+    "ceiling": {
+      "location": [
+        0,
+        0,
+        1.0
+      ],
+      "target": [
+        0,
+        0.01,
+        3.8
+      ],
+      "lensMm": 16
+    },
+    "ceiling-oblique-a": {
+      "location": [
+        -4.6,
+        -4.5,
+        1.45
+      ],
+      "target": [
+        1.5,
+        1.7,
+        3.55
+      ],
+      "lensMm": 18
+    },
+    "ceiling-oblique-b": {
+      "location": [
+        4.65,
+        4.25,
+        1.45
+      ],
+      "target": [
+        -1.5,
+        -1.7,
+        3.55
+      ],
+      "lensMm": 18
+    },
+    "corner-front-left": {
+      "location": [
+        -4.9,
+        -4.8,
+        1.55
+      ],
+      "target": [
+        0.3,
+        1.0,
+        1.6
+      ],
+      "lensMm": 10.392305
+    },
+    "corner-front-right": {
+      "location": [
+        4.9,
+        -4.8,
+        1.55
+      ],
+      "target": [
+        -0.3,
+        1.0,
+        1.6
+      ],
+      "lensMm": 10.392305
+    },
+    "corner-back-left": {
+      "location": [
+        -4.9,
+        4.4,
+        1.55
+      ],
+      "target": [
+        0.3,
+        -1.0,
+        1.6
+      ],
+      "lensMm": 10.392305
+    },
+    "corner-back-right": {
+      "location": [
+        4.9,
+        4.4,
+        1.55
+      ],
+      "target": [
+        -0.3,
+        -1.0,
+        1.6
+      ],
+      "lensMm": 10.392305
+    },
+    "character-camera": {
+      "location": [
+        0,
+        -1.58,
+        1.42
+      ],
+      "target": [
+        0,
+        0,
+        1.395
+      ],
+      "lensMm": 84
+    }
+  },
+  "runtimeExported": false,
+  "notes": [
+    "Detailed authored room, no proxy geometry",
+    "Library props are genuine project Blender meshes",
+    "Final geometry evaluated modifiers not counted in baseTriangles",
+    "Outdoor context geometry retained in review source"
+  ]
+}

@@ -1,0 +1,2727 @@
+[
+  {
+    "owner": "floor",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      0,
+      -0.1,
+      0
+    ],
+    "size": [
+      10,
+      0.2,
+      10
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "back-wall",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      0,
+      1.65,
+      -5.1
+    ],
+    "size": [
+      10.4,
+      3.3,
+      0.2
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "right-wall",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      5.1,
+      1.65,
+      0
+    ],
+    "size": [
+      0.2,
+      3.3,
+      10
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "left-sill",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      -5.1,
+      0.4,
+      0
+    ],
+    "size": [
+      0.2,
+      0.8,
+      10
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "left-header",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      -5.1,
+      3.05,
+      0
+    ],
+    "size": [
+      0.2,
+      0.5,
+      10
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "left-pier",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      -5.1,
+      1.8,
+      -4.6
+    ],
+    "size": [
+      0.2,
+      2,
+      0.8
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "left-pier",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      -5.1,
+      1.8,
+      -0.2
+    ],
+    "size": [
+      0.2,
+      2,
+      1.2
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "left-pier",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      -5.1,
+      1.8,
+      4.4
+    ],
+    "size": [
+      0.2,
+      2,
+      1.2
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "front-wall",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      -3.15,
+      1.65,
+      5.1
+    ],
+    "size": [
+      3.7,
+      3.3,
+      0.2
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "front-wall",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      3.15,
+      1.65,
+      5.1
+    ],
+    "size": [
+      3.7,
+      3.3,
+      0.2
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "arrival-header",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      0,
+      3.05,
+      5.1
+    ],
+    "size": [
+      2.6,
+      0.5,
+      0.2
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "apron",
+    "kind": "box",
+    "color": "#c6c1b3",
+    "position": [
+      0,
+      -0.08,
+      5.75
+    ],
+    "size": [
+      4.2,
+      0.16,
+      1.5
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "ceiling",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      0,
+      3.4,
+      0
+    ],
+    "size": [
+      10.4,
+      0.2,
+      10.4
+    ],
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "ceiling-beam",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      0,
+      3.23,
+      -3.8
+    ],
+    "size": [
+      10,
+      0.14,
+      0.14
+    ],
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "ceiling-beam",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      0,
+      3.23,
+      -1.4
+    ],
+    "size": [
+      10,
+      0.14,
+      0.14
+    ],
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "ceiling-beam",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      0,
+      3.23,
+      1.4
+    ],
+    "size": [
+      10,
+      0.14,
+      0.14
+    ],
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "ceiling-beam",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      0,
+      3.23,
+      3.8
+    ],
+    "size": [
+      10,
+      0.14,
+      0.14
+    ],
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-frame",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      1.8,
+      -4.2
+    ],
+    "size": [
+      0.12,
+      2.05,
+      0.09
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-frame",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      1.8,
+      -0.8
+    ],
+    "size": [
+      0.12,
+      2.05,
+      0.09
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-frame",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      0.8,
+      -2.5
+    ],
+    "size": [
+      0.12,
+      0.09,
+      3.4
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-frame",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      2.8,
+      -2.5
+    ],
+    "size": [
+      0.12,
+      0.09,
+      3.4
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-mullion",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      1.8,
+      -2.5
+    ],
+    "size": [
+      0.12,
+      2,
+      0.065
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-transom",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      2.3,
+      -2.5
+    ],
+    "size": [
+      0.12,
+      0.065,
+      3.4
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "glass",
+    "kind": "box",
+    "color": "#91bfc7",
+    "position": [
+      -5.06,
+      1.8,
+      -2.5
+    ],
+    "size": [
+      0.02,
+      1.94,
+      3.3
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-frame",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      1.8,
+      0.40000000000000013
+    ],
+    "size": [
+      0.12,
+      2.05,
+      0.09
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-frame",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      1.8,
+      3.8
+    ],
+    "size": [
+      0.12,
+      2.05,
+      0.09
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-frame",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      0.8,
+      2.1
+    ],
+    "size": [
+      0.12,
+      0.09,
+      3.4
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-frame",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      2.8,
+      2.1
+    ],
+    "size": [
+      0.12,
+      0.09,
+      3.4
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-mullion",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      1.8,
+      2.1
+    ],
+    "size": [
+      0.12,
+      2,
+      0.065
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "window-transom",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -4.98,
+      2.3,
+      2.1
+    ],
+    "size": [
+      0.12,
+      0.065,
+      3.4
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "glass",
+    "kind": "box",
+    "color": "#91bfc7",
+    "position": [
+      -5.06,
+      1.8,
+      2.1
+    ],
+    "size": [
+      0.02,
+      1.94,
+      3.3
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      0,
+      0.51,
+      -3.15
+    ],
+    "size": [
+      6.4,
+      1.02,
+      0.85
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      0,
+      1.055,
+      -3.15
+    ],
+    "size": [
+      6.56,
+      0.07,
+      1.02
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.1,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -2.9,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -2.7,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -2.5,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -2.3,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -2.1,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -1.9,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -1.7,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -1.5,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -1.3,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -1.1,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -0.8999999999999999,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -0.6999999999999997,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -0.5,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -0.2999999999999998,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -0.10000000000000009,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      0.10000000000000009,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      0.30000000000000027,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      0.5,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      0.7000000000000002,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      0.8999999999999999,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      1.1,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      1.3000000000000003,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      1.5000000000000004,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      1.7000000000000006,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      1.9,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      2.1,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      2.3000000000000003,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      2.5000000000000004,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      2.7000000000000006,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      2.9,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      3.1,
+      0.55,
+      -2.7
+    ],
+    "size": [
+      0.05,
+      0.8,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "counter",
+    "kind": "box",
+    "color": "#bc9163",
+    "position": [
+      0,
+      0.13,
+      -2.53
+    ],
+    "size": [
+      6.25,
+      0.04,
+      0.04
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "back-shelf",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      2.5,
+      1.85,
+      -4.94
+    ],
+    "size": [
+      2.7,
+      0.06,
+      0.3
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "shelf-cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      1.6,
+      1.94,
+      -4.83
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.12,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "shelf-cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      1.9,
+      1.94,
+      -4.83
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.12,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "shelf-cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      2.2,
+      1.94,
+      -4.83
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.12,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "shelf-cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      2.5,
+      1.94,
+      -4.83
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.12,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "shelf-cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      2.8,
+      1.94,
+      -4.83
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.12,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "shelf-cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      3.1,
+      1.94,
+      -4.83
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.12,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "menu",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      -2.7,
+      2.05,
+      -4.94
+    ],
+    "size": [
+      1.55,
+      0.95,
+      0.07
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "menu",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -2.7,
+      2.05,
+      -4.89
+    ],
+    "size": [
+      1.43,
+      0.83,
+      0.025
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "espresso",
+    "kind": "box",
+    "color": "#eee4ce",
+    "position": [
+      2.1,
+      1.33,
+      -3.15
+    ],
+    "size": [
+      0.78,
+      0.48,
+      0.45
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "espresso",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      2.1,
+      1.31,
+      -2.91
+    ],
+    "size": [
+      0.7,
+      0.27,
+      0.04
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "espresso",
+    "kind": "box",
+    "color": "#bc9163",
+    "position": [
+      2.1,
+      1.1,
+      -2.8
+    ],
+    "size": [
+      0.73,
+      0.035,
+      0.3
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "espresso",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      1.91,
+      1.19,
+      -2.76
+    ],
+    "radius": 0.038,
+    "radiusTop": 0.038,
+    "height": 0.1,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "espresso",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      2.28,
+      1.19,
+      -2.76
+    ],
+    "radius": 0.038,
+    "radiusTop": 0.038,
+    "height": 0.1,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "pastry",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -2.3,
+      1.11,
+      -3.1
+    ],
+    "radius": 0.13,
+    "radiusTop": 0.13,
+    "height": 0.025,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "pastry",
+    "kind": "cylinder",
+    "color": "#d6a06c",
+    "position": [
+      -2.3,
+      1.17,
+      -3.1
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.055,
+    "height": 0.09,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "pastry",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -1.95,
+      1.11,
+      -3.1
+    ],
+    "radius": 0.13,
+    "radiusTop": 0.13,
+    "height": 0.025,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "pastry",
+    "kind": "cylinder",
+    "color": "#d6a06c",
+    "position": [
+      -1.95,
+      1.17,
+      -3.1
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.055,
+    "height": 0.09,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "pastry",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -1.6,
+      1.11,
+      -3.1
+    ],
+    "radius": 0.13,
+    "radiusTop": 0.13,
+    "height": 0.025,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "pastry",
+    "kind": "cylinder",
+    "color": "#d6a06c",
+    "position": [
+      -1.6,
+      1.17,
+      -3.1
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.055,
+    "height": 0.09,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-0",
+    "kind": "cylinder",
+    "color": "#976c47",
+    "position": [
+      -3.35,
+      0.755,
+      -1.1
+    ],
+    "radius": 0.59,
+    "radiusTop": 0.59,
+    "height": 0.06,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-0",
+    "kind": "cylinder",
+    "color": "#bc9163",
+    "position": [
+      -3.35,
+      0.37,
+      -1.1
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.71,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-0",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      -3.35,
+      0.04,
+      -1.1
+    ],
+    "radius": 0.29,
+    "radiusTop": 0.29,
+    "height": 0.08,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -3.35,
+      0.825,
+      -1.1
+    ],
+    "radius": 0.05,
+    "radiusTop": 0.05,
+    "height": 0.08,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-0",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.35,
+      0.46,
+      -2.05
+    ],
+    "size": [
+      0.46,
+      0.08,
+      0.46
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-0",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.35,
+      0.76,
+      -2.26
+    ],
+    "size": [
+      0.46,
+      0.52,
+      0.065
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.52,
+      0.21,
+      -2.2199999999999998
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.52,
+      0.21,
+      -1.88
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.18,
+      0.21,
+      -2.2199999999999998
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.18,
+      0.21,
+      -1.88
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-1",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.35,
+      0.46,
+      -0.15000000000000013
+    ],
+    "size": [
+      0.46,
+      0.08,
+      0.46
+    ],
+    "layer": "lower-room",
+    "rotationY": 3.141592653589793
+  },
+  {
+    "owner": "chair-0-1",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.35,
+      0.76,
+      0.05999999999999986
+    ],
+    "size": [
+      0.46,
+      0.52,
+      0.065
+    ],
+    "layer": "lower-room",
+    "rotationY": 3.141592653589793
+  },
+  {
+    "owner": "chair-0-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.52,
+      0.21,
+      -0.3200000000000002
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.52,
+      0.21,
+      0.01999999999999988
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.18,
+      0.21,
+      -0.3200000000000002
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-0-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.18,
+      0.21,
+      0.01999999999999988
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-1",
+    "kind": "cylinder",
+    "color": "#976c47",
+    "position": [
+      -3.35,
+      0.755,
+      2.3
+    ],
+    "radius": 0.59,
+    "radiusTop": 0.59,
+    "height": 0.06,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-1",
+    "kind": "cylinder",
+    "color": "#bc9163",
+    "position": [
+      -3.35,
+      0.37,
+      2.3
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.71,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-1",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      -3.35,
+      0.04,
+      2.3
+    ],
+    "radius": 0.29,
+    "radiusTop": 0.29,
+    "height": 0.08,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -3.35,
+      0.825,
+      2.3
+    ],
+    "radius": 0.05,
+    "radiusTop": 0.05,
+    "height": 0.08,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-0",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.35,
+      0.46,
+      1.3499999999999999
+    ],
+    "size": [
+      0.46,
+      0.08,
+      0.46
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-0",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.35,
+      0.76,
+      1.14
+    ],
+    "size": [
+      0.46,
+      0.52,
+      0.065
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.52,
+      0.21,
+      1.18
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.52,
+      0.21,
+      1.5199999999999998
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.18,
+      0.21,
+      1.18
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.18,
+      0.21,
+      1.5199999999999998
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-1",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.35,
+      0.46,
+      3.25
+    ],
+    "size": [
+      0.46,
+      0.08,
+      0.46
+    ],
+    "layer": "lower-room",
+    "rotationY": 3.141592653589793
+  },
+  {
+    "owner": "chair-1-1",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -3.35,
+      0.76,
+      3.46
+    ],
+    "size": [
+      0.46,
+      0.52,
+      0.065
+    ],
+    "layer": "lower-room",
+    "rotationY": 3.141592653589793
+  },
+  {
+    "owner": "chair-1-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.52,
+      0.21,
+      3.08
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.52,
+      0.21,
+      3.42
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.18,
+      0.21,
+      3.08
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-1-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      -3.18,
+      0.21,
+      3.42
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-2",
+    "kind": "cylinder",
+    "color": "#976c47",
+    "position": [
+      3.4,
+      0.755,
+      1.8
+    ],
+    "radius": 0.59,
+    "radiusTop": 0.59,
+    "height": 0.06,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-2",
+    "kind": "cylinder",
+    "color": "#bc9163",
+    "position": [
+      3.4,
+      0.37,
+      1.8
+    ],
+    "radius": 0.055,
+    "radiusTop": 0.055,
+    "height": 0.71,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "table-2",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      3.4,
+      0.04,
+      1.8
+    ],
+    "radius": 0.29,
+    "radiusTop": 0.29,
+    "height": 0.08,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "cup",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      3.4,
+      0.825,
+      1.8
+    ],
+    "radius": 0.05,
+    "radiusTop": 0.05,
+    "height": 0.08,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-0",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      3.4,
+      0.46,
+      0.8500000000000001
+    ],
+    "size": [
+      0.46,
+      0.08,
+      0.46
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-0",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      3.4,
+      0.76,
+      0.6400000000000001
+    ],
+    "size": [
+      0.46,
+      0.52,
+      0.065
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      3.23,
+      0.21,
+      0.68
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      3.23,
+      0.21,
+      1.02
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      3.57,
+      0.21,
+      0.68
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-0",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      3.57,
+      0.21,
+      1.02
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-1",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      3.4,
+      0.46,
+      2.75
+    ],
+    "size": [
+      0.46,
+      0.08,
+      0.46
+    ],
+    "layer": "lower-room",
+    "rotationY": 3.141592653589793
+  },
+  {
+    "owner": "chair-2-1",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      3.4,
+      0.76,
+      2.96
+    ],
+    "size": [
+      0.46,
+      0.52,
+      0.065
+    ],
+    "layer": "lower-room",
+    "rotationY": 3.141592653589793
+  },
+  {
+    "owner": "chair-2-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      3.23,
+      0.21,
+      2.58
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      3.23,
+      0.21,
+      2.92
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      3.57,
+      0.21,
+      2.58
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "chair-2-1",
+    "kind": "box",
+    "color": "#976c47",
+    "position": [
+      3.57,
+      0.21,
+      2.92
+    ],
+    "size": [
+      0.035,
+      0.42,
+      0.035
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-0",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      -2.2,
+      2.94,
+      -3.15
+    ],
+    "radius": 0.012,
+    "radiusTop": 0.012,
+    "height": 0.56,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-0",
+    "kind": "cylinder",
+    "color": "#bc9163",
+    "position": [
+      -2.2,
+      3.27,
+      -3.15
+    ],
+    "radius": 0.1,
+    "radiusTop": 0.1,
+    "height": 0.06,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-0",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -2.2,
+      2.57,
+      -3.15
+    ],
+    "radius": 0.3,
+    "radiusTop": 0.1,
+    "height": 0.2,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-1",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      2.2,
+      2.94,
+      -3.15
+    ],
+    "radius": 0.012,
+    "radiusTop": 0.012,
+    "height": 0.56,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-1",
+    "kind": "cylinder",
+    "color": "#bc9163",
+    "position": [
+      2.2,
+      3.27,
+      -3.15
+    ],
+    "radius": 0.1,
+    "radiusTop": 0.1,
+    "height": 0.06,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-1",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      2.2,
+      2.57,
+      -3.15
+    ],
+    "radius": 0.3,
+    "radiusTop": 0.1,
+    "height": 0.2,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-2",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      -3.35,
+      2.94,
+      -1.1
+    ],
+    "radius": 0.012,
+    "radiusTop": 0.012,
+    "height": 0.56,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-2",
+    "kind": "cylinder",
+    "color": "#bc9163",
+    "position": [
+      -3.35,
+      3.27,
+      -1.1
+    ],
+    "radius": 0.1,
+    "radiusTop": 0.1,
+    "height": 0.06,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-2",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -3.35,
+      2.57,
+      -1.1
+    ],
+    "radius": 0.3,
+    "radiusTop": 0.1,
+    "height": 0.2,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-3",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      -3.35,
+      2.94,
+      2.3
+    ],
+    "radius": 0.012,
+    "radiusTop": 0.012,
+    "height": 0.56,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-3",
+    "kind": "cylinder",
+    "color": "#bc9163",
+    "position": [
+      -3.35,
+      3.27,
+      2.3
+    ],
+    "radius": 0.1,
+    "radiusTop": 0.1,
+    "height": 0.06,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-3",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -3.35,
+      2.57,
+      2.3
+    ],
+    "radius": 0.3,
+    "radiusTop": 0.1,
+    "height": 0.2,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-4",
+    "kind": "cylinder",
+    "color": "#514039",
+    "position": [
+      3.4,
+      2.94,
+      1.8
+    ],
+    "radius": 0.012,
+    "radiusTop": 0.012,
+    "height": 0.56,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-4",
+    "kind": "cylinder",
+    "color": "#bc9163",
+    "position": [
+      3.4,
+      3.27,
+      1.8
+    ],
+    "radius": 0.1,
+    "radiusTop": 0.1,
+    "height": 0.06,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "pendant-4",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      3.4,
+      2.57,
+      1.8
+    ],
+    "radius": 0.3,
+    "radiusTop": 0.1,
+    "height": 0.2,
+    "layer": "reflected-ceiling",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-0",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -4.3,
+      0.22,
+      -4.2
+    ],
+    "radius": 0.22,
+    "radiusTop": 0.28,
+    "height": 0.44,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-0",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      -4.41,
+      0.8200000000000001,
+      -4.2
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.76,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-0",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      -4.2,
+      0.9099999999999999,
+      -4.12
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.94,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-0",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      -4.3,
+      0.78,
+      -4.29
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.68,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-1",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      4.2,
+      0.22,
+      -4.2
+    ],
+    "radius": 0.22,
+    "radiusTop": 0.28,
+    "height": 0.44,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-1",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      4.09,
+      0.8200000000000001,
+      -4.2
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.76,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-1",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      4.3,
+      0.9099999999999999,
+      -4.12
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.94,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-1",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      4.2,
+      0.78,
+      -4.29
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.68,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-2",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      -1.85,
+      0.22,
+      5.7
+    ],
+    "radius": 0.22,
+    "radiusTop": 0.28,
+    "height": 0.44,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-2",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      -1.9600000000000002,
+      0.8200000000000001,
+      5.7
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.76,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-2",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      -1.75,
+      0.9099999999999999,
+      5.78
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.94,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-2",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      -1.85,
+      0.78,
+      5.61
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.68,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-3",
+    "kind": "cylinder",
+    "color": "#eee4ce",
+    "position": [
+      1.85,
+      0.22,
+      5.7
+    ],
+    "radius": 0.22,
+    "radiusTop": 0.28,
+    "height": 0.44,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-3",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      1.74,
+      0.8200000000000001,
+      5.7
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.76,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-3",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      1.9500000000000002,
+      0.9099999999999999,
+      5.78
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.94,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "planter-3",
+    "kind": "cylinder",
+    "color": "#839b82",
+    "position": [
+      1.85,
+      0.78,
+      5.61
+    ],
+    "radius": 0.09,
+    "radiusTop": 0.025,
+    "height": 0.68,
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "shop-sign",
+    "kind": "box",
+    "color": "#839b82",
+    "position": [
+      -2.9,
+      2.1,
+      5.23
+    ],
+    "size": [
+      1.45,
+      0.55,
+      0.08
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  },
+  {
+    "owner": "entry-marker",
+    "kind": "box",
+    "color": "#514039",
+    "position": [
+      0,
+      0.007,
+      5.2
+    ],
+    "size": [
+      2.4,
+      0.014,
+      0.6
+    ],
+    "layer": "lower-room",
+    "rotationY": 0
+  }
+]

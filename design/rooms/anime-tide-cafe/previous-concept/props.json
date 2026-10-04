@@ -1,0 +1,207 @@
+{
+  "schema": "game-room.prop-manifest.v1",
+  "roomId": "anime-tide-cafe",
+  "generation": {
+    "provider": "meshy",
+    "apiModel": "meshy-5",
+    "pricingSource": "https://docs.meshy.ai/en/api/pricing",
+    "pricingVerifiedAt": "",
+    "creditsPerTexturedTask": 15,
+    "hardCreditCeiling": 0,
+    "maxChargedAttemptsPerAsset": 2
+  },
+  "assets": [
+    {
+      "id": "counter",
+      "function": "鼠尾草绿竖纹吧台 / 浅橡木台面 / 黄铜脚杆",
+      "description": "鼠尾草绿竖纹吧台 / 浅橡木台面 / 黄铜脚杆",
+      "dimensionsMeters": [
+        6.56,
+        1.09,
+        1.15
+      ],
+      "attachmentFace": "floor",
+      "semanticFront": "positive-z",
+      "class": "reusable",
+      "targetPolycount": 8000,
+      "intendedInstances": 1,
+      "rejectionCriteria": [
+        "尺寸偏差超过 5%",
+        "缺少支撑或部件相互融合",
+        "纹理写实感过强或对比度抢占人物面部"
+      ],
+      "image": {
+        "prompt": "完整隔离展示：鼠尾草绿竖纹吧台 / 浅橡木台面 / 黄铜脚杆；二次元海边小镇风，三分之四视角，白底，结构清晰，无文字，无裁切。",
+        "generator": "deterministic projection of concept-geometry.json (not AI)",
+        "source": "images/counter.svg",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "project Blender procedural builder",
+        "externalServiceRequired": false
+      }
+    },
+    {
+      "id": "espresso",
+      "function": "奶油白双头咖啡机 / 深色操作面 / 黄铜接水盘",
+      "description": "奶油白双头咖啡机 / 深色操作面 / 黄铜接水盘",
+      "dimensionsMeters": [
+        0.78,
+        0.48,
+        0.725
+      ],
+      "attachmentFace": "freestanding",
+      "semanticFront": "positive-z",
+      "class": "reusable",
+      "targetPolycount": 5000,
+      "intendedInstances": 1,
+      "rejectionCriteria": [
+        "尺寸偏差超过 5%",
+        "缺少支撑或部件相互融合",
+        "纹理写实感过强或对比度抢占人物面部"
+      ],
+      "image": {
+        "prompt": "完整隔离展示：奶油白双头咖啡机 / 深色操作面 / 黄铜接水盘；二次元海边小镇风，三分之四视角，白底，结构清晰，无文字，无裁切。",
+        "generator": "deterministic projection of concept-geometry.json (not AI)",
+        "source": "images/espresso.svg",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "project Blender procedural builder",
+        "externalServiceRequired": false
+      }
+    },
+    {
+      "id": "table",
+      "function": "浅木圆桌 / 单柱黄铜底座",
+      "description": "浅木圆桌 / 单柱黄铜底座",
+      "dimensionsMeters": [
+        1.18,
+        0.785,
+        1.18
+      ],
+      "attachmentFace": "floor",
+      "semanticFront": "positive-y",
+      "class": "reusable",
+      "targetPolycount": 1800,
+      "intendedInstances": 3,
+      "rejectionCriteria": [
+        "尺寸偏差超过 5%",
+        "缺少支撑或部件相互融合",
+        "纹理写实感过强或对比度抢占人物面部"
+      ],
+      "image": {
+        "prompt": "完整隔离展示：浅木圆桌 / 单柱黄铜底座；二次元海边小镇风，三分之四视角，白底，结构清晰，无文字，无裁切。",
+        "generator": "deterministic projection of concept-geometry.json (not AI)",
+        "source": "images/table.svg",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "project Blender procedural builder",
+        "externalServiceRequired": false
+      }
+    },
+    {
+      "id": "chair",
+      "function": "鼠尾草绿软垫木椅 / 直背 / 四腿",
+      "description": "鼠尾草绿软垫木椅 / 直背 / 四腿",
+      "dimensionsMeters": [
+        0.46,
+        1.02,
+        0.46
+      ],
+      "attachmentFace": "floor",
+      "semanticFront": "positive-z",
+      "class": "reusable",
+      "targetPolycount": 1800,
+      "intendedInstances": 6,
+      "rejectionCriteria": [
+        "尺寸偏差超过 5%",
+        "缺少支撑或部件相互融合",
+        "纹理写实感过强或对比度抢占人物面部"
+      ],
+      "image": {
+        "prompt": "完整隔离展示：鼠尾草绿软垫木椅 / 直背 / 四腿；二次元海边小镇风，三分之四视角，白底，结构清晰，无文字，无裁切。",
+        "generator": "deterministic projection of concept-geometry.json (not AI)",
+        "source": "images/chair.svg",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "project Blender procedural builder",
+        "externalServiceRequired": false
+      }
+    },
+    {
+      "id": "pendant",
+      "function": "奶油色锥形吊灯 / 黄铜灯座 / 明确吊杆",
+      "description": "奶油色锥形吊灯 / 黄铜灯座 / 明确吊杆",
+      "dimensionsMeters": [
+        0.6,
+        0.83,
+        0.6
+      ],
+      "attachmentFace": "ceiling",
+      "semanticFront": "negative-y",
+      "class": "reusable",
+      "targetPolycount": 1800,
+      "intendedInstances": 5,
+      "rejectionCriteria": [
+        "尺寸偏差超过 5%",
+        "缺少支撑或部件相互融合",
+        "纹理写实感过强或对比度抢占人物面部"
+      ],
+      "image": {
+        "prompt": "完整隔离展示：奶油色锥形吊灯 / 黄铜灯座 / 明确吊杆；二次元海边小镇风，三分之四视角，白底，结构清晰，无文字，无裁切。",
+        "generator": "deterministic projection of concept-geometry.json (not AI)",
+        "source": "images/pendant.svg",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "project Blender procedural builder",
+        "externalServiceRequired": false
+      }
+    },
+    {
+      "id": "planter",
+      "function": "奶油陶盆 / 三簇简化绿色叶片",
+      "description": "奶油陶盆 / 三簇简化绿色叶片",
+      "dimensionsMeters": [
+        0.56,
+        1.38,
+        0.56
+      ],
+      "attachmentFace": "floor",
+      "semanticFront": "positive-z",
+      "class": "reusable",
+      "targetPolycount": 2400,
+      "intendedInstances": 4,
+      "rejectionCriteria": [
+        "尺寸偏差超过 5%",
+        "缺少支撑或部件相互融合",
+        "纹理写实感过强或对比度抢占人物面部"
+      ],
+      "image": {
+        "prompt": "完整隔离展示：奶油陶盆 / 三簇简化绿色叶片；二次元海边小镇风，三分之四视角，白底，结构清晰，无文字，无裁切。",
+        "generator": "deterministic projection of concept-geometry.json (not AI)",
+        "source": "images/planter.svg",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "project Blender procedural builder",
+        "externalServiceRequired": false
+      }
+    }
+  ],
+  "productionPolicy": {
+    "method": "local-procedural",
+    "meshyEnabled": false,
+    "spendAuthorized": false,
+    "note": "No Meshy use planned; template-only pricing fields are unverified and not spending authority."
+  }
+}

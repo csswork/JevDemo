@@ -1,0 +1,67 @@
+{
+  "schema": "game-room.opening-schedule.v1",
+  "roomId": "anime-tide-cafe",
+  "primaryArrival": {
+    "openingId": "arrival",
+    "exception": ""
+  },
+  "openings": [
+    {
+      "id": "arrival",
+      "kind": "door",
+      "widthMeters": 2.6,
+      "heightMeters": 2.8,
+      "sillMeters": 0,
+      "thresholdMeters": 0,
+      "depthMeters": 0.2,
+      "wallId": "front-wall",
+      "center": [
+        0,
+        1.4,
+        5.1
+      ],
+      "destination": "Visible 1.5m exterior apron and coastal street",
+      "mask": "masks/arrival.png",
+      "cutter": "masks/arrival.json",
+      "approved": false
+    },
+    {
+      "id": "sea-window-a",
+      "kind": "window",
+      "widthMeters": 3.4,
+      "heightMeters": 2,
+      "sillMeters": 0.8,
+      "thresholdMeters": 0,
+      "depthMeters": 0.2,
+      "wallId": "left-wall",
+      "center": [
+        -5.1,
+        1.8,
+        -2.5
+      ],
+      "destination": "Coastal sky, sea, far town",
+      "mask": "masks/sea-window-a.png",
+      "cutter": "masks/sea-window-a.json",
+      "approved": false
+    },
+    {
+      "id": "sea-window-b",
+      "kind": "window",
+      "widthMeters": 3.4,
+      "heightMeters": 2,
+      "sillMeters": 0.8,
+      "thresholdMeters": 0,
+      "depthMeters": 0.2,
+      "wallId": "left-wall",
+      "center": [
+        -5.1,
+        1.8,
+        2.1
+      ],
+      "destination": "Coastal sky, sea, far town",
+      "mask": "masks/sea-window-b.png",
+      "cutter": "masks/sea-window-b.json",
+      "approved": false
+    }
+  ]
+}

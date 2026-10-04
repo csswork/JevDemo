@@ -1,0 +1,13 @@
+FAIL: props.json: current official Meshy pricing verification is required
+FAIL: props.json: hardCreditCeiling must be positive and no greater than the room credit budget
+FAIL: prop counter: reference image requires explicit approval
+FAIL: prop espresso: reference image requires explicit approval
+FAIL: prop table: reference image requires explicit approval
+FAIL: prop chair: reference image requires explicit approval
+FAIL: prop pendant: reference image requires explicit approval
+FAIL: prop planter: reference image requires explicit approval
+FAIL: opening arrival: mask/dimensions are not approved
+FAIL: opening sea-window-a: mask/dimensions are not approved
+FAIL: opening sea-window-b: mask/dimensions are not approved
+FAIL: Function gate: explicit approval is required
+FAIL: final-report.json: gates.function must be true

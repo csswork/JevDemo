@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import type { Backdrop } from './scenes/common';
 import { createCafe } from './scenes/cafe';
+import { createAnimeCafe } from './scenes/animeCafe';
 import { createPark } from './scenes/park';
 import { createStreet } from './scenes/street';
 import { TimeOfDay, type TimeMode } from './timeOfDay';
@@ -11,7 +12,7 @@ import { TimeOfDay, type TimeMode } from './timeOfDay';
  * 背景：none = 原来的纯色渐变（CSS 画的，画布透明）；cafe = 咖啡店店内（scenes/cafe.ts）；
  * park = 公园的木栈道（scenes/park.ts）；street = 海边小镇的街道（scenes/street.ts）
  */
-export type BackdropId = 'none' | 'cafe' | 'park' | 'street';
+export type BackdropId = 'none' | 'cafe' | 'animeCafe' | 'park' | 'street';
 
 /** 镜头的视角：绕转轴的水平角、俯仰角（弧度，three.js Spherical 的 theta / phi）和离转轴的距离 */
 export interface CameraView {
@@ -19,7 +20,7 @@ export interface CameraView {
   polar: number;
   distance: number;
 }
-const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, park: createPark, street: createStreet };
+const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, animeCafe: createAnimeCafe, park: createPark, street: createStreet };
 /** 相机默认看多远（室内够了；室外场景自己给，见 Backdrop.far） */
 const FAR = 20;
 /** 像素比的上限：再高肉眼分不出，GPU 白干活 */

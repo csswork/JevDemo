@@ -526,10 +526,10 @@ button { font: inherit; }
 .chip-toggle:hover { color: var(--fg); }
 .chip-toggle.on { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
 
-/* 背景：四个图标按钮 */
+/* 背景：图标按钮随场景数量均分 */
 .seg {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 5px;
 }
 .seg button {

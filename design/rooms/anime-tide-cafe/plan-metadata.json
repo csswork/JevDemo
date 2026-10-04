@@ -3,9 +3,34 @@
   "roomId": "anime-tide-cafe",
   "style": "monochrome-engineering",
   "projectionSource": "actual-meshes",
-  "layers": ["lower-room", "reflected-ceiling"],
+  "layers": [
+    "lower-room",
+    "reflected-ceiling"
+  ],
   "semanticLabelsOutsideImage": true,
   "aiInspirationIncluded": false,
   "aiInspirationReason": "",
-  "coverage": []
+  "coverage": [
+    "room-outline",
+    "cutouts",
+    "openings",
+    "exterior-apron",
+    "main-sign",
+    "ingress-props",
+    "floor-markers",
+    "barriers",
+    "columns",
+    "circulation",
+    "placed-features"
+  ],
+  "geometrySource": "blender/tide-cafe.blend",
+  "notes": {
+    "planScope": "orthographic projections of actual evaluated authored Blender scene",
+    "layoutCoordinates": "Blender Z up",
+    "barriers": "sealed 0.24m thick substrates with six applied Exact Booleans",
+    "columns": "timber wall posts, no false open colonnades",
+    "circulation": "2.4m glazed western arrival, central reserved character area, right rear seating passage",
+    "heroReserve": "x/y ±1.2m"
+  },
+  "geometryAudit": "blender/geometry-audit.json"
 }

@@ -1,0 +1,65 @@
+{
+  "schema": "game-room.room-final-report.v1",
+  "roomId": "anime-tide-cafe",
+  "gates": {
+    "function": false,
+    "form": false,
+    "runtime": false
+  },
+  "formChecks": {
+    "floorPlanParity": false,
+    "primaryArrival": false,
+    "symmetry": false,
+    "shell": false,
+    "manifold": false,
+    "booleans": false,
+    "collisions": false,
+    "support": false,
+    "attachmentOrientation": false,
+    "ceilingAttachmentOrientation": false,
+    "seatingOrientation": false,
+    "focalDistribution": false,
+    "heroClearance": false,
+    "colonnades": false,
+    "screenClearance": false,
+    "scale": false,
+    "camera": false,
+    "ceilingCoverage": false,
+    "environmentCoverage": false,
+    "provenance": false
+  },
+  "reviewRenders": {
+    "corners": [],
+    "ceiling": [],
+    "environment": {}
+  },
+  "runtimeChecks": {
+    "vlow": false,
+    "textureTiers": false,
+    "lightmap": false,
+    "lightingManifest": false,
+    "performance": false,
+    "browserCapture": "",
+    "errors": []
+  },
+  "postmortem": {
+    "observations": [],
+    "corrections": [],
+    "remainingRisks": [
+      "Function approval pending",
+      "Local-only zero-spend workflow conflicts with validator mandatory Meshy credit fields",
+      "Concept preview does not prove final VRM camera fit",
+      "Final walls require evaluated Blender Booleans before export"
+    ]
+  },
+  "proposedLessons": [],
+  "designVerification": {
+    "conceptMeshCount": 167,
+    "propInstanceCount": 20,
+    "openingMaskTraces": 3,
+    "browserLoad": "verified",
+    "runtimeIntegrated": false,
+    "functionValidation": "function-validation.txt",
+    "approvalStatus": "pending"
+  }
+}

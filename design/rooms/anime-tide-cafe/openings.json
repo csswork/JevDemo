@@ -1,6 +1,136 @@
 {
   "schema": "game-room.opening-schedule.v1",
   "roomId": "anime-tide-cafe",
-  "primaryArrival": {"openingId": "", "exception": ""},
-  "openings": []
+  "primaryArrival": {
+    "openingId": "entry",
+    "exception": ""
+  },
+  "openings": [
+    {
+      "id": "entry",
+      "kind": "door",
+      "wallId": "west window wall",
+      "centerBlenderMeters": [
+        -5.6,
+        -1.9,
+        1.625
+      ],
+      "widthMeters": 2.4,
+      "heightMeters": 3.25,
+      "sillMeters": 0,
+      "thresholdMeters": 0,
+      "depthMeters": 0.24,
+      "destination": "visible outdoor terrace",
+      "mask": "masks/authored-entry.png",
+      "cutter": "masks/authored-entry.json",
+      "approved": false,
+      "shape": "rectangle",
+      "boolean": "applied Exact in Blender"
+    },
+    {
+      "id": "window-1",
+      "kind": "window",
+      "wallId": "west window wall",
+      "centerBlenderMeters": [
+        -5.6,
+        -4.15,
+        1.875
+      ],
+      "widthMeters": 1.6,
+      "heightMeters": 3.05,
+      "sillMeters": 0.35,
+      "thresholdMeters": 0,
+      "depthMeters": 0.24,
+      "destination": "coastal terrace, trees, sky and far town",
+      "mask": "masks/authored-window-1.png",
+      "cutter": "masks/authored-window-1.json",
+      "approved": false,
+      "shape": "rectangle",
+      "boolean": "applied Exact in Blender"
+    },
+    {
+      "id": "window-2",
+      "kind": "window",
+      "wallId": "west window wall",
+      "centerBlenderMeters": [
+        -5.6,
+        0.8,
+        1.875
+      ],
+      "widthMeters": 2.6,
+      "heightMeters": 3.05,
+      "sillMeters": 0.35,
+      "thresholdMeters": 0,
+      "depthMeters": 0.24,
+      "destination": "coastal terrace and trees",
+      "mask": "masks/authored-window-2.png",
+      "cutter": "masks/authored-window-2.json",
+      "approved": false,
+      "shape": "rectangle",
+      "boolean": "applied Exact in Blender"
+    },
+    {
+      "id": "window-3",
+      "kind": "window",
+      "wallId": "west window wall",
+      "centerBlenderMeters": [
+        -5.6,
+        3.5,
+        1.875
+      ],
+      "widthMeters": 2.2,
+      "heightMeters": 3.05,
+      "sillMeters": 0.35,
+      "thresholdMeters": 0,
+      "depthMeters": 0.24,
+      "destination": "coastal terrace and trees",
+      "mask": "masks/authored-window-3.png",
+      "cutter": "masks/authored-window-3.json",
+      "approved": false,
+      "shape": "rectangle",
+      "boolean": "applied Exact in Blender"
+    },
+    {
+      "id": "rear-seat-arch",
+      "kind": "door",
+      "wallId": "back wall with true arch",
+      "centerBlenderMeters": [
+        3.85,
+        4.92,
+        1.575
+      ],
+      "widthMeters": 1.86,
+      "heightMeters": 3.15,
+      "sillMeters": 0,
+      "thresholdMeters": 0,
+      "depthMeters": 0.24,
+      "destination": "3.7m-deep second seating room; sightline to actual rear window",
+      "mask": "masks/authored-rear-seat-arch.png",
+      "cutter": "masks/authored-rear-seat-arch.json",
+      "approved": false,
+      "shape": "round-head arch",
+      "boolean": "applied Exact in Blender"
+    },
+    {
+      "id": "nook-window",
+      "kind": "window",
+      "wallId": "nook rear wall",
+      "centerBlenderMeters": [
+        4,
+        8.62,
+        1.9
+      ],
+      "widthMeters": 2.3,
+      "heightMeters": 2.6,
+      "sillMeters": 0.6,
+      "thresholdMeters": 0,
+      "depthMeters": 0.24,
+      "destination": "sky and outdoor context",
+      "mask": "masks/authored-nook-window.png",
+      "cutter": "masks/authored-nook-window.json",
+      "approved": false,
+      "shape": "rectangle",
+      "boolean": "applied Exact in Blender"
+    }
+  ]
 }

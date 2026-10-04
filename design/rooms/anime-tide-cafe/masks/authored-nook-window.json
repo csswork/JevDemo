@@ -1,0 +1,39 @@
+{
+  "schema": "game-room.opening-cutter.v1",
+  "id": "nook-window",
+  "kind": "window",
+  "widthMeters": 2.312073490813648,
+  "heightMeters": 2.6081632653061226,
+  "sillMeters": 0.6,
+  "depthMeters": null,
+  "source": "authored-nook-window.png",
+  "sourceSha256": "ec9fe27882d38a7619fb91565e0c032ab7071185d6f432461d9ad0ca0414fa2a",
+  "imageSize": [
+    384,
+    640
+  ],
+  "whitePixelRatio": 0.99168294,
+  "contours": [
+    {
+      "role": "outer",
+      "points": [
+        [
+          0.002611,
+          0.9984351
+        ],
+        [
+          0.002611,
+          0.0015649
+        ],
+        [
+          0.997389,
+          0.0015649
+        ],
+        [
+          0.997389,
+          0.9984351
+        ]
+      ]
+    }
+  ]
+}

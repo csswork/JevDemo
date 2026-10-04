@@ -2,15 +2,81 @@
   "schema": "game-room.room-brief.v1",
   "roomId": "anime-tide-cafe",
   "family": "social-hub",
-  "purpose": "",
-  "runtimeSurface": "",
-  "boundsMeters": [0, 0, 0],
-  "hero": {"id": "", "role": "", "reservedBoundsMeters": [0, 0, 0]},
-  "symmetry": {"mode": "none", "order": 1, "appliesTo": [], "exceptions": []},
-  "circulation": {"description": "", "minimumClearanceMeters": 0},
-  "productionCamera": {"viewport": [0, 0], "location": [0, 0, 0], "target": [0, 0, 0], "verticalFovDegrees": 0},
-  "performanceBudget": {"maxSceneTriangles": 0, "maxVLowBytes": 0, "maxHighTextureBytes": 0},
-  "creditBudget": {"maximumCredits": 0, "approvalRequired": true},
-  "environment": {"type": "none", "identity": "", "source": "", "assignmentKey": ""},
-  "artifacts": {"floorPlan": "", "reflectedCeilingPlan": "", "planMetadata": "plan-metadata.json", "wallElevations": [], "visualTarget": "", "openingContactSheet": ""}
+  "purpose": "按用户提供的四视角二次元咖啡馆参考图，精细建模独立场景；中央为数字人表演与对话区域。",
+  "runtimeSurface": "JevDemo React / Three.js Backdrop; proposed ID animeCafe",
+  "boundsMeters": [
+    11,
+    3.8,
+    13.8
+  ],
+  "hero": {
+    "id": "vrm-character",
+    "role": "主视觉与对话焦点；原点 +Z 朝向",
+    "reservedBoundsMeters": [
+      2.4,
+      2.2,
+      2.4
+    ]
+  },
+  "symmetry": {
+    "mode": "none",
+    "order": 1,
+    "appliesTo": [],
+    "exceptions": [
+      "左侧海景窗与靠窗双人桌，右侧独立会话组；有意不对称。"
+    ]
+  },
+  "circulation": {
+    "description": "西侧 2.4m 双扇玻璃入口到中央留白，后方吧台；右后真实拱门通往纵深座位区。",
+    "minimumClearanceMeters": 1.2
+  },
+  "productionCamera": {
+    "viewport": [
+      1600,
+      1000
+    ],
+    "location": [
+      0,
+      1.42,
+      1.58
+    ],
+    "target": [
+      0,
+      1.395,
+      0
+    ],
+    "verticalFovDegrees": 24
+  },
+  "performanceBudget": {
+    "maxSceneTriangles": 350000,
+    "maxVLowBytes": 8000000,
+    "maxHighTextureBytes": 24000000
+  },
+  "creditBudget": {
+    "maximumCredits": 0,
+    "approvalRequired": true
+  },
+  "environment": {
+    "type": "none",
+    "identity": "",
+    "source": "",
+    "assignmentKey": ""
+  },
+  "artifacts": {
+    "floorPlan": "plans/blender-lower-room.png",
+    "reflectedCeilingPlan": "plans/blender-reflected-ceiling.png",
+    "planMetadata": "plan-metadata.json",
+    "wallElevations": [
+      "renders/blender-counter.png"
+    ],
+    "visualTarget": "renders/blender-main.png",
+    "openingContactSheet": "masks/authored-contact-sheet.png"
+  },
+  "styleReference": {
+    "source": "reference/user-cafe.png",
+    "direction": "用户四视角参考：浅木拼板吧台、金属玻璃甜点柜、专业双头咖啡机、密集层架与垂挂植物、深木落地窗、青绿色软包与日光窗影。",
+    "authoringMethod": "local Blender modelling; physically lit illustrative materials"
+  },
+  "productionSource": "blender/tide-cafe.blend",
+  "performanceBudgetNote": "Review context is included in source; actual runtime tier and draw-call budgets remain unverified."
 }

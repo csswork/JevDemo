@@ -10,5 +10,268 @@
     "hardCreditCeiling": 0,
     "maxChargedAttemptsPerAsset": 2
   },
-  "assets": []
+  "assets": [
+    {
+      "id": "counter",
+      "function": "浅橡木逐块拼板吧台、石材台面、踢脚与木钉",
+      "description": "浅橡木逐块拼板吧台、石材台面、踢脚与木钉",
+      "dimensionsMeters": [
+        7.45,
+        1.093,
+        1.16
+      ],
+      "semanticFront": "positive-z",
+      "attachmentFace": "floor",
+      "class": "hero",
+      "targetPolycount": 20000,
+      "intendedInstances": 1,
+      "rejectionCriteria": [
+        "可见悬空、穿插或错误支撑",
+        "与参考图的结构和材质语义明显不一致",
+        "抢占中央数字人区域"
+      ],
+      "image": {
+        "prompt": "用户提供的多视角精细二次元咖啡馆参考图",
+        "generator": "user-supplied reference",
+        "source": "reference/user-cafe.png",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "Blender authored geometry",
+        "source": "blender/tide-cafe.blend",
+        "thirdPartyGeneration": false
+      }
+    },
+    {
+      "id": "pastry-case",
+      "function": "金属边框、玻璃层板、倾斜前玻璃、十八份真实甜点",
+      "description": "金属边框、玻璃层板、倾斜前玻璃、十八份真实甜点",
+      "dimensionsMeters": [
+        2.45,
+        0.83,
+        0.83
+      ],
+      "semanticFront": "positive-z",
+      "attachmentFace": "freestanding",
+      "class": "hero",
+      "targetPolycount": 12000,
+      "intendedInstances": 1,
+      "rejectionCriteria": [
+        "可见悬空、穿插或错误支撑",
+        "与参考图的结构和材质语义明显不一致",
+        "抢占中央数字人区域"
+      ],
+      "image": {
+        "prompt": "用户提供的多视角精细二次元咖啡馆参考图",
+        "generator": "user-supplied reference",
+        "source": "reference/user-cafe.png",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "Blender authored geometry",
+        "source": "blender/tide-cafe.blend",
+        "thirdPartyGeneration": false
+      }
+    },
+    {
+      "id": "espresso",
+      "function": "精细双头咖啡机、开放杯槽、压力表刻度、冲煮头、木手柄、格栅滴水盘",
+      "description": "精细双头咖啡机、开放杯槽、压力表刻度、冲煮头、木手柄、格栅滴水盘",
+      "dimensionsMeters": [
+        1.15,
+        0.72,
+        0.67
+      ],
+      "semanticFront": "positive-z",
+      "attachmentFace": "freestanding",
+      "class": "hero",
+      "targetPolycount": 10000,
+      "intendedInstances": 1,
+      "rejectionCriteria": [
+        "可见悬空、穿插或错误支撑",
+        "与参考图的结构和材质语义明显不一致",
+        "抢占中央数字人区域"
+      ],
+      "image": {
+        "prompt": "用户提供的多视角精细二次元咖啡馆参考图",
+        "generator": "user-supplied reference",
+        "source": "reference/user-cafe.png",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "Blender authored geometry",
+        "source": "blender/tide-cafe.blend",
+        "thirdPartyGeneration": false
+      }
+    },
+    {
+      "id": "table",
+      "function": "方形木桌，围板榫接、四腿与布桌旗",
+      "description": "方形木桌，围板榫接、四腿与布桌旗",
+      "dimensionsMeters": [
+        1.12,
+        0.805,
+        0.82
+      ],
+      "semanticFront": "positive-y",
+      "attachmentFace": "floor",
+      "class": "reusable",
+      "targetPolycount": 1600,
+      "intendedInstances": 5,
+      "rejectionCriteria": [
+        "可见悬空、穿插或错误支撑",
+        "与参考图的结构和材质语义明显不一致",
+        "抢占中央数字人区域"
+      ],
+      "image": {
+        "prompt": "用户提供的多视角精细二次元咖啡馆参考图",
+        "generator": "user-supplied reference",
+        "source": "reference/user-cafe.png",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "Blender authored geometry",
+        "source": "blender/tide-cafe.blend",
+        "thirdPartyGeneration": false
+      }
+    },
+    {
+      "id": "chair",
+      "function": "木质椅子、真实框架、青绿坐垫",
+      "description": "木质椅子、真实框架、青绿坐垫",
+      "dimensionsMeters": [
+        0.5,
+        1.0,
+        0.55
+      ],
+      "semanticFront": "positive-z",
+      "attachmentFace": "floor",
+      "class": "reusable",
+      "targetPolycount": 1800,
+      "intendedInstances": 10,
+      "rejectionCriteria": [
+        "可见悬空、穿插或错误支撑",
+        "与参考图的结构和材质语义明显不一致",
+        "抢占中央数字人区域"
+      ],
+      "image": {
+        "prompt": "用户提供的多视角精细二次元咖啡馆参考图",
+        "generator": "user-supplied reference",
+        "source": "reference/user-cafe.png",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "Blender authored geometry",
+        "source": "blender/tide-cafe.blend",
+        "thirdPartyGeneration": false
+      }
+    },
+    {
+      "id": "pendant",
+      "function": "双层旋压金属灯罩、扩散板、吊线、灯座",
+      "description": "双层旋压金属灯罩、扩散板、吊线、灯座",
+      "dimensionsMeters": [
+        0.58,
+        0.9,
+        0.58
+      ],
+      "semanticFront": "negative-y",
+      "attachmentFace": "ceiling",
+      "class": "reusable",
+      "targetPolycount": 2200,
+      "intendedInstances": 5,
+      "rejectionCriteria": [
+        "可见悬空、穿插或错误支撑",
+        "与参考图的结构和材质语义明显不一致",
+        "抢占中央数字人区域"
+      ],
+      "image": {
+        "prompt": "用户提供的多视角精细二次元咖啡馆参考图",
+        "generator": "user-supplied reference",
+        "source": "reference/user-cafe.png",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "Blender authored geometry",
+        "source": "blender/tide-cafe.blend",
+        "thirdPartyGeneration": false
+      }
+    },
+    {
+      "id": "greenery",
+      "function": "陶盆、土壤、真实分枝、光滑弯曲叶片与垂挂藤蔓",
+      "description": "陶盆、土壤、真实分枝、光滑弯曲叶片与垂挂藤蔓",
+      "dimensionsMeters": [
+        0.65,
+        1.3,
+        0.65
+      ],
+      "semanticFront": "positive-z",
+      "attachmentFace": "floor",
+      "class": "reusable",
+      "targetPolycount": 12000,
+      "intendedInstances": 17,
+      "rejectionCriteria": [
+        "可见悬空、穿插或错误支撑",
+        "与参考图的结构和材质语义明显不一致",
+        "抢占中央数字人区域"
+      ],
+      "image": {
+        "prompt": "用户提供的多视角精细二次元咖啡馆参考图",
+        "generator": "user-supplied reference",
+        "source": "reference/user-cafe.png",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "Blender authored geometry",
+        "source": "blender/tide-cafe.blend",
+        "thirdPartyGeneration": false
+      }
+    },
+    {
+      "id": "banquette",
+      "function": "靠墙长卡座、独立软包、滚边缝与亚麻靠垫",
+      "description": "靠墙长卡座、独立软包、滚边缝与亚麻靠垫",
+      "dimensionsMeters": [
+        0.85,
+        1.315,
+        5.1
+      ],
+      "semanticFront": "negative-x",
+      "attachmentFace": "floor",
+      "class": "hero",
+      "targetPolycount": 8000,
+      "intendedInstances": 1,
+      "rejectionCriteria": [
+        "可见悬空、穿插或错误支撑",
+        "与参考图的结构和材质语义明显不一致",
+        "抢占中央数字人区域"
+      ],
+      "image": {
+        "prompt": "用户提供的多视角精细二次元咖啡馆参考图",
+        "generator": "user-supplied reference",
+        "source": "reference/user-cafe.png",
+        "approved": false,
+        "approvedBy": ""
+      },
+      "production": {
+        "method": "Blender authored geometry",
+        "source": "blender/tide-cafe.blend",
+        "thirdPartyGeneration": false
+      }
+    }
+  ],
+  "productionPolicy": {
+    "method": "local-procedural",
+    "meshyEnabled": false,
+    "spendAuthorized": false,
+    "note": "No Meshy use planned; template-only pricing fields are unverified and not spending authority."
+  }
 }

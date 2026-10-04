@@ -1,0 +1,39 @@
+{
+  "schema": "game-room.opening-cutter.v1",
+  "id": "sea-window-b",
+  "kind": "window",
+  "widthMeters": 3.4268774703557314,
+  "heightMeters": 2.015810276679842,
+  "sillMeters": 0.8,
+  "depthMeters": null,
+  "source": "sea-window-b.png",
+  "sourceSha256": "e77b92abad17b15aa4d19b1ec4dcbdf8a1481e39f2b7002d8dae29aec6d10463",
+  "imageSize": [
+    256,
+    256
+  ],
+  "whitePixelRatio": 0.98443604,
+  "contours": [
+    {
+      "role": "outer",
+      "points": [
+        [
+          0.0039216,
+          0.9960784
+        ],
+        [
+          0.0039216,
+          0.0039216
+        ],
+        [
+          0.9960784,
+          0.0039216
+        ],
+        [
+          0.9960784,
+          0.9960784
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "sourceSha256": "e748af5a2d6601b25bb2f46cfb6aded11856eec8a87ee9330c4b19295a33a482",
+  "method": "authored-lighting diffuse/indirect atlases; live PBR metal/glass",
+  "triangles": 218748,
+  "renderBatches": 18,
+  "colliders": 20,
+  "decodedAtlasBytes": 23068672,
+  "tiers": {
+    "room.glb": {
+      "file": "room.glb",
+      "bytes": 16781100,
+      "sha256": "f644456378faebb552c2e2b7027cc409f36951c3c466a10824fe38bdf9dd1cd9"
+    },
+    "room-low.glb": {
+      "file": "room-low.glb",
+      "bytes": 13112088,
+      "sha256": "29a0c8651148d0ed582227188555e26be6d661bff543349ee234d5d90f585474"
+    }
+  },
+  "fixturesSha256": "49637c44775175449a9860f35ac172c89a316cee2cc7efc089908a6a15f3bdb2",
+  "formApproval": "user: \u770b\u8d77\u6765\u4e0d\u9519\uff0c\u52a0\u5165\u573a\u666f\u5217\u8868\u770b\u770b",
+  "sourcePreserved": true
+}
