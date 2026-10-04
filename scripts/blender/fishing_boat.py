@@ -91,11 +91,18 @@ COLORS = {
     'orange': '#ee6a1f',
     'red': '#d23a2e',
     'green': '#2fa85a',
+    'nav_white': '#fff6e6',
+    'nav_red': '#ff3a30',
+    'nav_green': '#40ff70',
 }
 GLOSSY = {'glass', 'metal'}
+# 航行灯（夜里亮）：单独一个材质 boat_glow，three.js 那边换成按天黑程度发光的材质；位置标成空物体 light…（光晕）
+GLOWS = {'nav_white', 'nav_red', 'nav_green'}
+LIGHT_MARKS = []
 MI = {k: i for i, k in enumerate(COLORS)}
 PAINT = material('boat_paint', '#ffffff', 0.5)
 GLASS = material('boat_glass', '#ffffff', 0.1)
+GLOW = material('boat_glow', '#ffffff', 0.4)
 
 # ---- 船身的形状（t = 0 船尾 → 1 船头）----
 XS, XB = -4.2, 4.8
@@ -304,9 +311,12 @@ def build_cabin(bm, face):
     cylinder(bm, face, (mx, 0, top + 0.07), (mx, 0, top + 1.7), 0.035, 'metal')
     box(bm, face, mx - 0.04, -0.45, top + 1.2, mx + 0.04, 0.45, top + 1.26, 'metal')
     box(bm, face, mx - 0.35, -0.08, top + 0.55, mx + 0.35, 0.08, top + 0.62, 'dark')
-    box(bm, face, mx - 0.06, -0.06, top + 1.7, mx + 0.06, 0.06, top + 1.8, 'cabin')
-    box(bm, face, x1 - lean - 0.1, hw - tuck, top - 0.15, x1 - lean, hw - tuck + 0.06, top - 0.05, 'red')
-    box(bm, face, x1 - lean - 0.1, -hw + tuck - 0.06, top - 0.15, x1 - lean, -hw + tuck, top - 0.05, 'green')
+    box(bm, face, mx - 0.06, -0.06, top + 1.7, mx + 0.06, 0.06, top + 1.8, 'nav_white')
+    box(bm, face, x1 - lean - 0.1, hw - tuck, top - 0.15, x1 - lean, hw - tuck + 0.06, top - 0.05, 'nav_red')
+    box(bm, face, x1 - lean - 0.1, -hw + tuck - 0.06, top - 0.15, x1 - lean, -hw + tuck, top - 0.05, 'nav_green')
+    LIGHT_MARKS.append(((mx, 0, top + 1.75), dict(color='#fff6e8', glow=1.6, glowGain=1.6)))
+    LIGHT_MARKS.append(((x1 - lean - 0.05, hw - tuck + 0.08, top - 0.1), dict(color='#ff3a30', glow=1.1, glowGain=1.4)))
+    LIGHT_MARKS.append(((x1 - lean - 0.05, -hw + tuck - 0.08, top - 0.1), dict(color='#40ff70', glow=1.1, glowGain=1.4)))
     # 排气筒
     cylinder(bm, face, (x0 - 0.18, -0.55, zd + 0.3), (x0 - 0.18, -0.55, top + 0.45), 0.07, 'dark')
     # 救生圈（左舷的舱壁上）
@@ -377,27 +387,39 @@ def main():
         c = srgb(COLORS[name])
         for loop in f.loops:
             loop[layer] = c
-        f.material_index = 1 if name in GLOSSY else 0
+        f.material_index = 2 if name in GLOWS else 1 if name in GLOSSY else 0
     me = bpy.data.meshes.new('fishing_boat')
     bm.to_mesh(me)
     bm.free()
     me.materials.append(PAINT)
     me.materials.append(GLASS)
+    me.materials.append(GLOW)
     me.validate()
     obj = bpy.data.objects.new('fishing_boat', me)
     sc.collection.objects.link(obj)
+    marks = []
+    for i, (pos, props) in enumerate(LIGHT_MARKS):
+        e = bpy.data.objects.new(f'light{i}', None)
+        sc.collection.objects.link(e)
+        e.parent = obj
+        e.location = pos
+        for k, v in props.items():
+            e[k] = v
+        e['onAt'] = 0.2
+        marks.append(e)
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     vl = sc.view_layers[0]
     for o in sc.objects:
-        o.select_set(o == obj, view_layer=vl)
+        o.select_set(o == obj or o in marks, view_layer=vl)
     vl.objects.active = obj
-    with bpy.context.temp_override(**ui_override(), active_object=obj, selected_objects=[obj]):
+    with bpy.context.temp_override(**ui_override(), active_object=obj, selected_objects=[obj, *marks]):
         bpy.ops.export_scene.gltf(
             filepath=OUT,
             export_format='GLB',
             use_selection=True,
             export_animations=False,
+            export_extras=True,
             # 只导出写好的那一层顶点色，当 COLOR_0（默认会多导一层全白的 COLOR_0，three.js 只认 COLOR_0）
             export_vertex_color='NAME',
             export_vertex_color_name='Col',

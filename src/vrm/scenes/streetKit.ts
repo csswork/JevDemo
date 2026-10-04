@@ -128,7 +128,16 @@ export function kitMaterials(keep: Keep, base: Record<'metal' | 'wood' | 'concre
 
 /** 标记点的自定义属性 → 光源；at = 这个实例的变换（光源的位置、错开亮灯的时刻都按它） */
 export function kitLight(mark: KitMark, at: THREE.Matrix4): LightAnchor {
-  const p = mark.props as { color?: string; intensity?: number; radius?: number; glow?: number; glowGain?: number; onAt?: number; hours?: [number, number] };
+  const p = mark.props as {
+    color?: string;
+    intensity?: number;
+    radius?: number;
+    glow?: number;
+    glowGain?: number;
+    onAt?: number;
+    hours?: [number, number];
+    blink?: [number, number, number];
+  };
   const origin = new THREE.Vector3().setFromMatrixPosition(at);
   return {
     pos: mark.pos.clone().applyMatrix4(at),
@@ -139,6 +148,7 @@ export function kitLight(mark: KitMark, at: THREE.Matrix4): LightAnchor {
     glowGain: p.glowGain,
     onAt: p.onAt ?? onAtOf(origin),
     hours: p.hours,
+    blink: p.blink,
   };
 }
 

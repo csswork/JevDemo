@@ -495,8 +495,43 @@ export function createFarLand(keep: Keep, from: number, to: number) {
  * 对岸的小镇：贴着海岸线的一条白房子（远看就是一排白的、米色的方块），一部分往山脚爬一点。
  * 一个 InstancedMesh，每栋一个颜色；盒子顶面压暗当屋顶
  */
-export function createFarTown(keep: Keep, from: number, to: number, count = 900, lights?: { value: number }) {
+/** 对岸小镇每栋房子的位置、朝向、大小、墙色（createFarTown 的白盒子和 street.ts 换上的 Blender 房子用同一份） */
+export interface TownSpot {
+  pos: THREE.Vector3;
+  rotY: number;
+  w: number;
+  h: number;
+  d: number;
+  color: number;
+  /** 0..1 的随机数（选房子的样式、瓦色） */
+  pick: number;
+  /** 离岸多远（米） */
+  u: number;
+}
+export function farTownSpots(from: number, to: number, count = 900): TownSpot[] {
   const r = rng(404);
+  const palette = [0xffffff, 0xfbf6ec, 0xf1f3f5, 0xfdf8f0, 0xeaf0f5, 0xf5ebdd, 0xffffff, 0xe6eaee, 0xf3e4d4];
+  const out: TownSpot[] = [];
+  for (let k = 0; k < count * 3 && out.length < count; k++) {
+    const a = from + r() * (to - from);
+    const u = r() < 0.85 ? 8 + r() * 52 : 50 + r() * 60;
+    const rr = farShore(a) + u;
+    const x = Math.cos(a) * rr;
+    const z = Math.sin(a) * rr;
+    const tall = r() < 0.05;
+    const w = 7 + r() * 9;
+    const h = tall ? 12 + r() * 8 : 4 + r() * 5;
+    const d = 7 + r() * 8;
+    const y = -4 + 6.5 * smoothstep(0, 14, u) + 0.08 * Math.max(0, u - 45);
+    const rotY = -a + (r() - 0.5) * 0.4;
+    const color = palette[Math.floor(r() * palette.length)];
+    out.push({ pos: new THREE.Vector3(x, y, z), rotY, w, h, d, color, pick: (Math.sin(k * 12.9898) * 43758.5453) % 1, u });
+  }
+  for (const s of out) s.pick = Math.abs(s.pick);
+  return out;
+}
+
+export function createFarTown(keep: Keep, from: number, to: number, count = 900, lights?: { value: number }) {
   const geo = keep(new THREE.BoxGeometry(1, 1, 1));
   geo.translate(0, 0.5, 0);
   // 顶面暗一点（屋顶），侧面原色
@@ -511,30 +546,16 @@ export function createFarTown(keep: Keep, from: number, to: number, count = 900,
   const mat = keep(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x8a96a2, emissiveIntensity: 0.45 }));
   if (lights) farWindows(mat, lights);
   const im = keep(new THREE.InstancedMesh(geo, mat, count));
-  const palette = [0xffffff, 0xfbf6ec, 0xf1f3f5, 0xfdf8f0, 0xeaf0f5, 0xf5ebdd, 0xffffff, 0xe6eaee, 0xf3e4d4];
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const c = new THREE.Color();
   let n = 0;
-  for (let k = 0; k < count * 3 && n < count; k++) {
-    const a = from + r() * (to - from);
-    // 大部分在岸边 8~60m，少数往山脚爬一点
-    const u = r() < 0.85 ? 8 + r() * 52 : 50 + r() * 60;
-    const rr = farShore(a) + u;
-    const x = Math.cos(a) * rr;
-    const z = Math.sin(a) * rr;
-    // 低矮的：远看是一条白线，不是一排方块（第一版高的有 40m，长焦一放大像一片高楼）
-    const tall = r() < 0.05;
-    const w = 7 + r() * 9;
-    const h = tall ? 12 + r() * 8 : 4 + r() * 5;
-    const d = 7 + r() * 8;
-    // 地面高度和 createFarLand 的近岸部分一致（-4 + 6.5 · smoothstep(0,14,u)，往里一点点起坡）
-    const y = -4 + 6.5 * smoothstep(0, 14, u) + 0.08 * Math.max(0, u - 45);
-    q.setFromAxisAngle(up, -a + (r() - 0.5) * 0.4);
-    m.compose(new THREE.Vector3(x, y - 0.5, z), q, new THREE.Vector3(w, h, d));
+  for (const sp of farTownSpots(from, to, count)) {
+    q.setFromAxisAngle(up, sp.rotY);
+    m.compose(sp.pos.clone().setY(sp.pos.y - 0.5), q, new THREE.Vector3(sp.w, sp.h, sp.d));
     im.setMatrixAt(n, m);
-    im.setColorAt(n, c.setHex(palette[Math.floor(r() * palette.length)]));
+    im.setColorAt(n, c.setHex(sp.color));
     n++;
   }
   im.count = n;
@@ -648,6 +669,7 @@ export function createLighthouse(keep: Keep, from: [number, number], to: [number
   const wall = new THREE.Mesh(keep(new THREE.BoxGeometry(len, 2.4, 3.4)), concrete);
   wall.position.set((a.x + b.x) / 2, SEA_Y + 0.4, (a.y + b.y) / 2);
   wall.rotation.y = -Math.atan2(b.y - a.y, b.x - a.x);
+  wall.name = 'breakwater';
   group.add(wall);
   // 灯塔：底座、塔身（往上收）、回廊、灯室、圆顶
   const tower = new THREE.Group();
@@ -673,6 +695,7 @@ export function createLighthouse(keep: Keep, from: [number, number], to: [number
   tower.add(door);
   // 门朝着角色这边
   tower.rotation.y = Math.atan2(-b.x, -b.y);
+  tower.name = 'tower';
   group.add(tower);
 
   // 夜里：灯室亮起来，两道光束绕着转（10 秒一圈）。光束是两个开口的长锥，加法混合，越远越淡、边缘柔
@@ -730,6 +753,14 @@ export function createLighthouse(keep: Keep, from: [number, number], to: [number
     group,
     /** 灯室的位置（世界坐标） */
     lamp,
+    /** 塔的变换（Blender 的灯塔摆到这里）、防波堤两头 */
+    tower,
+    ends: [a.clone(), b.clone()] as const,
+    /** 换上 Blender 的模型以后，把这里程序拼的塔和堤藏起来（光束留着） */
+    hideProcedural() {
+      tower.visible = false;
+      wall.visible = false;
+    },
     /** 光束对着这边有多正（0..1） */
     facing() {
       // 光束在 +X 上，绕 Y 转 angle 以后朝向的方位角（atan2(z, x)）是 -angle
@@ -772,7 +803,14 @@ function loadModel(keep: Keep, file: string, alive: () => boolean) {
  * 在海湾里慢慢绕大圈、随浪轻轻起伏和摇晃。模型的水线在 y = 0，船头朝 +X。
  * 每条船两个材质（油漆、玻璃），一条两次绘制。layer = 加进哪一层（海面的反射）
  */
-export function createBoats(keep: Keep, alive: () => boolean, layer?: number) {
+/** 船上标着的一盏灯（航行灯）：pos 是船的局部坐标，props 是模型里写的光晕大小、颜色 */
+export interface BoatLight {
+  boat: THREE.Object3D;
+  pos: THREE.Vector3;
+  props: Record<string, unknown>;
+}
+
+export function createBoats(keep: Keep, alive: () => boolean, layer: number | undefined, opts: { lights: { value: number }; onLight: (l: BoatLight) => void }) {
   const group = new THREE.Group();
   group.name = 'boats';
   // [绕圈的圆心 x, z, 半径, 速度（米/秒，负 = 反方向）, 起始角]
@@ -782,21 +820,53 @@ export function createBoats(keep: Keep, alive: () => boolean, layer?: number) {
     [180, -420, 110, 1.2, 4.1],
     [20, -620, 120, -0.9, 1.0],
   ];
-  const boats: Array<{ m: THREE.Object3D; x: number; z: number; rad: number; speed: number; a0: number }> = [];
+  const boats: Array<{ m: THREE.Object3D; x: number; z: number; rad: number; speed: number; a: number }> = [];
   void loadModel(keep, 'fishing_boat/fishing_boat.glb', alive).then((gltf) => {
     if (!gltf) return;
+    // 航行灯的材质换成按天黑程度发光的（四条船共用一个）
+    let glow: THREE.MeshStandardMaterial | null = null;
+    gltf.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      if (!/glow/.test(mat.name)) return;
+      if (!glow) {
+        glow = keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 }));
+        glow.onBeforeCompile = (shader) => {
+          shader.uniforms.uLights = opts.lights;
+          shader.fragmentShader = shader.fragmentShader
+            .replace('#include <common>', '#include <common>\nuniform float uLights;')
+            .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance = vColor.rgb * smoothstep( 0.15, 0.3, uLights ) * 2.5;');
+        };
+        glow.customProgramCacheKey = () => 'boat-nav-glow';
+      }
+      mesh.material = glow;
+    });
+    // 模型里标的灯（空物体 light…）
+    const marks: Array<{ pos: THREE.Vector3; props: Record<string, unknown> }> = [];
+    gltf.scene.updateMatrixWorld(true);
+    gltf.scene.traverse((o) => {
+      if (o.name.startsWith('light') && !(o as THREE.Mesh).isMesh) marks.push({ pos: new THREE.Vector3().setFromMatrixPosition(o.matrixWorld), props: o.userData });
+    });
     for (const [x, z, rad, speed, a0] of paths) {
       const m = gltf.scene.clone(true);
       if (layer != null) m.traverse((c) => c.layers.enable(layer));
       group.add(m);
-      boats.push({ m, x, z, rad, speed, a0 });
+      boats.push({ m, x, z, rad, speed, a: a0 });
+      for (const mk of marks) opts.onLight({ boat: m, pos: mk.pos.clone(), props: mk.props });
     }
   });
+  let last = -1;
   return {
     group,
-    update(t: number) {
+    /** night = 天黑了多少：夜里船开得慢一些（一半的速度，慢慢地开着灯绕） */
+    update(t: number, night = 0) {
+      const dt = last < 0 ? 0 : Math.min(0.2, Math.max(0, t - last));
+      last = t;
+      const k0 = 1 - 0.5 * night;
       for (const [k, b] of boats.entries()) {
-        const a = b.a0 + (t * b.speed) / b.rad;
+        b.a += (dt * b.speed * k0) / b.rad;
+        const a = b.a;
         b.m.position.set(b.x + Math.cos(a) * b.rad, SEA_Y + 0.08 * Math.sin(t * 1.3 + k), b.z + Math.sin(a) * b.rad);
         // 船头朝着前进方向（圆的切线）；船头随浪一抬一落、左右轻轻摇
         const dx = -Math.sin(a) * Math.sign(b.speed);

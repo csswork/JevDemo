@@ -16,6 +16,7 @@ import {
   createSky,
   createSkyEnv,
   farShore,
+  farTownSpots,
   fbm,
   skyUniforms,
 } from './seaside';
@@ -183,6 +184,7 @@ interface BuildingSpec {
  */
 const _gm = new THREE.Matrix4();
 const _nm = new THREE.Matrix3();
+const _ln = new THREE.Vector3();
 class Mesher {
   pos: number[] = [];
   nrm: number[] = [];
@@ -211,7 +213,7 @@ class Mesher {
     geo: THREE.BufferGeometry,
     local: THREE.Matrix4,
     tint?: THREE.Color,
-    ext?: [number, number, number] | ((q: THREE.Vector3) => [number, number, number]),
+    ext?: [number, number, number] | ((q: THREE.Vector3, n: THREE.Vector3) => [number, number, number]),
     plasterUV?: readonly number[],
   ) {
     const base = this.pos.length / 3;
@@ -238,7 +240,7 @@ class Mesher {
       if (this.uv1) this.uv1.push(plasterUV && uv ? uv.getX(i) : 0, plasterUV && uv ? uv.getY(i) : 0);
       if (this.sway) this.sway.push(0, 0, 0, 0);
       if (this.ext) {
-        if (typeof ext === 'function') this.ext.push(...ext(this.t.fromBufferAttribute(pos, i).applyMatrix4(local)));
+        if (typeof ext === 'function') this.ext.push(...ext(this.t.fromBufferAttribute(pos, i).applyMatrix4(local), _ln.fromBufferAttribute(nrm, i)));
         else this.ext.push(...(ext ?? [0, 0, 24]));
       }
     }
@@ -706,17 +708,7 @@ export function createStreet(): Backdrop {
     const rr = farShore(a) + 5 + rl() * 6;
     light({ pos: v3(Math.cos(a) * rr, 5.5, Math.sin(a) * rr), color: rl() < 0.6 ? 0xffb060 : 0xfff0dd, intensity: 0, radius: 0, glow: 2.6, glowGain: 1.4, onAt: 0.1 + rl() * 0.5 });
   }
-  // 桥面一排路灯
-  {
-    bridge.updateMatrixWorld(true);
-    bridge.geometry.computeBoundingBox();
-    const bb = bridge.geometry.boundingBox!;
-    for (let x = bb.min.x + 10; x < bb.max.x - 5; x += 32) {
-      for (const z of [-4.2, 4.2]) {
-        light({ pos: v3(x, 13.5, z).applyMatrix4(bridge.matrixWorld), color: 0xffd8a0, intensity: 0, radius: 0, glow: 3, glowGain: 1.2, onAt: 0.2 });
-      }
-    }
-  }
+  // 桥面的路灯、桥塔的航空灯：Blender 的桥模型里标着（见后面的 bakeFar）
   // 灯塔在画面右边、路灯和头之间（插画里的位置）
   const BREAKWATER: [[number, number], [number, number]] = [
     [-40, -206],
@@ -728,7 +720,14 @@ export function createStreet(): Backdrop {
   light({ pos: lighthouse.lamp, color: 0xfff4e0, intensity: 0, radius: 0, glow: 5, glowGain: 2.5, onAt: 0.15, gain: () => lighthouse.facing() });
   // 渔船、海鸥是异步载入的模型：反射层在载入后才加得上，所以把层号传进去
   const alive = () => !disposed;
-  const boats = createBoats(keep, alive, REFLECT_LAYER);
+  // 渔船的航行灯：模型里标着，跟着船动（光晕）
+  const boats = createBoats(keep, alive, REFLECT_LAYER, {
+    lights: night.uLights,
+    onLight: ({ boat, pos, props }) => {
+      const p = props as { color?: string; glow?: number; glowGain?: number; onAt?: number };
+      nightLights.add({ pos, follow: boat, color: new THREE.Color(p.color ?? '#ffffff'), intensity: 0, radius: 0, glow: p.glow ?? 1, glowGain: p.glowGain, onAt: p.onAt ?? 0.2 });
+    },
+  });
   far(boats.group);
   const gulls = createGulls(keep, alive);
   group.add(gulls.group);
@@ -1910,6 +1909,125 @@ export function createStreet(): Backdrop {
     }
   }
 
+  // ---- 远景（scripts/blender/far_scenery.py → models/far/far.glb）：灯塔、防波堤、消波块、跨海桥、对岸小镇的房子 ----
+  // 都在 200m 以外：全部并进两个网格（实体、夜里发光），加进海面的反射层；程序拼的旧模型到了这时候藏起来
+  const farUniforms = { uLights: night.uLights };
+  const farSolidMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true }));
+  // 对岸房子的窗灯：墙面按房子自己的坐标（aGlow = 沿墙、离地、这栋的随机数；不是墙的 z < 0）分格子，随机一部分格子亮着
+  farSolidMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uLights = farUniforms.uLights;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aGlow;\nvarying vec3 vWin;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aGlow;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vWin;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        if ( uLights > 0.0 && vWin.z >= 0.0 ) {
+          vec2 g = vec2( vWin.x / 2.6, ( vWin.y - 0.7 ) / 2.8 );
+          vec2 cell = floor( g );
+          vec2 f = fract( g );
+          float h = fract( sin( dot( vec3( cell, vWin.z * 97.31 ), vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+          float win = step( 0.28, f.x ) * step( f.x, 0.72 ) * step( 0.3, f.y ) * step( f.y, 0.78 ) * step( 0.0, cell.y ) * step( h, 0.36 );
+          float fw = max( fwidth( g.x ), fwidth( g.y ) );
+          win = mix( win, 0.08, smoothstep( 0.35, 1.0, fw ) );
+          totalEmissiveRadiance += vec3( 1.0, 0.72, 0.38 ) * win * uLights * 1.6;
+        }`,
+      );
+  };
+  farSolidMat.customProgramCacheKey = () => 'street-far-solid';
+  const farGlowMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true }));
+  farGlowMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uLights = farUniforms.uLights;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uLights;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vColor.rgb * smoothstep( 0.1, 0.3, uLights ) * 2.2;');
+  };
+  farGlowMat.customProgramCacheKey = () => 'street-far-glow';
+  const bakeFar = (kit: Map<string, KitItem>) => {
+    const solid = new Mesher({ ext: true });
+    const glowM = new Mesher();
+    const NO_WIN: [number, number, number] = [0, 0, -1];
+    const put = (name: string, M: THREE.Matrix4, opts: { wall?: THREE.Color; roof?: THREE.Color; seed?: number } = {}) => {
+      const item = kit.get(name);
+      if (!item) return;
+      for (const part of item.parts) {
+        const at = M.clone().multiply(part.local);
+        if (part.slot === 'glow') glowM.addGeometry(part.geo, at);
+        else if (part.slot === 'wall') {
+          const seed = opts.seed ?? -1;
+          solid.addGeometry(part.geo, at, opts.wall, (q, n) => (Math.abs(n.y) > 0.5 || seed < 0 ? NO_WIN : [Math.abs(n.x) > 0.5 ? q.z : q.x, q.y, seed]));
+        } else solid.addGeometry(part.geo, at, part.slot === 'roof' ? opts.roof : undefined, NO_WIN);
+      }
+      for (const mark of item.marks) if (mark.name.startsWith('light')) nightLights.add(kitLight(mark, M));
+    };
+    // 灯塔：摆在程序拼的塔的位置上
+    lighthouse.tower.updateMatrixWorld(true);
+    put('lighthouse', lighthouse.tower.matrixWorld.clone());
+    // 防波堤：一段段 10m 的堤身，外侧摆两排消波块
+    const [a, b] = lighthouse.ends;
+    const len = a.distanceTo(b);
+    const ang = -Math.atan2(b.y - a.y, b.x - a.x);
+    const n = Math.max(1, Math.round(len / 10));
+    const rt = rng(5150);
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.5) / n;
+      const c = new THREE.Vector3(a.x + (b.x - a.x) * t, SEA_Y + 1.6, a.y + (b.y - a.y) * t);
+      put('breakwater', new THREE.Matrix4().makeRotationY(ang).setPosition(c).multiply(new THREE.Matrix4().makeScale(len / n / 10, 1, 1)));
+    }
+    const dir = new THREE.Vector3(b.x - a.x, 0, b.y - a.y).normalize();
+    const outward = new THREE.Vector3(dir.z, 0, -dir.x);
+    if (outward.z > 0) outward.negate(); // 外侧 = 离岸更远的那边（-Z）
+    for (let s2 = 1; s2 < len + 4; s2 += 1.7) {
+      for (const row of [0, 1]) {
+        const p = new THREE.Vector3(a.x, 0, a.y).addScaledVector(dir, s2 + row * 0.8).addScaledVector(outward, 2.6 + row * 1.6 + rt() * 0.4);
+        p.y = SEA_Y + 0.2 + row * -0.4 + rt() * 0.3;
+        const rot = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rt() * 6.28, rt() * 6.28, rt() * 6.28));
+        put('tetrapod', new THREE.Matrix4().makeTranslation(p).multiply(rot).multiply(new THREE.Matrix4().makeScale(0.9 + rt() * 0.25, 0.9 + rt() * 0.25, 0.9 + rt() * 0.25)));
+      }
+    }
+    // 跨海桥：摆在程序拼的桥的位置上，按实际长度缩放（模型是 360m）
+    bridge.updateMatrixWorld(true);
+    bridge.geometry.computeBoundingBox();
+    const bl = bridge.geometry.boundingBox!.max.x - bridge.geometry.boundingBox!.min.x;
+    put('bridge', bridge.matrixWorld.clone().multiply(new THREE.Matrix4().makeScale(bl / 360, 1, 1)));
+    // 对岸小镇：和白盒子同一份位置，按大小挑样式，每栋一个墙色、瓦色
+    const roofs = [0x5f6672, 0x7d8aa0, 0x8ea0bc, 0x4a5262, 0x9a6a58, 0x6f7f9c];
+    const spots = farTownSpots(TOWN_FROM, TOWN_TO, 900);
+    let temple = false;
+    let chimney = false;
+    spots.forEach((sp, i) => {
+      let name: string;
+      if (!chimney && sp.h > 14) {
+        name = 'chimney';
+        chimney = true;
+      } else if (!temple && sp.u > 60 && sp.pick > 0.5) {
+        name = 'temple';
+        temple = true;
+      } else if (sp.h > 10) name = 'apartment';
+      else if (sp.w > 13 && sp.pick < 0.35) name = 'warehouse';
+      else name = sp.h < 5.2 ? 'house_c' : sp.pick < 0.5 ? 'house_a' : 'house_b';
+      const s = name === 'apartment' ? sp.h / 12.6 : name === 'house_c' ? 0.9 + sp.pick * 0.3 : 0.85 + sp.pick * 0.35;
+      const M = new THREE.Matrix4().makeRotationY(sp.rotY).setPosition(sp.pos.x, sp.pos.y - 0.3, sp.pos.z).multiply(new THREE.Matrix4().makeScale(s, s, s));
+      put(name, M, { wall: new THREE.Color(sp.color), roof: new THREE.Color(roofs[Math.floor(sp.pick * 97) % roofs.length]), seed: (i * 0.618) % 1 });
+    });
+    for (const [m, mat, nm] of [
+      [solid, farSolidMat, 'far-solid'],
+      [glowM, farGlowMat, 'far-glow'],
+    ] as const) {
+      if (m.empty) continue;
+      const mesh = new THREE.Mesh(keep(m.build()), mat);
+      mesh.name = nm;
+      far(mesh);
+    }
+    lighthouse.hideProcedural();
+    bridge.visible = false;
+    farTown.visible = false;
+  };
+  void loadKit(`${BASE}models/far/far.glb`, keep).then((kit) => {
+    if (!disposed) bakeFar(kit);
+  });
   // 她身边那家咖啡店的店内（真的 3D，透过一楼的透明玻璃看得到）
   const ppCache = new Map<string, Promise<THREE.Object3D | null>>();
   const loadPP = (file: string) => {
@@ -2030,49 +2148,6 @@ export function createStreet(): Backdrop {
     });
   };
   litAll();
-  /** 渔船的航行灯（模型载入以后按顶点色找：桅顶最高处白灯、绿的右舷灯、和它一样高的红的左舷灯；第 5 期重建时由模型标出来） */
-  let boatLights = false;
-  const findBoatLights = () => {
-    const boat0 = boats.group.children[0];
-    if (!boat0) return;
-    boatLights = true;
-    let mesh: THREE.Mesh | null = null;
-    boat0.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh && !mesh) mesh = o as THREE.Mesh;
-    });
-    if (!mesh) return;
-    const g = (mesh as THREE.Mesh).geometry;
-    const pos = g.attributes.position;
-    const colA = g.attributes.color;
-    if (!colA) return;
-    const top = new THREE.Vector3(0, -1e9, 0);
-    const green = new THREE.Vector3();
-    const red: THREE.Vector3[] = [];
-    let ng = 0;
-    const v = new THREE.Vector3();
-    for (let i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i);
-      if (v.y > top.y) top.copy(v);
-      const r = colA.getX(i);
-      const gg = colA.getY(i);
-      const bb = colA.getZ(i);
-      if (gg > 0.25 && r < 0.15 && bb < 0.35) {
-        green.add(v);
-        ng++;
-      } else if (r > 0.35 && gg < 0.12 && bb < 0.12) red.push(v.clone());
-    }
-    if (!ng) return;
-    green.divideScalar(ng);
-    const port = red.filter((p) => Math.abs(p.y - green.y) < 0.25 && Math.abs(p.x - green.x) < 0.6);
-    const portC = port.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(Math.max(1, port.length));
-    top.y -= 0.05;
-    for (const b of boats.group.children) {
-      light({ pos: top.clone(), follow: b, color: 0xfff6e8, intensity: 0, radius: 0, glow: 1.6, glowGain: 1.6, onAt: 0.2 });
-      light({ pos: green.clone(), follow: b, color: 0x40ff70, intensity: 0, radius: 0, glow: 1.1, glowGain: 1.4, onAt: 0.2 });
-      if (port.length) light({ pos: portC.clone(), follow: b, color: 0xff3a30, intensity: 0, radius: 0, glow: 1.1, glowGain: 1.4, onAt: 0.2 });
-    }
-  };
-
   let time = 0;
   return {
     group,
@@ -2093,9 +2168,8 @@ export function createStreet(): Backdrop {
       time += dt;
       wind.uTime.value = time;
       water.update(time);
-      boats.update(time);
+      boats.update(time, night.uLights.value);
       gulls.update(time);
-      if (!boatLights) findBoatLights();
       if ((lampScan -= dt) <= 0) {
         lampScan = 0.5;
         litAll();
