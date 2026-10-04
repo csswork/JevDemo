@@ -8,6 +8,7 @@ export type { Backdrop };
  * 背景场景：一家小咖啡店的店内。房间本身（墙、地板、窗、黑板、店招、吧台、置物架）是程序生成的（几何体 + canvas 画的贴图）；
  * 店里的小物件是 Poly Pizza 上的低多边形模型（public/scene/polypizza/，来源和授权见 public/scene/CREDITS.md）：
  * 意式咖啡机（Zsky，CC-BY）、杯子、甜点、圆桌木椅、吧台凳、吊灯、绿植、地毯、台灯（Kenney / Quaternius，CC0）。
+ * 入口的胡桃木弯木衣帽架由 scripts/blender/cafe_coat_rack.py 生成，单独从 models/cafe/coat_rack.glb 加载。
  * 平涂的低多边形和动漫角色放在一起比写实模型协调（Poly Haven 的写实模型试过，很突兀）。
  * 唯一的外部文件是打光用的室内 HDRI（public/scene/hdri/，Poly Haven，CC0）：舞台把它转成环境光（IBL），
  * 只用来照亮场景里的 PBR 材质，不显示出来。
@@ -38,6 +39,7 @@ const BACK = -5; // 后墙 z
 const FRONT = BACK + D; // 前墙 z
 /** Poly Pizza 的模型 */
 const PP = `${import.meta.env.BASE_URL}scene/polypizza/`;
+const COAT_RACK = `${import.meta.env.BASE_URL}scene/models/cafe/coat_rack.glb`;
 /** 椅子模型默认面朝 -Z（实测），转到面朝桌子时补半圈 */
 const CHAIR_FACING = Math.PI;
 /** 其余模型的朝向（绕竖轴，弧度）：让正面朝向店里。逐个从店里拍过（__views 的特写）确认的 */
@@ -274,7 +276,7 @@ export function createCafe(): Backdrop {
     let p = sources.get(file);
     if (!p) {
       p = loader
-        .loadAsync(`${PP}${file}.glb`)
+        .loadAsync(file === 'coat_rack_standing' ? COAT_RACK : `${PP}${file}.glb`)
         .then((gltf) => {
           gltf.scene.traverse((o) => {
             const mesh = o as THREE.Mesh;
