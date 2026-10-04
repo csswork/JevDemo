@@ -14,7 +14,28 @@ import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
 import { DEFAULT_BACKDROP, DEFAULT_MODEL, MODELS, VISIBLE_MODELS, modelUrl, probeModels } from './models';
 import { appendChat, openChat, resetChat, type ChatSession } from './chat';
 import type { BackdropId, CameraView } from './vrm/stage';
-import { TIME_MODES, type TimeMode } from './vrm/timeOfDay';
+import { presetHours, TIME_MODES } from './vrm/timeOfDay';
+import { Picker, type PickerItem } from './ui/Picker';
+import { TimeSlider } from './ui/TimeSlider';
+import { SpeechBubble } from './ui/SpeechBubble';
+import { EMOTION_LABEL, emotionLabel } from './ui/labels';
+import {
+  IconBlank,
+  IconChat,
+  IconChevron,
+  IconCity,
+  IconClose,
+  IconCoffee,
+  IconCollapse,
+  IconImage,
+  IconMic,
+  IconReset,
+  IconSend,
+  IconSliders,
+  IconSwap,
+  IconTree,
+  IconVolume,
+} from './ui/icons';
 import './App.css';
 
 /** 选过的模型存在这个 key 下（只是本机浏览器的偏好） */
@@ -27,14 +48,17 @@ const BACKDROP_KEY = 'jev.backdrop';
  * 没设置过的角色用默认（模型自己的默认音色、公园、半身机位，见 models.ts），不继承别的角色的
  */
 const PREFS_KEY = 'jev.modelPrefs';
+/** 调试面板开着还是收着 */
+const PANEL_KEY = 'jev.panelOpen';
+type TimeValue = 'now' | number;
 interface ModelPrefs {
   speaker?: string;
   backdrop?: BackdropId;
   view?: CameraView;
   /** 背景音开关。没设置过 = 开 */
   ambient?: boolean;
-  /** 时间（街景的昼夜）。没设置过 = 跟随现在 */
-  time?: TimeMode;
+  /** 时间（街景的昼夜）：'now' = 实时，数字 = 停在几点。没设置过 = 实时（旧版存的是清晨 / 白天…，读的时候换成钟点） */
+  time?: TimeValue;
 }
 function allPrefs(): Record<string, ModelPrefs> {
   try {
@@ -73,11 +97,11 @@ function migratePrefs(id: string | null) {
   if (!speaker && !backdrop) return;
   savePrefs(id, { ...(backdrop ? { backdrop } : {}), ...(speaker ? { speaker } : {}) });
 }
-const BACKDROPS: Array<{ id: BackdropId; label: string }> = [
-  { id: 'cafe', label: '咖啡店' },
-  { id: 'park', label: '公园' },
-  { id: 'street', label: '街景' },
-  { id: 'none', label: '纯色背景' },
+const BACKDROPS: Array<{ id: BackdropId; label: string; icon: React.ReactNode }> = [
+  { id: 'cafe', label: '咖啡店', icon: <IconCoffee size={18} /> },
+  { id: 'park', label: '公园', icon: <IconTree size={18} /> },
+  { id: 'street', label: '街景', icon: <IconCity size={18} /> },
+  { id: 'none', label: '纯色', icon: <IconBlank size={18} /> },
 ];
 function savedBackdrop(): BackdropId | null {
   try {
@@ -91,7 +115,12 @@ function savedBackdrop(): BackdropId | null {
 /** 角色的背景：存过的，否则默认 */
 const backdropOf = (p: ModelPrefs): BackdropId => (BACKDROPS.some((b) => b.id === p.backdrop) ? p.backdrop! : DEFAULT_BACKDROP);
 /** 角色的音色：用户给她选过的，否则模型自己的默认 */
-const timeOf = (p: ModelPrefs): TimeMode => (TIME_MODES.some((t) => t.id === p.time) ? p.time! : 'now');
+const timeOf = (p: ModelPrefs): TimeValue => {
+  const t = p.time as unknown;
+  if (typeof t === 'number' && t >= 0 && t < 24) return t;
+  const preset = TIME_MODES.find((m) => m.id === t && m.id !== 'now');
+  return preset ? presetHours(preset.id as Exclude<typeof preset.id, 'now'>) : 'now';
+};
 const speakerOf = (id: string | null, p: ModelPrefs) => p.speaker ?? MODELS.find((m) => m.id === id)?.voice ?? null;
 
 /**
@@ -182,8 +211,8 @@ function topMix(probs: Record<string, number>): string {
     Object.entries(probs)
       .filter(([, p]) => p >= 0.15)
       .sort((a, b) => b[1] - a[1])
-      .map(([k, p]) => `${k} ${p.toFixed(2)}`)
-      .join(' + ') || 'neutral'
+      .map(([k, p]) => `${emotionLabel(k)} ${p.toFixed(2)}`)
+      .join(' + ') || '平静'
   );
 }
 
@@ -192,12 +221,50 @@ export default function App() {
   const runtimeRef = useRef<Runtime | null>(null);
   const deciderRef = useRef<ActDecider>(new MockDecider());
   const logRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // 界面：左上的角色设定展开着没有、聊天记录开着没有、调试面板开着没有（面板的开合记在浏览器里）
+  // 窄屏（手机）上先收着，不然会挡住脸
+  const [dockOpen, setDockOpen] = useState(() => window.innerWidth >= 720);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem(PANEL_KEY);
+      if (v) return v === '1';
+    } catch {
+      // 读不了就按屏幕宽度定
+    }
+    // 第一次打开：窄屏先收着，别挡住角色
+    return window.innerWidth >= 720;
+  });
+  const togglePanel = (open: boolean) => {
+    setPanelOpen(open);
+    try {
+      localStorage.setItem(PANEL_KEY, open ? '1' : '0');
+    } catch {
+      // 记不住就算了
+    }
+  };
+  // 刚发出去的那句话：聊天记录收着的时候在输入框上面飘一下再淡掉，让人知道发出去了
+  const [echo, setEcho] = useState<{ id: number; text: string } | null>(null);
+  useEffect(() => {
+    if (!echo) return;
+    const t = window.setTimeout(() => setEcho((e) => (e?.id === echo.id ? null : e)), 4200);
+    return () => clearTimeout(t);
+  }, [echo]);
+  // 输入框跟着内容长高（最多 5 行左右）
+  const [input, setInput] = useState('');
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    // 空的时候用 CSS 的一行高（Chrome 的 scrollHeight 会把换行的占位文字也算进去）
+    el.style.height = '';
+    if (input) el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
+  }, [input]);
 
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [tts, setTts] = useState(false);
   const [live, setLive] = useState<LiveState | null>(null);
@@ -218,7 +285,7 @@ export default function App() {
   const [backdrop, setBackdropState] = useState<BackdropId>(DEFAULT_BACKDROP);
   // 背景音（场景的环境音）：按角色记，默认开。第一次发送消息时才真正出声（浏览器要求用户手势）
   const [ambient, setAmbient] = useState(true);
-  const [timeMode, setTimeMode] = useState<TimeMode>('now');
+  const [timeMode, setTimeMode] = useState<TimeValue>('now');
   // 音色：按角色记在浏览器里（见 ModelPrefs），角色加载时换成她的；没选过就用服务端的默认音色（TTS_SPEAKER）
   const [speaker, setSpeaker] = useState<string | null>(null);
   // 偏好按角色存：存的时候要用最新的角色 id（闭包里的可能是旧的）。换角色时在事件里直接改，这里兜底同步
@@ -494,11 +561,15 @@ export default function App() {
     savePrefs(modelIdRef.current, { ambient: on });
   };
 
-  /** 时间（街景的昼夜）：记在当前角色下 */
-  const pickTime = (mode: TimeMode) => {
-    setTimeMode(mode);
-    runtimeRef.current?.setTimeOfDay(mode);
-    savePrefs(modelIdRef.current, { time: mode });
+  /** 时间（街景的昼夜）：拖拉杆的时候直接跳过去、不存；松手 / 勾「实时」时过渡过去并记在当前角色下 */
+  const dragTime = (v: TimeValue) => {
+    setTimeMode(v);
+    runtimeRef.current?.setTimeOfDay(v, true);
+  };
+  const pickTime = (v: TimeValue) => {
+    setTimeMode(v);
+    runtimeRef.current?.setTimeOfDay(v);
+    savePrefs(modelIdRef.current, { time: v });
   };
 
   /** 换到某个角色的音色和背景（换角色时、换失败退回时） */
@@ -602,6 +673,10 @@ export default function App() {
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns]);
+  // 打开聊天记录时直接停在最新的一条
+  useEffect(() => {
+    if (chatOpen) logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
+  }, [chatOpen]);
 
   const previewMotion = (id: MotionId) => {
     const rt = runtimeRef.current;
@@ -651,6 +726,9 @@ export default function App() {
     if (!text || !rt || busy || modelLoading != null) return;
 
     setInput('');
+    setEcho({ id: Date.now(), text });
+    // 上一句的气泡收起来，换成"思考云"
+    setSubtitle('');
     setBusy(true);
     setJevMeta(null);
     setJevError(null);
@@ -796,10 +874,28 @@ export default function App() {
 
 
 
+  const currentModel = MODELS.find((m) => m.id === modelId);
+  const modelItems: PickerItem[] = VISIBLE_MODELS.map((m) => ({
+    id: m.id,
+    label: m.name,
+    desc: m.desc,
+    disabled: !modelAvail[m.id],
+    note: modelAvail[m.id] ? undefined : '未下载',
+    lead: <Avatar id={m.id} name={m.name} size={30} />,
+  }));
+  const voiceItems: PickerItem[] = groups.flatMap((g) =>
+    voices
+      .filter((v) => v.group === g)
+      .map((v) => ({ id: v.id, label: v.name, desc: v.desc, group: g, disabled: v.disabled })),
+  );
+  const voiceBackend = voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS';
+
   return (
     <div className="app">
       <div className="stage">
         <canvas ref={canvasRef} />
+
+        <SpeechBubble runtime={runtimeRef} text={subtitle} thinking={busy} name={persona?.name ?? currentModel?.name} />
 
         {loading && (
           <div className="overlay">
@@ -820,440 +916,506 @@ export default function App() {
             </div>
           </div>
         )}
-
-        <div className="hud">
-          <div className="pipeline">
-            文本 <span className="arrow">→</span>{' '}
-            {jev.speechSource === 'deepseek' && useJev ? (
-              <>
-                <span className="live">{jev.speechModel}</span> <span className="arrow">→</span>{' '}
-              </>
-            ) : null}
-            <span className={useJev && jev.configured ? 'live' : ''}>
-              {useJev && jev.configured ? 'Jev' : 'Mock'} 表演判断
-            </span>{' '}
-            <span className="arrow">→</span> Act IR <span className="arrow">→</span> three-vrm
-          </div>
-        </div>
-
-        {subtitle && !loading && <div className="subtitle">{subtitle}</div>}
-
-        {jevError && (
-          <div className="degraded" title={jevError}>
-            判断层降级 · 表演退回基线，台词不受影响
-          </div>
-        )}
-
-        {live && (
-          <div className="tracks">
-            <Track
-              label="expression"
-              value={
-                live.expressions.length
-                  ? live.expressions.map(([k, v]) => `${k} ${v.toFixed(2)}`).join('   ')
-                  : '—'
-              }
-              active={live.expressions.length > 0}
-            />
-            <Track label="gaze" value={live.gaze} />
-            <Track label="mouth" value={live.speaking ? 'speaking' : 'idle'} active={live.speaking} />
-            <Track label="posture" value={live.posture} />
-            <Track label="motion" value={live.motion ?? 'off'} active={!!live.motion} />
-            <div className="fps">{live.fps} fps</div>
-          </div>
-        )}
       </div>
 
-      <aside className="panel">
-        <header>
-          <h1>Jev × three-vrm</h1>
-          <p>一期：文本驱动的表演管线 · 半身表情</p>
-        </header>
-
-        <div className="chat-head">
-          <span>
-            {persona ? `和 ${persona.name} 的对话` : '对话'}
-            {turns.length > 0 && <em>{` · ${turns.length} 条`}</em>}
-          </span>
-          <button
-            onClick={() => void resetConversation()}
-            disabled={loading || busy || !!chatError || modelLoading != null}
-            title="清空这个角色的聊天记录，她会忘掉之前聊过的内容（旧记录归档，不删除）"
+      {/* ---------- 左上：角色，和挂在她名下的音色 / 背景 / 时间 ---------- */}
+      <section className={`dock glass ${dockOpen ? '' : 'folded'}`} data-bubble-avoid>
+        <div className="dock-head">
+          <Picker
+            className="model-picker"
+            value={modelId}
+            items={modelItems}
+            onPick={(id) => void pickModel(id)}
+            disabled={loading || busy}
+            title="换角色（会记住，下次打开默认是她）"
+            icon={<IconSwap size={15} />}
           >
-            重置对话
+            <Avatar id={modelId ?? '?'} name={currentModel?.name ?? '?'} size={38} />
+            <span className="who">
+              <b>{currentModel?.name ?? '地址栏指定的模型'}</b>
+              <small>{currentModel?.desc ?? '（?model= 参数）'}</small>
+            </span>
+          </Picker>
+          <button
+            className="icon-btn fold"
+            onClick={() => setDockOpen((o) => !o)}
+            title={dockOpen ? '收起' : '展开她的设定'}
+            aria-expanded={dockOpen}
+          >
+            <IconChevron size={16} />
           </button>
         </div>
-        {chatError && <div className="chat-error">{chatError}</div>}
 
-        <div className="log" ref={logRef}>
-          {turns.map((t, i) => (
-            <div key={i} className={`turn ${t.role}`}>
-              {t.text}
+        {(modelLoading != null || modelError) && (
+          <div className={`dock-note${modelError ? ' error' : ''}`}>
+            {modelError ?? (
+              <>
+                <span>载入中 {Math.round((modelLoading ?? 0) * 100)}%</span>
+                <span className="mini-bar">
+                  <i style={{ width: `${Math.round((modelLoading ?? 0) * 100)}%` }} />
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="dock-tree" aria-hidden={!dockOpen}>
+          <div className="dock-tree-inner">
+            <div className="leaf">
+              <div className="leaf-head">
+                <IconMic size={15} />
+                <span>音色</span>
+                <Switch
+                  checked={tts}
+                  onChange={(v) => {
+                    ttsTouched.current = true;
+                    setTts(v);
+                  }}
+                  label={tts ? '开口' : '静音'}
+                  title={voice.ready ? `语音合成：${voiceBackend}` : '本地语音没就绪时用系统内置语音'}
+                />
+              </div>
+              {voice.ready && voices.length > 0 ? (
+                <Picker
+                  value={activeSpeaker}
+                  items={voiceItems}
+                  onPick={(id) => void pickSpeaker(id)}
+                  disabled={!tts}
+                  title="换了马上试听一句；按角色记住"
+                >
+                  <span className="voice-name">{activeName}</span>
+                  <span className="voice-desc">{activeVoice?.desc ?? voiceBackend}</span>
+                </Picker>
+              ) : (
+                <div className="leaf-hint">
+                  {voice.disabled || voice.error ? '系统内置语音' : (
+                    <>
+                      <span className="spinner" /> 本地语音加载中…
+                    </>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
-          {busy && <div className="turn character thinking">思考中…</div>}
-        </div>
 
-        <div className="composer">
+            <div className="leaf">
+              <div className="leaf-head">
+                <IconImage size={15} />
+                <span>背景</span>
+                <button
+                  className={`chip-toggle ${ambient ? 'on' : ''}`}
+                  onClick={() => pickAmbient(!ambient)}
+                  title="场景的环境音：咖啡店的人声 / 公园的鸟鸣 / 街上的声音（说话时自动压低）"
+                  aria-pressed={ambient}
+                >
+                  <IconVolume size={14} off={!ambient} />
+                  环境音
+                </button>
+              </div>
+              <div className="seg" role="radiogroup" aria-label="背景">
+                {BACKDROPS.map((b) => (
+                  <button
+                    key={b.id}
+                    role="radio"
+                    aria-label={b.label}
+                    aria-checked={backdrop === b.id}
+                    className={backdrop === b.id ? 'on' : ''}
+                    onClick={() => pickBackdrop(b.id)}
+                  >
+                    {b.icon}
+                    <span>{b.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className={`leaf sub time-leaf ${backdrop === 'street' ? '' : 'hidden'}`}>
+                <TimeSlider value={timeMode} onChange={dragTime} onCommit={pickTime} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {jevError && (
+        <div className="degraded" title={jevError}>
+          判断层降级 · 表演退回基线，台词不受影响
+        </div>
+      )}
+
+      {/* ---------- 正下方：输入框 + 聊天记录 ---------- */}
+      <div className="chatbar" data-bubble-avoid>
+        {chatOpen && (
+          <div className="chatlog glass">
+            <div className="chatlog-head">
+              <span>
+                {persona ? `和 ${persona.name} 的对话` : '对话'}
+                {turns.length > 0 && <em>{` · ${turns.length} 条`}</em>}
+              </span>
+              <button
+                className="text-btn"
+                onClick={() => void resetConversation()}
+                disabled={loading || busy || !!chatError || modelLoading != null}
+                title="清空这个角色的聊天记录，她会忘掉之前聊过的内容（旧记录归档，不删除）"
+              >
+                <IconReset size={13} /> 重置
+              </button>
+              <button className="icon-btn" onClick={() => setChatOpen(false)} title="收起">
+                <IconClose size={15} />
+              </button>
+            </div>
+            {chatError && <div className="chat-error">{chatError}</div>}
+            <div className="log" ref={logRef}>
+              {turns.length === 0 && <div className="log-empty">还没有聊过</div>}
+              {turns.map((t, i) => (
+                <div key={i} className={`turn ${t.role}`}>
+                  {t.text}
+                </div>
+              ))}
+              {busy && (
+                <div className="turn character thinking">
+                  <i />
+                  <i />
+                  <i />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {echo && !chatOpen && (
+          <div className="echo" key={echo.id}>
+            {echo.text}
+          </div>
+        )}
+
+        <div className={`composer glass ${busy ? 'busy' : ''}`}>
+          <button
+            className={`icon-btn history ${chatOpen ? 'on' : ''}`}
+            onClick={() => setChatOpen((o) => !o)}
+            title={chatOpen ? '收起聊天记录' : '聊天记录'}
+            aria-expanded={chatOpen}
+          >
+            <IconChat size={18} />
+            {turns.length > 0 && <span className="badge">{turns.length > 99 ? '99+' : turns.length}</span>}
+          </button>
           <textarea
+            ref={inputRef}
+            rows={1}
             value={input}
-            placeholder="说点什么…　调试用「测试: 开心 90%」跳过模型直接看表情"
+            placeholder={persona ? `和${persona.name}说点什么…` : '说点什么…'}
             onChange={(e) => {
               setInput(e.target.value);
               // 用户在打字：角色看着对方、在听
               runtimeRef.current?.setListening(e.target.value.trim().length > 0);
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 void send();
               }
             }}
             disabled={loading || !!error}
           />
-          <button onClick={() => void send()} disabled={busy || loading || modelLoading != null || !input.trim()}>
-            发送
+          <button
+            className="send"
+            onClick={() => void send()}
+            disabled={busy || loading || modelLoading != null || !input.trim()}
+            title="发送（Enter）"
+          >
+            <IconSend size={18} />
           </button>
         </div>
+        <div className="composer-hint">Enter 发送 · Shift+Enter 换行 · 调试可用「测试: 开心 90%」跳过模型直接看表情</div>
+      </div>
 
-        {/*
-          这里刻意没有任何表演参数的控件。
-          情绪、强度、视线、姿态全部由 Jev 判断，前端不提供竞争性的手动通道 ——
-          留一个滑块就意味着"到底谁说了算"没有唯一答案。
-          调参走 window.__jev（仅 dev），见 README。
-          下面两项不是表演参数：语音合成是输出方式，Jev 开关是没配 key 时的回落。
-        */}
-        <div className="options">
-          <label>
-            <input
-              type="checkbox"
-              checked={tts}
-              onChange={(e) => {
-                ttsTouched.current = true;
-                setTts(e.target.checked);
-              }}
-            />
-            {voice.ready
-              ? `语音：${activeName}（${voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS'}）`
-              : voice.disabled || voice.error
-                ? '语音合成（系统内置）'
-                : '语音合成（系统内置 · 本地语音加载中）'}
-          </label>
-          {voice.ready && voices.length > 0 && (
-            <label className="voice-pick" title="选择会记住，下次打开默认用这个音色">
-              <span>音色</span>
-              <select
-                value={activeSpeaker}
-                disabled={!tts}
-                onChange={(e) => void pickSpeaker(e.target.value)}
-              >
-                {groups.map((g) => (
-                  <optgroup key={g} label={g}>
-                    {voices
-                      .filter((v) => v.group === g)
-                      .map((v) => (
-                        <option key={v.id} value={v.id} disabled={v.disabled}>
-                          {`${v.name} · ${v.desc}`}
-                        </option>
-                      ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="voice-pick" title="选择会记住，下次打开默认用这个模型">
-            <span>模型</span>
-            <select
-              value={VISIBLE_MODELS.some((m) => m.id === modelId) ? (modelId ?? '') : ''}
-              disabled={loading || busy}
-              onChange={(e) => void pickModel(e.target.value)}
-            >
-              {!VISIBLE_MODELS.some((m) => m.id === modelId) && (
-                <option value="" disabled>
-                  地址栏指定的模型
-                </option>
-              )}
-              {VISIBLE_MODELS.map((m) => (
-                <option key={m.id} value={m.id} disabled={!modelAvail[m.id]}>
-                  {`${m.name} · ${m.desc}${modelAvail[m.id] ? '' : '（未下载）'}`}
-                </option>
-              ))}
-            </select>
-          </label>
-          {(modelLoading != null || modelError) && (
-            <div className={`model-note${modelError ? ' error' : ''}`}>
-              {modelError ?? `载入模型 ${Math.round((modelLoading ?? 0) * 100)}%`}
+      {/* ---------- 右侧：调试面板（半透明悬浮，可折叠） ---------- */}
+      {!panelOpen ? (
+        <button className="panel-fab glass" onClick={() => togglePanel(true)} title="展开调试面板">
+          <IconSliders size={16} />
+          <span>调试</span>
+          {jevError && <i className="dot warn" />}
+        </button>
+      ) : (
+        <aside className="panel glass" data-bubble-avoid>
+          <header>
+            <div>
+              <h1>Jev × three-vrm</h1>
+              <p>文本驱动的表演管线</p>
             </div>
-          )}
-          <label className="voice-pick" title="选择会记住，下次打开默认用这个背景">
-            <span>背景</span>
-            <select value={backdrop} onChange={(e) => pickBackdrop(e.target.value as BackdropId)}>
-              {BACKDROPS.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="voice-pick" title={backdrop === 'street' ? '街景的时间：跟随现在 = 按电脑的时钟（晚上打开就是夜景）' : '只有街景有昼夜'}>
-            <span>时间</span>
-            <select value={timeMode} disabled={backdrop !== 'street'} onChange={(e) => pickTime(e.target.value as TimeMode)}>
-              {TIME_MODES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label title="场景的环境音：咖啡店的人声 / 公园的鸟鸣 / 海边的海浪（CC0 素材，说话时自动压低）">
-            <input type="checkbox" checked={ambient} onChange={(e) => pickAmbient(e.target.checked)} />
-            背景音
-          </label>
-          <label title={jev.endpoint ?? jev.backend ?? '在 .env.local 里配置后重启 dev server'}>
-            <input
-              type="checkbox"
-              checked={useJev}
-              disabled={!jev.configured}
-              onChange={(e) => {
-                setUseJev(e.target.checked);
-                setJevMeta(null);
-              }}
-            />
-            接入 Jev
-            {!jev.configured
-              ? '（未配置 .env.local）'
-              : jev.mode === 'jev'
-                ? `（${jev.backend}）`
-                : '（自有服务）'}
-          </label>
-        </div>
+            <button className="icon-btn" onClick={() => togglePanel(false)} title="收起">
+              <IconCollapse size={15} />
+            </button>
+          </header>
 
-        {jevError && (
-          <details className="section" open>
-            <summary>判断层降级原因</summary>
-            <pre className="schema">{jevError}</pre>
-          </details>
-        )}
-
-        {jevMeta && (
-          <details className="section" open>
-            <summary>
-              Jev 的判断
-              {jevMeta.backend && <span className="count">{jevMeta.backend}</span>}
-              {jevMeta.credits && (
-                <span className="count">
-                  {jevMeta.credits.charged} credit · 余 {jevMeta.credits.remaining}
-                </span>
-              )}
-              {jevMeta.costUsd && <span className="count">${jevMeta.costUsd}</span>}
-            </summary>
-            <div className="hint">
-              只读。choice 回的是整个概率分布，不只是 top-1 —— 混合表情直接由它驱动。
-              一句话按句切成最多 3 段，每段单独判断情绪；标「推导」的项不是 Jev 直接回答的。
+          <div className="panel-scroll">
+            {/*
+              这里刻意没有任何表演参数的控件。
+              情绪、强度、视线、姿态全部由 Jev 判断，前端不提供竞争性的手动通道 ——
+              留一个滑块就意味着"到底谁说了算"没有唯一答案。
+              调参走 window.__jev（仅 dev），见 README。
+              Jev 开关不是表演参数：是没配 key 时的回落。
+            */}
+            <div className="opt-row">
+              <Switch
+                checked={useJev}
+                disabled={!jev.configured}
+                onChange={(v) => {
+                  setUseJev(v);
+                  setJevMeta(null);
+                }}
+                title={jev.endpoint ?? jev.backend ?? '在 .env.local 里配置后重启 dev server'}
+              />
+              <div className="opt-text">
+                <b>接入 Jev</b>
+                <small>
+                  {!jev.configured
+                    ? '未配置 .env.local · 用规则模板'
+                    : useJev
+                      ? `${jev.mode === 'jev' ? jev.backend : '自有服务'}${jev.speechSource === 'deepseek' ? ` · 台词 ${jev.speechModel}` : ''}`
+                      : '已关闭 · 用规则模板'}
+                </small>
+              </div>
             </div>
-            <div className="sliders">
-              {jevMeta.reaction && (
-                <label className="on">
-                  <span className="n">第一反应</span>
-                  <span className="v-wide">
-                    {topMix(jevMeta.reaction.probabilities)}
-                  </span>
-                  <span className="w">{jevMeta.reaction.confidence.toFixed(2)}</span>
-                </label>
-              )}
-              {jevMeta.segments && jevMeta.segments.length > 1 &&
-                jevMeta.segments.map((seg, i) => (
-                  <label key={`seg${i}`} className="on">
-                    <span className="n">段 {i + 1}</span>
-                    <span className="v-wide" title={seg.text}>
-                      {topMix(seg.probabilities)} ·{' '}
-                      <span className="seg-text">{seg.text}</span>
+
+            {live && (
+              <details className="section" open>
+                <summary>
+                  实时轨道 <span className="count">{live.fps} fps</span>
+                </summary>
+                <div className="tracks">
+                  <Track
+                    label="表情"
+                    value={
+                      live.expressions.length
+                        ? live.expressions.map(([k, v]) => `${emotionLabel(k)} ${v.toFixed(2)}`).join('  ')
+                        : '—'
+                    }
+                    active={live.expressions.length > 0}
+                  />
+                  <Track label="视线" value={live.gaze} />
+                  <Track label="口型" value={live.speaking ? '说话中' : '闭合'} active={live.speaking} />
+                  <Track label="姿态" value={live.posture} />
+                  <Track label="动作" value={live.motion ? motionLabel(live.motion as MotionId) : '—'} active={!!live.motion} />
+                </div>
+              </details>
+            )}
+
+            {jevError && (
+              <details className="section" open>
+                <summary>判断层降级原因</summary>
+                <pre className="schema">{jevError}</pre>
+              </details>
+            )}
+
+            {jevMeta && (
+              <details className="section" open>
+                <summary>
+                  Jev 的判断
+                  {jevMeta.backend && <span className="count">{jevMeta.backend}</span>}
+                  {jevMeta.credits && (
+                    <span className="count">
+                      {jevMeta.credits.charged} credit · 余 {jevMeta.credits.remaining}
                     </span>
-                    <span className="w">{seg.confidence.toFixed(2)}</span>
-                  </label>
-                ))}
-              {jevMeta.emotion && (
-                <>
-                  <label className="on">
-                    <span className="n">{jevMeta.segments && jevMeta.segments.length > 1 ? '整句' : 'emotion'}</span>
-                    <span className="v-wide">{jevMeta.emotion.choice}</span>
-                    <span className="w">{jevMeta.emotion.confidence.toFixed(2)}</span>
-                  </label>
-                  {Object.entries(jevMeta.emotion.probabilities)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([k, p]) => (
-                      <label key={k} className={p >= 0.15 ? 'on' : ''}>
-                        <span className="n sub">└ {k}</span>
-                        <span className="bar">
-                          <i style={{ width: `${Math.round(p * 100)}%` }} />
+                  )}
+                  {jevMeta.costUsd && <span className="count">${jevMeta.costUsd}</span>}
+                </summary>
+                <div className="hint">
+                  只读。choice 回的是整个概率分布，不只是 top-1 —— 混合表情直接由它驱动。
+                  一句话按句切成最多 3 段，每段单独判断情绪；标「推导」的项不是 Jev 直接回答的。
+                </div>
+                <div className="sliders">
+                  {jevMeta.reaction && (
+                    <label className="on">
+                      <span className="n">第一反应</span>
+                      <span className="v-wide">{topMix(jevMeta.reaction.probabilities)}</span>
+                      <span className="w">{jevMeta.reaction.confidence.toFixed(2)}</span>
+                    </label>
+                  )}
+                  {jevMeta.segments &&
+                    jevMeta.segments.length > 1 &&
+                    jevMeta.segments.map((seg, i) => (
+                      <label key={`seg${i}`} className="on">
+                        <span className="n">段 {i + 1}</span>
+                        <span className="v-wide" title={seg.text}>
+                          {topMix(seg.probabilities)} · <span className="seg-text">{seg.text}</span>
                         </span>
-                        <span className="w">{p.toFixed(2)}</span>
+                        <span className="w">{seg.confidence.toFixed(2)}</span>
                       </label>
                     ))}
-                </>
-              )}
-              {jevMeta.intensity && (
-                <label className="on">
-                  <span className="n">intensity</span>
-                  <span className="v-wide">score {jevMeta.intensity.score.toFixed(2)}</span>
-                  <span className="w">{jevMeta.intensity.confidence.toFixed(2)}</span>
-                </label>
-              )}
-              {jevMeta.gaze && (
-                <label className="on">
-                  <span className="n">gaze</span>
-                  <span className="v-wide">{jevMeta.gaze.choice}</span>
-                  <span className="w">{jevMeta.gaze.confidence.toFixed(2)}</span>
-                </label>
-              )}
-              {jevMeta.posture && (
-                <label className={jevMeta.posture.derived ? 'on derived' : 'on'}>
-                  <span className="n">{jevMeta.posture.derived ? '→ posture' : 'posture'}</span>
-                  <span className="v-wide">{jevMeta.posture.choice}</span>
-                  <span className="w">{jevMeta.posture.derived ? '推导' : jevMeta.posture.confidence.toFixed(2)}</span>
-                </label>
-              )}
-              {jevMeta.looksAway != null && (
-                <label className={`${jevMeta.looksAway > 0.5 ? 'on' : ''} ${jevMeta.looksAwayDerived ? 'derived' : ''}`}>
-                  <span className="n">{jevMeta.looksAwayDerived ? '→ looks_away' : 'looks_away'}</span>
-                  <span className="bar">
-                    <i style={{ width: `${Math.round(jevMeta.looksAway * 100)}%` }} />
-                  </span>
-                  <span className="w">{jevMeta.looksAway.toFixed(2)}</span>
-                </label>
-              )}
-              <label className={jevMeta.motion ? 'on derived' : 'derived'} title={jevMeta.motion?.reason}>
-                <span className="n">→ 动作</span>
-                <span className="v-wide">{jevMeta.motion ? `${jevMeta.motion.label}（${jevMeta.motion.reason}）` : '不做动作'}</span>
-                <span className="w" />
-              </label>
-            </div>
-          </details>
-        )}
+                  {jevMeta.emotion && (
+                    <>
+                      <label className="on">
+                        <span className="n">{jevMeta.segments && jevMeta.segments.length > 1 ? '整句' : '情绪'}</span>
+                        <span className="v-wide">{emotionLabel(jevMeta.emotion.choice)}</span>
+                        <span className="w">{jevMeta.emotion.confidence.toFixed(2)}</span>
+                      </label>
+                      {Object.entries(jevMeta.emotion.probabilities)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([k, p]) => (
+                          <label key={k} className={p >= 0.15 ? 'on' : ''}>
+                            <span className="n sub">└ {emotionLabel(k)}</span>
+                            <span className="bar">
+                              <i style={{ width: `${Math.round(p * 100)}%` }} />
+                            </span>
+                            <span className="w">{p.toFixed(2)}</span>
+                          </label>
+                        ))}
+                    </>
+                  )}
+                  {jevMeta.intensity && (
+                    <label className="on">
+                      <span className="n">强度</span>
+                      <span className="v-wide">score {jevMeta.intensity.score.toFixed(2)}</span>
+                      <span className="w">{jevMeta.intensity.confidence.toFixed(2)}</span>
+                    </label>
+                  )}
+                  {jevMeta.gaze && (
+                    <label className="on">
+                      <span className="n">视线</span>
+                      <span className="v-wide">{jevMeta.gaze.choice}</span>
+                      <span className="w">{jevMeta.gaze.confidence.toFixed(2)}</span>
+                    </label>
+                  )}
+                  {jevMeta.posture && (
+                    <label className={jevMeta.posture.derived ? 'on derived' : 'on'}>
+                      <span className="n">{jevMeta.posture.derived ? '→ 姿态' : '姿态'}</span>
+                      <span className="v-wide">{jevMeta.posture.choice}</span>
+                      <span className="w">{jevMeta.posture.derived ? '推导' : jevMeta.posture.confidence.toFixed(2)}</span>
+                    </label>
+                  )}
+                  {jevMeta.looksAway != null && (
+                    <label className={`${jevMeta.looksAway > 0.5 ? 'on' : ''} ${jevMeta.looksAwayDerived ? 'derived' : ''}`}>
+                      <span className="n">{jevMeta.looksAwayDerived ? '→ 移开视线' : '移开视线'}</span>
+                      <span className="bar">
+                        <i style={{ width: `${Math.round(jevMeta.looksAway * 100)}%` }} />
+                      </span>
+                      <span className="w">{jevMeta.looksAway.toFixed(2)}</span>
+                    </label>
+                  )}
+                  <label className={jevMeta.motion ? 'on derived' : 'derived'} title={jevMeta.motion?.reason}>
+                    <span className="n">→ 动作</span>
+                    <span className="v-wide">{jevMeta.motion ? `${jevMeta.motion.label}（${jevMeta.motion.reason}）` : '不做动作'}</span>
+                    <span className="w" />
+                  </label>
+                </div>
+              </details>
+            )}
 
-        {import.meta.env.DEV && (
-          <details className="section preview" open>
-            <summary>
-              测试预览 <span className="count">dev</span>
-              <button
-                className="mini"
-                onClick={(e) => {
-                  e.preventDefault();
-                  resetPreview();
-                }}
-              >
-                复位
-              </button>
-            </summary>
-            <div className="hint">
-              只在开发环境出现，不进生产构建。动作是 VRoid 官方的动捕（.vrma），
-              从当前姿势交叉淡入；「掩嘴笑」是程序生成的（vrm/gestures.ts），预览时带着开心的表情。
-              对话里只有打招呼、比耶、转圈会自动触发（act/motionRules.ts）。
-            </div>
+            {import.meta.env.DEV && (
+              <details className="section preview">
+                <summary>
+                  测试预览 <span className="count">dev</span>
+                  <button
+                    className="mini"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      resetPreview();
+                    }}
+                  >
+                    复位
+                  </button>
+                </summary>
+                <div className="hint">
+                  只在开发环境出现，不进生产构建。动作是 VRoid 官方的动捕（.vrma），
+                  从当前姿势交叉淡入；「掩嘴笑」是程序生成的（vrm/gestures.ts），预览时带着开心的表情。
+                  对话里只有打招呼、比耶、转圈会自动触发（act/motionRules.ts）。
+                </div>
 
-            <div className="preview-row">
-              <span className="preview-k">动作</span>
-            </div>
-            <div className="chips">
-              {MOTIONS.map((id) => (
-                <button
-                  key={id}
-                  className={previewing === id ? 'on' : ''}
-                  title={`${id} · ${motionSource(id)}`}
-                  onClick={() => previewMotion(id)}
-                >
-                  {motionLabel(id)}
-                </button>
-              ))}
-            </div>
-
-            <div className="player">
-              <div className="player-bar">
-                <button
-                  className="mini"
-                  disabled={!previewing || !previewClock}
-                  onClick={() =>
-                    runtimeRef.current?.setPreviewPaused(!(previewClock?.paused ?? true))
-                  }
-                >
-                  {previewClock && !previewClock.paused ? '暂停' : '播放'}
-                </button>
-                <div className="speeds">
-                  {[0.25, 0.5, 1].map((v) => (
+                <div className="preview-row">
+                  <span className="preview-k">动作</span>
+                </div>
+                <div className="chips">
+                  {MOTIONS.map((id) => (
                     <button
-                      key={v}
-                      className={previewSpeed === v ? 'on' : ''}
-                      onClick={() => {
-                        setPreviewSpeed(v);
-                        runtimeRef.current?.setPreviewSpeed(v);
-                      }}
+                      key={id}
+                      className={previewing === id ? 'on' : ''}
+                      title={`${id} · ${motionSource(id)}`}
+                      onClick={() => previewMotion(id)}
                     >
-                      {v}×
+                      {motionLabel(id)}
                     </button>
                   ))}
                 </div>
-                <label className="hold">
-                  <input
-                    type="checkbox"
-                    checked={previewLoop}
-                    onChange={(e) => {
-                      setPreviewLoop(e.target.checked);
-                      runtimeRef.current?.setPreviewLoop(e.target.checked);
-                    }}
-                  />
-                  循环
-                </label>
-              </div>
 
-              {previewClock && (
-                <div className="timeline">
-                  <div className="track-wrap">
-                    <input
-                      type="range"
-                      min={0}
-                      max={previewClock.duration}
-                      step={1 / 120}
-                      value={Math.min(previewClock.time, previewClock.duration)}
-                      onChange={(e) => runtimeRef.current?.seekPreview(Number(e.target.value))}
-                    />
+                <div className="player">
+                  <div className="player-bar">
+                    <button
+                      className="mini"
+                      disabled={!previewing || !previewClock}
+                      onClick={() => runtimeRef.current?.setPreviewPaused(!(previewClock?.paused ?? true))}
+                    >
+                      {previewClock && !previewClock.paused ? '暂停' : '播放'}
+                    </button>
+                    <div className="speeds">
+                      {[0.25, 0.5, 1].map((v) => (
+                        <button
+                          key={v}
+                          className={previewSpeed === v ? 'on' : ''}
+                          onClick={() => {
+                            setPreviewSpeed(v);
+                            runtimeRef.current?.setPreviewSpeed(v);
+                          }}
+                        >
+                          {v}×
+                        </button>
+                      ))}
+                    </div>
+                    <label className="hold">
+                      <input
+                        type="checkbox"
+                        checked={previewLoop}
+                        onChange={(e) => {
+                          setPreviewLoop(e.target.checked);
+                          runtimeRef.current?.setPreviewLoop(e.target.checked);
+                        }}
+                      />
+                      循环
+                    </label>
                   </div>
-                  <div className="timeline-meta">
-                    <span>
-                      {previewClock.time.toFixed(2)}s / {previewClock.duration.toFixed(2)}s
-                    </span>
-                  </div>
+
+                  {previewClock && (
+                    <div className="timeline">
+                      <div className="track-wrap">
+                        <input
+                          type="range"
+                          min={0}
+                          max={previewClock.duration}
+                          step={1 / 120}
+                          value={Math.min(previewClock.time, previewClock.duration)}
+                          onChange={(e) => runtimeRef.current?.seekPreview(Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="timeline-meta">
+                        <span>
+                          {previewClock.time.toFixed(2)}s / {previewClock.duration.toFixed(2)}s
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="hint">拖动时间轴会暂停在那一帧；慢速 + 循环适合反复看过渡段。</div>
                 </div>
-              )}
-              <div className="hint">
-                拖动时间轴会暂停在那一帧；慢速 + 循环适合反复看过渡段。
-              </div>
-            </div>
 
-            <div className="preview-row">
-              <span className="preview-k">表情</span>
-            </div>
-            <div className="chips">
-              {EMOTIONS.map((e) => (
-                <button
-                  key={e}
-                  className={previewing === e ? 'on' : ''}
-                  onClick={() => previewEmotion(e)}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-          </details>
-        )}
+                <div className="preview-row">
+                  <span className="preview-k">表情</span>
+                </div>
+                <div className="chips">
+                  {EMOTIONS.map((e) => (
+                    <button key={e} className={previewing === e ? 'on' : ''} title={e} onClick={() => previewEmotion(e)}>
+                      {EMOTION_LABEL[e]}
+                    </button>
+                  ))}
+                </div>
+              </details>
+            )}
 
-        <div className="credits">动作：{MOTION_CREDIT}</div>
+            <details className="section">
+              <summary>上一次的 Act IR</summary>
+              <pre>{lastAct ? JSON.stringify(lastAct, null, 2) : '—'}</pre>
+            </details>
 
-        <details className="section">
-          <summary>上一次的 Act IR</summary>
-          <pre>{lastAct ? JSON.stringify(lastAct, null, 2) : '—'}</pre>
-        </details>
-
-      </aside>
+            <div className="credits">动作：{MOTION_CREDIT}</div>
+          </div>
+        </aside>
+      )}
     </div>
   );
 }
@@ -1264,5 +1426,46 @@ function Track({ label, value, active }: { label: string; value: string; active?
       <span className="k">{label}</span>
       <span className="v">{value}</span>
     </div>
+  );
+}
+
+function Switch({
+  checked,
+  onChange,
+  disabled,
+  label,
+  title,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  label?: string;
+  title?: string;
+}) {
+  return (
+    <label className={`switch ${checked ? 'on' : ''} ${disabled ? 'disabled' : ''}`} title={title}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <span className="knob" />
+      {label && <span className="switch-label">{label}</span>}
+    </label>
+  );
+}
+
+/** 角色的头像：没有立绘，用名字的第一个字 + 按 id 定的渐变色 */
+function Avatar({ id, name, size }: { id: string; name: string; size: number }) {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return (
+    <span
+      className="avatar"
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.44,
+        background: `linear-gradient(135deg, hsl(${h} 70% 68%), hsl(${(h + 40) % 360} 65% 52%))`,
+      }}
+    >
+      {name.slice(0, 1)}
+    </span>
   );
 }

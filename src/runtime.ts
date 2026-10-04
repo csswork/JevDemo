@@ -11,6 +11,9 @@ import { pickChineseVoice, speak, ttsAvailable, type SpeakHandle } from './speec
 import { VoiceSession } from './speech/voice';
 import { AmbiencePlayer } from './speech/ambience';
 
+const _head = new THREE.Vector3();
+const _side = new THREE.Vector3();
+
 export interface LiveState {
   fps: number;
   posture: string;
@@ -555,12 +558,46 @@ export class Runtime {
   }
 
   /**
-   * 时间（只有街景用）：跟随现在 / 清晨 / 白天 / 黄昏 / 夜晚。mount 前后调用都行；
-   * mount 之前设的（读偏好）直接跳过去，之后换的花 3 秒过渡
+   * 时间（只有街景用）：跟随现在，或者某个钟点（太阳时 0..24）。mount 前后调用都行；
+   * mount 之前设的（读偏好）直接跳过去，之后换的花 3 秒过渡。instant = 不过渡（拖时间拉杆时）
    */
-  setTimeOfDay(mode: TimeMode) {
+  setTimeOfDay(mode: TimeMode | number, instant = false) {
     this.timeMode = mode;
-    this.stage?.setTimeOfDay(mode);
+    this.stage?.setTimeOfDay(mode, instant);
+  }
+
+  /**
+   * 头在画面上的位置（CSS 像素，相对画布左上角）和头的大致半径（像素）：对话气泡跟着它走。
+   * 头在镜头后面就是 null
+   */
+  headAnchor(): { x: number; y: number; r: number } | null {
+    const stage = this.stage;
+    const head = this.character?.vrm?.humanoid.getRawBoneNode('head');
+    if (!stage || !head) return null;
+    const cam = stage.camera;
+    head.getWorldPosition(_head);
+    // 头骨在下巴后面一点：往上挪到脸的中间
+    _head.y += 0.07;
+    _side.setFromMatrixColumn(cam.matrixWorld, 0).multiplyScalar(0.1).add(_head);
+    _head.project(cam);
+    _side.project(cam);
+    if (_head.z < -1 || _head.z > 1) return null;
+    const el = stage.renderer.domElement;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    return { x: ((_head.x + 1) / 2) * w, y: ((1 - _head.y) / 2) * h, r: (Math.abs(_side.x - _head.x) / 2) * w };
+  }
+
+  /** 这句台词说到第几个字了（气泡逐字点亮用）。playing = 还在说 */
+  speechProgress(): { chars: number; total: number; playing: boolean } | null {
+    const c = this.compiled;
+    if (!c) return null;
+    const total = c.text.length;
+    const playing = this.player.isPlaying;
+    if (!playing) return { chars: total, total, playing };
+    const t = this.session ? Math.max(0, this.session.time) : this.elapsed;
+    const chars = this.session && this.timeToChar ? this.timeToChar(t) : (t / Math.max(0.1, c.duration)) * total;
+    return { chars: Math.max(0, Math.min(total, chars)), total, playing };
   }
 
   /** 调试：固定在某个钟点（太阳时，比如 19.5）。instant = 不过渡 */

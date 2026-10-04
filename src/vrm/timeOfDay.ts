@@ -203,3 +203,8 @@ export function presetSun(mode: Exclude<TimeMode, 'now'>) {
   const t = targetOf(mode, new Date());
   return sunPosition(t.day, t.hours);
 }
+
+/** 某个固定时段是几点（旧版存的「清晨 / 白天 / 黄昏 / 夜晚」换成 24 小时拉杆上的钟点） */
+export function presetHours(mode: Exclude<TimeMode, 'now'>) {
+  return targetOf(mode, new Date()).hours;
+}
