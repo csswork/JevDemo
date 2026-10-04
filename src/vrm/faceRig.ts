@@ -157,12 +157,15 @@ export function bindFaceRig(vrm: VRM): FaceRig | null {
   }
   if (Object.keys(indices).length >= 6) source = '语义形状名';
 
-  // 1. 有名字就按名字
+  // 1. 有名字就按名字。Blender VRM 插件导出时会加上网格 / 材质前缀
+  //    （Face.M_F00_000_00_Fcl_BRW_Joy），所以后缀对上也算
   if (!source) {
+    const names = Object.keys(dict);
     for (const shape of Object.keys(VROID_NAMES) as Shape[]) {
       for (const n of VROID_NAMES[shape]) {
-        if (n in dict) {
-          indices[shape] = dict[n];
+        const hit = n in dict ? n : names.find((k) => k.endsWith(`_${n}`) || k.endsWith(`.${n}`));
+        if (hit) {
+          indices[shape] = dict[hit];
           break;
         }
       }
