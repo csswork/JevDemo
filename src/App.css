@@ -1,21 +1,28 @@
 :root {
-  --bg: #0e1015;
-  --fg: #eef1f7;
-  --dim: #a0a8ba;
-  --faint: #6f7789;
-  --accent: #7dd3c0;
-  --accent-dim: #3d6b62;
-  --accent-soft: rgba(125, 211, 192, 0.14);
-  --warn: #e3ac4c;
-  --danger: #f08c7a;
+  /* 干净的单色：白色毛玻璃 + 近黑的字，选中 / 打开的状态用黑色；只有「实时」的小绿点有颜色 */
+  --bg: #16171a;
+  --fg: #1d1d1f;
+  --dim: #55595f;
+  --faint: #868a92;
+  --accent: #1d1d1f;
+  --accent-dim: #c4c6cb;
+  --accent-soft: rgba(29, 29, 31, 0.07);
+  --accent-line: rgba(29, 29, 31, 0.22);
+  --on-accent: #fff;
+  --live: #30c75a;
+  --warn: #b7791f;
+  --danger: #d2463a;
 
-  /* 悬浮层的毛玻璃 */
-  --glass: rgba(17, 19, 27, 0.56);
-  --glass-solid: rgba(24, 26, 35, 0.985);
-  --glass-line: rgba(255, 255, 255, 0.09);
-  --glass-fill: rgba(255, 255, 255, 0.055);
-  --glass-hover: rgba(255, 255, 255, 0.09);
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.18);
+  /* 悬浮层：平时很透，鼠标移上去 / 正在用（焦点在里面）时变实 */
+  --glass: rgba(255, 255, 255, 0.4);
+  --glass-active: rgba(255, 255, 255, 0.86);
+  --glass-solid: rgba(255, 255, 255, 0.98);
+  --edge: rgba(255, 255, 255, 0.55);
+  --glass-line: rgba(0, 0, 0, 0.07);
+  --glass-fill: rgba(0, 0, 0, 0.04);
+  --glass-hover: rgba(0, 0, 0, 0.065);
+  --track: rgba(0, 0, 0, 0.1);
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06);
 
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -68,7 +75,7 @@ button { font: inherit; }
   z-index: 20;
   display: grid;
   place-items: center;
-  background: rgba(13, 15, 21, 0.75);
+  background: rgba(20, 21, 24, 0.7);
   backdrop-filter: blur(2px);
 }
 
@@ -77,7 +84,7 @@ button { font: inherit; }
   flex-direction: column;
   gap: 10px;
   align-items: center;
-  color: var(--dim);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 13px;
 }
 
@@ -85,13 +92,13 @@ button { font: inherit; }
   width: 220px;
   height: 3px;
   border-radius: 2px;
-  background: #242938;
+  background: rgba(255, 255, 255, 0.15);
   overflow: hidden;
 }
 
 .loader .fill {
   height: 100%;
-  background: var(--accent);
+  background: #fff;
   transition: width 0.2s ease;
 }
 
@@ -110,11 +117,19 @@ button { font: inherit; }
 
 .glass {
   background: var(--glass);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5);
-  backdrop-filter: blur(20px) saturate(1.5);
-  border: 1px solid var(--glass-line);
+  /* brightness：夜景上也能看清深色的字 */
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) brightness(1.12);
+  backdrop-filter: blur(24px) saturate(1.5) brightness(1.12);
+  border: 1px solid var(--edge);
   border-radius: 18px;
-  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: var(--shadow);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.glass:hover,
+.glass:focus-within,
+.glass.solid {
+  background: var(--glass-active);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16), 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .icon-btn {
@@ -147,7 +162,7 @@ button { font: inherit; }
   font-size: 11.5px;
   cursor: pointer;
 }
-.text-btn:hover:not(:disabled) { color: var(--fg); border-color: rgba(255, 255, 255, 0.22); }
+.text-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-line); }
 .text-btn:disabled { opacity: 0.4; cursor: default; }
 
 .switch {
@@ -163,7 +178,7 @@ button { font: inherit; }
   width: 30px;
   height: 17px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--track);
   transition: background 0.2s;
 }
 .switch .knob::after {
@@ -175,7 +190,7 @@ button { font: inherit; }
   height: 13px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition: transform 0.25s var(--ease-spring);
 }
 .switch.on .knob { background: var(--accent); }
@@ -192,17 +207,17 @@ button { font: inherit; }
   overflow: hidden;
   border-radius: 50%;
   /* 头像是透明背景：垫一层柔和的浅色，像证件照的底 */
-  background: radial-gradient(circle at 50% 35%, #eef2fb 0%, #c9d3e6 70%, #aeb9d0 100%);
-  color: #4a5570;
+  background: radial-gradient(circle at 50% 30%, #fbfbfc 0%, #ececef 60%, #dcdde2 100%);
+  color: var(--dim);
   font-weight: 700;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 .avatar::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.9);
   pointer-events: none;
 }
 .avatar img {
@@ -216,7 +231,7 @@ button { font: inherit; }
   display: inline-block;
   width: 11px;
   height: 11px;
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border: 1.5px solid var(--track);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -244,7 +259,7 @@ button { font: inherit; }
   transition: background 0.15s, border-color 0.15s;
 }
 .picker-btn:hover:not(:disabled) { background: var(--glass-hover); }
-.picker.open .picker-btn { border-color: rgba(125, 211, 192, 0.45); }
+.picker.open .picker-btn { border-color: var(--accent-line); }
 .picker-btn:disabled { opacity: 0.5; cursor: default; }
 .picker-btn > svg { flex-shrink: 0; color: var(--faint); transition: transform 0.25s var(--ease-out); }
 .picker.open .picker-btn > svg { transform: rotate(180deg); }
@@ -272,10 +287,10 @@ button { font: inherit; }
   border: 1px solid var(--glass-line);
   border-radius: 13px;
   background: var(--glass-solid);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
   animation: pop-down 0.18s var(--ease-out);
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
 }
 @keyframes pop-down {
   from { opacity: 0; transform: translateY(-4px) scale(0.98); }
@@ -307,7 +322,7 @@ button { font: inherit; }
   margin-left: 6px;
   padding: 0 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--glass-fill);
   font-size: 10px;
   font-style: normal;
   color: var(--faint);
@@ -319,7 +334,7 @@ button { font: inherit; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.picker-item.on .picker-desc { color: rgba(125, 211, 192, 0.7); }
+.picker-item.on .picker-desc { color: color-mix(in srgb, var(--accent) 70%, transparent); }
 
 /* ---------- 左上：角色，和她名下的音色 / 背景 / 时间 ---------- */
 
@@ -356,8 +371,66 @@ button { font: inherit; }
   text-overflow: ellipsis;
 }
 
-.dock .fold svg { transform: rotate(180deg); }
-.dock.folded .fold svg { transform: rotate(0deg); }
+/* 头部整块是"换角色"的按钮，右边的小胶囊写明用途 */
+.switch-pill {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--glass-line);
+  border-radius: 999px;
+  background: var(--glass-fill);
+  color: var(--dim);
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.model-picker > .picker-btn:hover:not(:disabled) .switch-pill,
+.model-picker.open .switch-pill {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.model-picker > .picker-btn:disabled .switch-pill { opacity: 0.5; }
+
+/* 展开 / 收起设定：卡片最下面一整行。收着的时候显示设定摘要 */
+.dock-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 10px;
+  border: none;
+  border-top: 1px solid var(--glass-line);
+  border-radius: 0 0 12px 12px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.dock-toggle:hover { color: var(--accent); background: var(--glass-fill); }
+.dock-toggle > svg { flex-shrink: 0; transform: rotate(180deg); transition: transform 0.25s var(--ease-out); }
+.dock.folded .dock-toggle > svg { transform: none; }
+.dock.folded .dock-toggle { justify-content: flex-start; }
+.dock-summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.dock-summary > span { overflow: hidden; text-overflow: ellipsis; }
+.dock-summary > i { width: 1px; height: 10px; margin: 0 4px; background: var(--glass-line); }
+.dock-summary > svg { flex-shrink: 0; color: var(--faint); }
+.dock-summary em { margin-left: auto; font-style: normal; color: var(--faint); }
+.dock-toggle:hover .dock-summary em { color: var(--accent); }
 
 .dock-note {
   display: flex;
@@ -372,7 +445,7 @@ button { font: inherit; }
   flex: 1;
   height: 3px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--track);
   overflow: hidden;
 }
 .mini-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
@@ -397,7 +470,7 @@ button { font: inherit; }
   content: '';
   position: absolute;
   left: 0;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.14);
 }
 .leaf::before { top: 21px; width: 12px; height: 1px; }
 .leaf::after { top: 0; bottom: 0; width: 1px; }
@@ -451,7 +524,7 @@ button { font: inherit; }
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 .chip-toggle:hover { color: var(--fg); }
-.chip-toggle.on { color: var(--accent); border-color: rgba(125, 211, 192, 0.35); background: var(--accent-soft); }
+.chip-toggle.on { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
 
 /* 背景：四个图标按钮 */
 .seg {
@@ -476,115 +549,149 @@ button { font: inherit; }
 .seg button:hover { background: var(--glass-hover); color: var(--fg); }
 .seg button:active { transform: scale(0.95); }
 .seg button.on {
-  background: var(--accent-soft);
-  border-color: rgba(125, 211, 192, 0.45);
-  color: var(--accent);
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.08);
+  color: var(--fg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* 时间挂在背景下面（只有街景有昼夜） */
-.leaf.sub { padding-top: 12px; margin-top: 4px; margin-left: 0; }
-.leaf.sub::before { top: 23px; }
-.leaf.sub:last-child::after { height: 23px; }
-.time-leaf.hidden { display: none; }
-.time-leaf { animation: tree-in 0.3s var(--ease-out); }
 
-/* ---------- 时间拉杆 ---------- */
+/* ---------- 右下：时间卡片（只有街景） ---------- */
 
-.time-head { display: flex; align-items: center; gap: 8px; height: 22px; }
+.time-card {
+  position: absolute;
+  z-index: 12;
+  right: 16px;
+  bottom: 16px;
+  width: 212px;
+  padding: 10px 12px 12px;
+  border-radius: 16px;
+  overflow: hidden;
+  animation: rise 0.28s var(--ease-out);
+}
 
-.check {
-  position: relative;
-  display: inline-flex;
+/* 有时间卡片的时候：输入框收窄让出右下角，调试面板也停在卡片上面 */
+.app.has-time .chatbar { width: min(680px, max(340px, calc(100% - 520px))); }
+.app.has-time .panel { max-height: calc(100% - 120px); }
+
+/* 卡片左上角染一点当时的天色（--glow 由 TimeSlider 按钟点给） */
+.time::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(120% 130% at 0% 0%, color-mix(in srgb, var(--glow) 16%, transparent) 0%, transparent 60%);
+  transition: background 0.6s;
+  pointer-events: none;
+}
+
+.time-head {
+  display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--dim);
-  cursor: pointer;
-  user-select: none;
+  height: 22px;
 }
-.check input { position: absolute; opacity: 0; pointer-events: none; }
-.check .box {
+
+.time-icon {
   display: grid;
   place-items: center;
-  width: 15px;
-  height: 15px;
-  border: 1.5px solid rgba(255, 255, 255, 0.32);
-  border-radius: 4.5px;
-  color: transparent;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  transition: background 0.4s, color 0.4s;
 }
-.check .box svg { stroke-width: 3; }
-.check input:checked + .box { background: var(--accent); border-color: var(--accent); color: #0b1512; }
-.check input:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 2px; }
-.time.live .check { color: var(--accent); }
+.time.day .time-icon { background: var(--glass-fill); color: #e8890c; }
+.time.night .time-icon { background: var(--glass-fill); color: #5b5bd6; }
 
-.pulse {
+.time-clock {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+}
+.time-period { font-size: 11px; color: var(--dim); }
+
+/* 「实时」：一个小胶囊开关（里面是 checkbox） */
+.live-chip {
+  position: relative;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px 2px 7px;
+  border: 1px solid var(--glass-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+.live-chip:hover { color: var(--dim); }
+.live-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.live-chip .dot {
   position: relative;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--track);
+  transition: background 0.2s;
 }
-.pulse::after {
+.time.live .live-chip { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+.time.live .live-chip .dot { background: var(--live); }
+.time.live .live-chip .dot::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--live);
   animation: ping 1.8s ease-out infinite;
 }
+.live-chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 @keyframes ping {
   to { transform: scale(3); opacity: 0; }
 }
 
-.time-read { margin-left: auto; display: inline-flex; align-items: baseline; gap: 6px; }
-.time-read b { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: 0.03em; }
-.time-read span { font-size: 11.5px; color: var(--dim); }
-
 .time-track {
   position: relative;
-  height: 10px;
-  margin: 12px 6px 0;
+  height: 6px;
+  margin: 12px 2px 2px;
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06), inset 0 1px 2px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   touch-action: none;
   outline: none;
 }
+/* 加大一点点按的范围（拉杆本身很细） */
+.time-track::before { content: ''; position: absolute; inset: -9px 0; }
 .time-track:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.time-track .notch {
+  position: absolute;
+  top: 1.5px;
+  width: 1px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
 
 .time-thumb {
   position: absolute;
   top: 50%;
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22), 0 0 16px 3px var(--glow), 0 2px 6px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.25);
   transition: transform 0.2s var(--ease-spring);
   pointer-events: none;
 }
-.time-thumb.sun { color: #f59e0b; }
-.time-thumb.moon { color: #4f5fbf; background: #f3f1ff; }
+.time-track:hover .time-thumb,
 .time-track:active .time-thumb { transform: translate(-50%, -50%) scale(1.15); }
 /* 实时模式里每 15 秒挪一点：滑过去，不跳 */
 .time.live .time-thumb { transition: left 1.2s var(--ease-out), transform 0.2s var(--ease-spring); }
-
-.time-ticks {
-  position: relative;
-  height: 14px;
-  margin: 5px 6px 0;
-}
-.time-ticks span {
-  position: absolute;
-  transform: translateX(-50%);
-  font-size: 10px;
-  color: var(--faint);
-  font-variant-numeric: tabular-nums;
-}
 
 /* ---------- 正下方：输入框 + 聊天记录 ---------- */
 
@@ -609,8 +716,8 @@ button { font: inherit; }
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .composer:focus-within {
-  border-color: rgba(125, 211, 192, 0.4);
-  box-shadow: var(--shadow), 0 0 0 4px rgba(125, 211, 192, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border-color: var(--accent-line);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16), 0 0 0 4px rgba(255, 255, 255, 0.35);
 }
 
 .composer textarea {
@@ -628,7 +735,7 @@ button { font: inherit; }
   line-height: 1.53;
   outline: none;
 }
-.composer textarea::placeholder { color: rgba(220, 226, 238, 0.42); }
+.composer textarea::placeholder { color: var(--faint); }
 
 .composer .history { width: 40px; height: 40px; border-radius: 50%; }
 .badge {
@@ -640,7 +747,7 @@ button { font: inherit; }
   padding: 0 4px;
   border-radius: 999px;
   background: var(--accent);
-  color: #0b1512;
+  color: var(--on-accent);
   font-size: 9.5px;
   font-weight: 700;
   line-height: 16px;
@@ -656,13 +763,14 @@ button { font: inherit; }
   border: none;
   border-radius: 50%;
   background: var(--accent);
-  color: #0b1512;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  color: var(--on-accent);
   cursor: pointer;
   transition: transform 0.2s var(--ease-spring), background 0.2s, color 0.2s;
 }
 .send:hover:not(:disabled) { transform: scale(1.07); }
 .send:active:not(:disabled) { transform: scale(0.94); }
-.send:disabled { background: rgba(255, 255, 255, 0.08); color: var(--faint); cursor: default; }
+.send:disabled { background: var(--glass-fill); color: var(--faint); cursor: default; box-shadow: none; }
 .send svg { stroke-width: 2.4; }
 
 .composer-hint {
@@ -717,7 +825,7 @@ button { font: inherit; }
   flex-direction: column;
   gap: 9px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
 }
 .log-empty { margin: 16px auto; font-size: 12px; color: var(--faint); }
 
@@ -731,13 +839,14 @@ button { font: inherit; }
 }
 .turn.user {
   align-self: flex-end;
-  background: rgba(125, 211, 192, 0.2);
-  border: 1px solid rgba(125, 211, 192, 0.28);
+  background: var(--accent);
+  border: 1px solid transparent;
+  color: var(--on-accent);
   border-bottom-right-radius: 5px;
 }
 .turn.character {
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.05);
   border: 1px solid var(--glass-line);
   border-bottom-left-radius: 5px;
 }
@@ -763,8 +872,8 @@ button { font: inherit; }
   margin-right: 50px;
   padding: 7px 14px;
   border-radius: 18px 18px 5px 18px;
-  background: rgba(125, 211, 192, 0.9);
-  color: #0b1512;
+  background: rgba(29, 29, 31, 0.88);
+  color: var(--on-accent);
   font-size: 13.5px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
   white-space: pre-wrap;
@@ -788,9 +897,9 @@ button { font: inherit; }
   left: 50%;
   transform: translateX(-50%);
   padding: 5px 12px;
-  border: 1px solid rgba(227, 172, 76, 0.4);
+  border: 1px solid rgba(201, 131, 24, 0.35);
   border-radius: 999px;
-  background: rgba(38, 28, 14, 0.75);
+  background: rgba(255, 246, 228, 0.88);
   backdrop-filter: blur(12px);
   color: var(--warn);
   font-size: 11.5px;
@@ -833,7 +942,7 @@ button { font: inherit; }
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
 }
 
 .panel-fab {
@@ -852,7 +961,7 @@ button { font: inherit; }
   transition: transform 0.2s var(--ease-spring), background 0.2s;
   animation: panel-in 0.25s var(--ease-out);
 }
-.panel-fab:hover { transform: scale(1.04); background: rgba(30, 33, 44, 0.7); }
+.panel-fab:hover { transform: scale(1.04); }
 .panel-fab svg { color: var(--accent); }
 .dot.warn { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
 
@@ -901,7 +1010,7 @@ button { font: inherit; }
   font-size: 10px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--glass-fill);
   color: var(--dim);
 }
 
@@ -925,13 +1034,13 @@ button { font: inherit; }
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.55;
-  color: #a8b1c4;
+  color: #5d5470;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 340px;
   overflow-y: auto;
 }
-.section pre.schema { color: #8a93a8; }
+.section pre.schema { color: #8a7f9c; }
 
 .hint {
   padding: 0 18px 10px;
@@ -981,7 +1090,7 @@ button { font: inherit; }
 .sliders label.on { color: var(--accent); }
 .sliders .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sliders .n.sub { color: var(--faint); padding-left: 6px; }
-.sliders .w { text-align: right; color: #565e70; }
+.sliders .w { text-align: right; color: var(--faint); }
 .sliders label.on .w { color: var(--accent); }
 .sliders .v-wide {
   color: var(--fg);
@@ -993,7 +1102,7 @@ button { font: inherit; }
 .sliders .bar {
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--track);
   overflow: hidden;
 }
 .sliders .bar i { display: block; height: 100%; background: var(--accent-dim); border-radius: 2px; }
@@ -1076,7 +1185,7 @@ input[type='range'] {
   appearance: none;
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--track);
   outline: none;
 }
 input[type='range']::-webkit-slider-thumb {
@@ -1336,6 +1445,10 @@ input[type='range']::-webkit-slider-thumb {
   .dock { top: 10px; left: 10px; width: min(300px, calc(100% - 20px)); }
   .panel, .panel-fab { top: auto; bottom: 86px; right: 10px; }
   .panel { max-height: 60%; }
-  .chatbar { bottom: 10px; width: calc(100% - 20px); }
+  .chatbar,
+  .app.has-time .chatbar { bottom: 10px; width: calc(100% - 20px); }
+  .time-card { left: 10px; right: 10px; bottom: 76px; width: auto; }
+  .app.has-time .panel,
+  .app.has-time .panel-fab { bottom: 182px; }
   .bubble-body { font-size: 14.5px; }
 }

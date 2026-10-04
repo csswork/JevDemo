@@ -891,7 +891,7 @@ export default function App() {
   const voiceBackend = voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS';
 
   return (
-    <div className="app">
+    <div className={`app${backdrop === 'street' ? ' has-time' : ''}`}>
       <div className="stage">
         <canvas ref={canvasRef} />
 
@@ -918,7 +918,7 @@ export default function App() {
         )}
       </div>
 
-      {/* ---------- 左上：角色，和挂在她名下的音色 / 背景 / 时间 ---------- */}
+      {/* ---------- 左上：角色，和挂在她名下的音色 / 背景 ---------- */}
       <section className={`dock glass ${dockOpen ? '' : 'folded'}`} data-bubble-avoid>
         <div className="dock-head">
           <Picker
@@ -928,22 +928,19 @@ export default function App() {
             onPick={(id) => void pickModel(id)}
             disabled={loading || busy}
             title="换角色（会记住，下次打开默认是她）"
-            icon={<IconSwap size={15} />}
+            icon={false}
           >
             <Avatar id={modelId ?? '?'} name={currentModel?.name ?? '?'} size={38} />
             <span className="who">
               <b>{currentModel?.name ?? '地址栏指定的模型'}</b>
               <small>{currentModel?.desc ?? '（?model= 参数）'}</small>
             </span>
+            {/* 整块都能点；右边写明这是干什么的，不只放一个箭头 */}
+            <span className="switch-pill">
+              <IconSwap size={13} />
+              换角色
+            </span>
           </Picker>
-          <button
-            className="icon-btn fold"
-            onClick={() => setDockOpen((o) => !o)}
-            title={dockOpen ? '收起' : '展开她的设定'}
-            aria-expanded={dockOpen}
-          >
-            <IconChevron size={16} />
-          </button>
         </div>
 
         {(modelLoading != null || modelError) && (
@@ -1027,12 +1024,26 @@ export default function App() {
                 ))}
               </div>
 
-              <div className={`leaf sub time-leaf ${backdrop === 'street' ? '' : 'hidden'}`}>
-                <TimeSlider value={timeMode} onChange={dragTime} onCommit={pickTime} />
-              </div>
             </div>
           </div>
         </div>
+
+        {/* 展开 / 收起她的设定：收着的时候这一行就是设定的摘要，点一下展开 */}
+        <button className="dock-toggle" onClick={() => setDockOpen((o) => !o)} aria-expanded={dockOpen}>
+          {dockOpen ? (
+            <span>收起设定</span>
+          ) : (
+            <span className="dock-summary">
+              <IconMic size={13} />
+              <span>{tts ? activeName : '静音'}</span>
+              <i />
+              <IconImage size={13} />
+              <span>{BACKDROPS.find((b) => b.id === backdrop)?.label}</span>
+              <em>展开</em>
+            </span>
+          )}
+          <IconChevron size={14} />
+        </button>
       </section>
 
       {jevError && (
@@ -1041,10 +1052,17 @@ export default function App() {
         </div>
       )}
 
+      {/* ---------- 右下：时间（只有街景有昼夜） ---------- */}
+      {backdrop === 'street' && (
+        <section className="time-card glass" data-bubble-avoid>
+          <TimeSlider value={timeMode} onChange={dragTime} onCommit={pickTime} />
+        </section>
+      )}
+
       {/* ---------- 正下方：输入框 + 聊天记录 ---------- */}
       <div className="chatbar" data-bubble-avoid>
         {chatOpen && (
-          <div className="chatlog glass">
+          <div className="chatlog glass solid">
             <div className="chatlog-head">
               <span>
                 {persona ? `和 ${persona.name} 的对话` : '对话'}

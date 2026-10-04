@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { IconCheck, IconMoon, IconSun } from './icons';
+import { IconMoon, IconSun } from './icons';
 
 /** 几点 → "14:05" */
 function clock(h: number) {
@@ -59,7 +59,7 @@ function skyAt(h: number) {
 
 /**
  * 时间：「实时」勾上 = 跟着电脑的时钟走；拖拉杆 = 停在某个钟点（拖的时候自动取消实时）。
- * 拉杆是一整天的天色，小圆点白天是太阳、晚上是月亮
+ * 拉杆是一整天的天色；左边的小图标白天是太阳、晚上是月亮，卡片也跟着染一点当时的天色
  */
 export function TimeSlider({
   value,
@@ -102,21 +102,18 @@ export function TimeSlider({
     onCommit(h);
   };
 
+  const day = isDay(hours);
   return (
-    <div className={`time ${live ? 'live' : ''}`}>
+    <div className={`time ${live ? 'live' : ''} ${day ? 'day' : 'night'}`} style={{ ['--glow' as string]: skyAt(hours) }}>
       <div className="time-head">
-        <label className="check">
+        <span className="time-icon">{day ? <IconSun size={14} /> : <IconMoon size={13} />}</span>
+        <b className="time-clock">{clock(hours)}</b>
+        <span className="time-period">{periodOf(hours)}</span>
+        <label className="live-chip" title="勾上：跟着电脑的时钟走；拖拉杆会自动取消">
           <input type="checkbox" checked={live} onChange={(e) => onCommit(e.target.checked ? 'now' : Math.round(now * 12) / 12)} />
-          <span className="box">
-            <IconCheck size={12} />
-          </span>
+          <i className="dot" />
           实时
-          {live && <span className="pulse" />}
         </label>
-        <span className="time-read">
-          <b>{clock(hours)}</b>
-          <span>{periodOf(hours)}</span>
-        </span>
       </div>
       <div
         className="time-track"
@@ -150,19 +147,11 @@ export function TimeSlider({
           e.preventDefault();
         }}
       >
-        <div
-          className={`time-thumb ${isDay(hours) ? 'sun' : 'moon'}`}
-          style={{ left: `${(hours / 24) * 100}%`, ['--glow' as string]: skyAt(hours) }}
-        >
-          {isDay(hours) ? <IconSun size={13} /> : <IconMoon size={12} />}
-        </div>
-      </div>
-      <div className="time-ticks">
-        {[0, 6, 12, 18, 24].map((h) => (
-          <span key={h} style={{ left: `${(h / 24) * 100}%` }}>
-            {h}
-          </span>
+        {/* 6 点、12 点、18 点的小刻度 */}
+        {[6, 12, 18].map((h) => (
+          <i key={h} className="notch" style={{ left: `${(h / 24) * 100}%` }} />
         ))}
+        <div className="time-thumb" style={{ left: `${(hours / 24) * 100}%` }} />
       </div>
     </div>
   );

@@ -35,7 +35,7 @@ export function Picker({
   /** 按钮里显示什么（默认是选中项的名字） */
   children?: ReactNode;
   className?: string;
-  /** 按钮右边的图标（默认是向下的箭头） */
+  /** 按钮右边的图标（默认是向下的箭头；false = 不要） */
   icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -108,7 +108,7 @@ export function Picker({
         onClick={() => setOpen((o) => !o)}
       >
         <span className="picker-value">{children ?? current?.label ?? '—'}</span>
-        {icon ?? <IconChevron size={14} />}
+        {icon === undefined ? <IconChevron size={14} /> : icon}
       </button>
       {open && (
         <div className="picker-pop" role="listbox" ref={list}>
