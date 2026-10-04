@@ -365,6 +365,7 @@ bpy.ops.file.pack_all()
 import runpy
 runpy.run_path(str(Path(__file__).with_name('refine_cafe_exterior.py')))
 runpy.run_path(str(Path(__file__).with_name('refine_cafe_joinery.py')))
+runpy.run_path(str(Path(__file__).with_name('align_cafe_structure.py')))
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'blender/tide-cafe.blend'))
 triangles=0
 for o in sc.objects:

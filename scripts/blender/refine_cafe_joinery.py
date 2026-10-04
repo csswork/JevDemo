@@ -10,16 +10,23 @@ for o in list(sc.objects):
 for name,cy,w,sill,h in [('entry',-1.9,2.4,0,3.25),('window-1',-4.15,1.6,.35,3.05),('window-2',.8,2.6,.35,3.05),('window-3',3.5,2.2,.35,3.05)]:
  n=2 if name=='entry' else max(2,round(w/.85));step=w/n;transom=sill+h-.5
  for j in range(n):
-  left=cy-w/2+j*step+(.05 if j==0 else .035);right=cy-w/2+(j+1)*step-(.05 if j==n-1 else .035)
-  low=sill+(.28 if name=='entry' else .05)
+  left=cy-w/2+j*step+((.18 if name=='entry' else .10) if j==0 else (.0725 if name=='entry' else .035));right=cy-w/2+(j+1)*step-((.18 if name=='entry' else .10) if j==n-1 else (.0725 if name=='entry' else .035))
+  low=sill+(.28 if name=='entry' else .10)
   cube(name+' glass lower',(-5.495,(left+right)/2,(low+transom-.03)/2),(.010,right-left,transom-.03-low),glass)
-  cube(name+' glass transom',(-5.495,(left+right)/2,(transom+.03+sill+h-.05)/2),(.010,right-left,.42),glass)
+  # Fixed transom lites fit the fixed jamb, independently of the thicker door
+  # leaf stiles below; sharing their inset left visible holes at the top corners.
+  upper_left=cy-w/2+j*step+(.10 if j==0 else .035)
+  upper_right=cy-w/2+(j+1)*step-(.10 if j==n-1 else .035)
+  cube(name+' glass transom',(-5.495,(upper_left+upper_right)/2,(transom+.03+sill+h-.10)/2),(.010,upper_right-upper_left,.37),glass)
   if name=='entry':
    # Two distinct leaf frames meet at a closing seam below the fixed transom.
-   for yy in [left-.025,right+.025]:cube('entry door stile',(-5.48,yy,(.05+transom-.04)/2),(.11,.065,transom-.09),walnut)
-   cube('entry door bottom rail',(-5.48,(left+right)/2,.15),(.11,right-left+.08,.23),walnut)
-   cube('entry door top rail',(-5.48,(left+right)/2,transom-.075),(.11,right-left+.08,.07),walnut)
+   for yy in [left-.035,right+.035]:cube('entry door stile',(-5.48,yy,(.05+transom-.04)/2),(.11,.07,transom-.09),walnut)
+   cube('entry door bottom rail',(-5.48,(left+right)/2,.15),(.11,right-left+.14,.23),walnut)
+   cube('entry door top rail',(-5.48,(left+right)/2,transom-.075),(.11,right-left+.14,.07),walnut)
  if name=='entry':cube('entry door fixed transom divider',(-5.5,cy,transom+.25),(.14,.06,.5),walnut)
+for original in list(sc.objects):
+ if original.name.startswith('brass door pull'):
+  outside=original.copy();outside.data=original.data.copy();outside.name='entry door exterior pull';outside.location.x-=.29;sc.collection.objects.link(outside)
 # Rear nook glazing gets the same structural layering, with an actual surround.
 for x in [2.78,5.22]:cube('nook glazed jamb',(x,8.52,1.9),(.10,.16,2.72),walnut)
 for z in [.55,3.25]:cube('nook glazed rail',(4,8.52,z),(2.54,.16,.10),walnut)

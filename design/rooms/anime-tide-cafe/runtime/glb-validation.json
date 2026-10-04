@@ -1,9 +1,9 @@
 {
   "room.glb": {
-    "bytes": 11349252,
-    "sha256": "ad539391de88a090cb5e131095e43d7776a582b5e31b5748316eae40ec0a88c9",
-    "renderTriangles": 194296,
-    "renderPrimitives": 34,
+    "bytes": 11535356,
+    "sha256": "8eea340b935878bb8d426aeb87981fbdf96e93661604ab0e92b0ee786b2dbb81",
+    "renderTriangles": 195226,
+    "renderPrimitives": 37,
     "colliders": 20,
     "privacyGlassBatches": 1,
     "clearGlassBatches": 1,
@@ -26,6 +26,18 @@
       ],
       [
         512,
+        680
+      ],
+      [
+        512,
+        680
+      ],
+      [
+        1200,
+        600
+      ],
+      [
+        512,
         512
       ],
       [
@@ -45,13 +57,13 @@
         512
       ]
     ],
-    "decodedTextureBytes": 14950400
+    "decodedTextureBytes": 20615680
   },
   "room-low.glb": {
-    "bytes": 6831516,
-    "sha256": "5c778c095512ecbd9f90948d62010cede8ba5dc8ccf812c8122204a80091a155",
-    "renderTriangles": 87833,
-    "renderPrimitives": 34,
+    "bytes": 6976072,
+    "sha256": "7f66acddc38047649a07320af07c60c90077ce77be6977e76536ed2a0d81bcd2",
+    "renderTriangles": 88327,
+    "renderPrimitives": 37,
     "colliders": 20,
     "privacyGlassBatches": 1,
     "clearGlassBatches": 1,
@@ -71,6 +83,18 @@
       [
         1536,
         900
+      ],
+      [
+        512,
+        680
+      ],
+      [
+        512,
+        680
+      ],
+      [
+        1200,
+        600
       ],
       [
         256,
@@ -93,6 +117,6 @@
         256
       ]
     ],
-    "decodedTextureBytes": 11018240
+    "decodedTextureBytes": 16683520
   }
 }

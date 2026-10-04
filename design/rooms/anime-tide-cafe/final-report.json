@@ -48,7 +48,7 @@
     "lightmap": false,
     "lightingManifest": true,
     "performance": true,
-    "browserCapture": "runtime/frosted-window-preview.png",
+    "browserCapture": "runtime/structure-interior-preview.png",
     "errors": []
   },
   "postmortem": {
@@ -62,7 +62,8 @@
       "在真实舞台机位中将咖啡机和磨豆机移向右侧，保留人物头部后方留白。",
       "Replace entire-room baked atlas with reusable per-object PBR textures to prevent dirty seams and lost source vertex colors.",
       "Separate exterior privacy glazing from clear display-case glass.",
-      "Replace random exterior leaf cards and scattered boxes with coherent tree crowns and supported, aligned houses."
+      "Replace random exterior leaf cards and scattered boxes with coherent tree crowns and supported, aligned houses.",
+      "Replace independent post/beam positions that bisected apertures with a single solid-pier grid; verify actual evaluated posts against the Boolean wall by ray casts."
     ],
     "remainingRisks": [
       "Runtime revision is available for local review; no deployment requested.",
@@ -75,6 +76,12 @@
       "status": "pending",
       "observation": "精细二次元室内参考中的构件层次不能由简陋程序草模表达；真实 Blender 多视角渲染揭露开口法线、透光与人物背景问题。",
       "rule": "用户要求精细参考图建模时，以可编辑的 Blender 几何和真实审阅渲染作为交付证据，草模只作布局中间件。"
+    },
+    {
+      "id": "timber-grid-derived-from-apertures",
+      "status": "pending",
+      "observation": "Independent timber rows crossed café windows even though the shell Boolean holes were correct.",
+      "rule": "Derive wall posts and crossbeams from one actual pier schedule; inspect render and ray-test evaluated support backing before delivery."
     }
   ],
   "designVerification": {
@@ -83,19 +90,19 @@
     "source": "blender/tide-cafe.blend",
     "meshEvidence": "blender/geometry-audit.json",
     "runtimeIntegrated": true,
-    "evaluatedVisibleMeshObjects": 2780,
-    "evaluatedTriangles": 187912,
+    "evaluatedVisibleMeshObjects": 2844,
+    "evaluatedTriangles": 188746,
     "allApertureCentersClear": true,
     "allStructuralMeshesManifold": true,
-    "sourceSha256": "9664a77892679444e0c308c5e236b585fada75e34c6d0e9799b1a5230fd519db",
+    "sourceSha256": "0ab5aaeb9ccec3162b861c9b9f567553a8fbd9467ea1903099410066276f96f8",
     "referenceSha256": "9eda55ad70a80a7b7aeedfcb130ced648ed18b793002f03759a77757feb8dd2b",
     "fourViews": "renders/blender-review-sheet.jpg",
     "reviewRenderCount": 12
   },
   "runtimeMaterialRevision": {
     "method": "reusable PBR material textures, per-object UV projection, preserved artwork and vertex colors; runtime lights",
-    "windows": "opaque diffuse privacy glass: scattered daylight, rough reflections, no transmitted exterior geometry",
-    "displayGlass": "reuses street clearGlassMaterial",
+    "windows": "MeshPhysicalMaterial rough transmission: actual refraction and blurred scenery, with a rendered sky behind glazing",
+    "displayGlass": "street clear glass with reflection multiplier 0.35 and highlight cap 0.12",
     "exterior": "3 coherent tree crowns, 6 aligned pitched-roof houses with windows, doors and supporting shore",
     "evidence": [
       "runtime/glb-validation.json",
@@ -107,6 +114,30 @@
       "npm run lint passed",
       "browser shader/load error logs empty",
       "actual character scene checked"
+    ],
+    "menu": "Chinese menu.png reloaded and repacked in Blender source",
+    "reverseWall": "oak wainscot, framed Chinese welcome board and two botanical/coastal prints"
+  },
+  "structureRevision": {
+    "evidence": "blender/structure-alignment.json",
+    "postCountOnWindowWall": 5,
+    "actualWallBackedRayTestsPassed": true,
+    "pierGridY": [
+      -5.11,
+      -3.225,
+      -0.6,
+      2.25,
+      4.73
+    ],
+    "openingOverlapMeters": 0,
+    "continuousRailAcrossGlassRemoved": true,
+    "postTopMatchesBeamUnderside": true,
+    "jambsInsideApertures": true,
+    "doorLeavesAndFixedTransomsUseSeparateGlazingBounds": true,
+    "exteriorDoorHandlesAdded": true,
+    "captures": [
+      "runtime/structure-interior-preview.png",
+      "runtime/structure-exterior-preview.png"
     ]
   }
 }
