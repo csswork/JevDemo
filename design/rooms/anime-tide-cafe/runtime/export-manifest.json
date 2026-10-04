@@ -1,20 +1,20 @@
 {
   "sourceSha256": "e748af5a2d6601b25bb2f46cfb6aded11856eec8a87ee9330c4b19295a33a482",
-  "method": "authored-lighting diffuse/indirect atlases; live PBR metal/glass",
+  "method": "reusable PBR material textures, per-object UV projection, preserved artwork and vertex colors; runtime lights",
   "triangles": 218748,
-  "renderBatches": 18,
+  "lowTriangles": 98879,
+  "renderBatches": 32,
   "colliders": 20,
-  "decodedAtlasBytes": 23068672,
   "tiers": {
     "room.glb": {
       "file": "room.glb",
-      "bytes": 16781100,
-      "sha256": "f644456378faebb552c2e2b7027cc409f36951c3c466a10824fe38bdf9dd1cd9"
+      "bytes": 13109692,
+      "sha256": "c47e486bf7fb67fa414175f403d93b3d5894104169838e24f00d48fa0670e620"
     },
     "room-low.glb": {
       "file": "room-low.glb",
-      "bytes": 13112088,
-      "sha256": "29a0c8651148d0ed582227188555e26be6d661bff543349ee234d5d90f585474"
+      "bytes": 7860120,
+      "sha256": "fdea49ca3fa5240a1ad3cf56c32bd6bdef1e0e328d48bfe36f36b52954f5248b"
     }
   },
   "fixturesSha256": "49637c44775175449a9860f35ac172c89a316cee2cc7efc089908a6a15f3bdb2",

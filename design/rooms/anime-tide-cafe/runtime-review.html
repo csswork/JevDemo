@@ -1,0 +1,13 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>潮汐咖啡馆 · 实际运行时材质检查</title>
+<style>body{margin:0;background:#ebe6dc;color:#3b352b;font:15px system-ui}main{max-width:1600px;margin:auto;padding:16px}h1{font-size:22px;margin:0 0 8px}button{padding:9px 16px;border:1px solid #c9bca7;border-radius:6px;background:#fff9ee;margin:0 6px 12px 0;color:inherit}canvas{display:block;width:100%;aspect-ratio:1.6;background:#bcd6e1}p{line-height:1.6}</style>
+<main><h1>潮汐咖啡馆 · 实际 3D 材质</h1><p id="status">加载模型与环境光…</p><button data-view="main">室内主视角</button><button data-view="counter">吧台与杯子</button><button data-view="window-seating">窗边座位</button><canvas></canvas><p>此画面使用项目中的 Three.js 场景、GLB、材质及灯光，实时渲染。</p></main>
+<script type="module">
+import * as THREE from '/node_modules/three/build/three.module.js';
+import {createStage} from '/src/vrm/stage.ts';
+const canvas=document.querySelector('canvas'),status=document.querySelector('#status');const stage=createStage(canvas);stage.setBackdrop('animeCafe');
+stage.renderer.setPixelRatio(1);stage.resize(1600,1000);stage.renderer.setSize(1600,1000,false);
+const metadata=await fetch('./blender/authoring-metadata.json').then(r=>r.json());const camera=new THREE.PerspectiveCamera(54,1.6,.1,100);stage.view.camera=camera;
+function select(name){const v=metadata.views[name];const [x,y,z]=v.location,[tx,ty,tz]=v.target;camera.position.set(x,z-.026,-y);camera.lookAt(tx,tz-.026,-ty);camera.fov=2*Math.atan(36/(1.6*2*v.lens))*180/Math.PI;camera.updateProjectionMatrix();}
+select('main');for(const b of document.querySelectorAll('button'))b.onclick=()=>select(b.dataset.view);
+function render(){stage.render();const room=stage.scene.getObjectByName('anime-cafe');if(room?.userData.ready&&stage.scene.environment){status.textContent='已加载 · 独立 PBR 纹理与实时光照';status.dataset.ready='true';}else if(room?.userData.status==='error')status.textContent=room.userData.error;requestAnimationFrame(render)}render();
+</script></html>

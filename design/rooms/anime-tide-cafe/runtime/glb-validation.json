@@ -1,0 +1,44 @@
+{
+  "room.glb": {
+    "bytes": 13544200,
+    "sha256": "504d77cf2f94b5978b968ec453a533137280acfaa46b10c0064eb05d4957ccf5",
+    "renderTriangles": 218748,
+    "renderPrimitives": 18,
+    "colliders": 20,
+    "atlasDimensions": [
+      [
+        1024,
+        1024
+      ],
+      [
+        1536,
+        1536
+      ],
+      [
+        1536,
+        1536
+      ]
+    ]
+  },
+  "room-low.glb": {
+    "bytes": 6420628,
+    "sha256": "b2da4b26061001c718d0298fed5d08fde773976b71767a88aaf4a8def04a629f",
+    "renderTriangles": 98873,
+    "renderPrimitives": 18,
+    "colliders": 20,
+    "atlasDimensions": [
+      [
+        256,
+        256
+      ],
+      [
+        512,
+        512
+      ],
+      [
+        512,
+        512
+      ]
+    ]
+  }
+}

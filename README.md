@@ -28,6 +28,7 @@ npm install && npm run dev
 模型已放在 `public/models/`，无需额外下载。
 
 背景（面板"模型"下面的"背景"，跟着角色记在浏览器里，见"模型"一节）：**公园**（默认，`vrm/scenes/park.ts`）、**咖啡店**（`vrm/scenes/cafe.ts`）、**街景**（海边小镇，`vrm/scenes/street.ts`）或原来的纯色渐变。
+另有 **潮汐咖啡馆**（`vrm/scenes/animeCafe.ts`）：按用户提供的二次元参考图在 Blender 中精细建模，包含木质吧台、甜点柜、双头咖啡机、落地窗、拱门座位区与垂挂植物。静态光影与纹理烘焙进 GLB，金属和玻璃保留实时材质；相机使用独立碰撞网格。源文件与渲染记录在 `design/rooms/anime-tide-cafe/`，导出脚本为 `scripts/blender/export_anime_cafe.py`。
 咖啡店的墙（灰泥墙、砖墙、墙裙）、天花板和梁、黑板菜单、窗外、店招、吧台、置物架是程序生成的（几何体 + canvas 画的贴图）；
 其余是 [Poly Pizza](https://poly.pizza) 上的低多边形模型（`public/scene/polypizza/`，32 个、共 1.3MB，进 git）：
 
