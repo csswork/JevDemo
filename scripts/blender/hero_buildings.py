@@ -84,6 +84,12 @@ BASE_SLOTS = {
 }
 
 
+def basis(X, Y, Z, c):
+    """列向量 X、Y、Z（方向）+ 平移 c 的 4x4 矩阵"""
+    M = Matrix(((X[0], Y[0], Z[0], c[0]), (X[1], Y[1], Z[1], c[1]), (X[2], Y[2], Z[2], c[2]), (0, 0, 0, 1)))
+    return M
+
+
 def darker(hex_color, k):
     h = hex_color.lstrip('#')
     r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
@@ -209,8 +215,8 @@ class Hero:
             for a, c in segs:
                 if c - a > 0.02:
                     b.box(cx + a, -0.03, 0, cx + c, 0.01, 0.3, 'stone')
-        for side in (1, -1):
-            b.box(side * hw - 0.01 if side > 0 else -hw - 0.03, 0.0, 0, side * hw + 0.03 if side > 0 else -hw + 0.01, d, 0.3, 'stone')
+        b.box(hw - 0.01, 0.0, 0, hw + 0.03, d, 0.3, 'stone')
+        b.box(-hw - 0.03, 0.0, 0, -hw + 0.01, d, 0.3, 'stone')
         for f in range(1, self.floors):
             z = GH + UH * (f - 1)
             b.box(-hw - 0.03, -0.05, z - 0.08, hw + 0.03, 0.0, z + 0.04, 'cornice')
@@ -223,6 +229,10 @@ class Hero:
         b = self.b
         P = [Vector(q) for q in pts]
         n = (P[1] - P[0]).cross(P[2] - P[0]).normalized()
+        if n.z < 0:
+            # 统一成从上往下看逆时针（法线朝上），第一条边还是檐口
+            P = [P[1], P[0]] + list(reversed(P[2:]))
+            n = -n
         top = [b.v(q) for q in P]
         b.face(top, 'tile')
         low = [q - n * t for q in P]
@@ -244,6 +254,7 @@ class Hero:
                 a = e0 + ex * (s * L / m) - n * (t + 0.005)
                 c = a + up * OV * 1.05
                 self.beam(a, c, 0.04, 0.07, 'rafter', n)
+        return P
 
     def beam(self, a, c, w, hgt, color, nrm):
         """a → c 的一根方木（截面 w × hgt，hgt 沿 -nrm 往下）"""
@@ -253,13 +264,17 @@ class Hero:
         side = ax.cross(nrm).normalized() * (w / 2)
         dn = -nrm * hgt
         q = [a - side, a + side, c + side, c - side]
-        qv = [b.v(x) for x in q]
-        qd = [b.v(x + dn) for x in q]
-        b.face(qv, color)
-        b.face(list(reversed(qd)), color)
+        center = (a + c) / 2 + dn / 2
+        faces = [q, [x + dn for x in reversed(q)]]
         for i in range(4):
             j = (i + 1) % 4
-            b.face([qv[j], qv[i], qd[i], qd[j]], color)
+            faces.append([q[j], q[i], q[i] + dn, q[j] + dn])
+        for f in faces:
+            nn = (f[1] - f[0]).cross(f[2] - f[0])
+            cen = sum(f, Vector()) / len(f)
+            if nn.dot(cen - center) < 0:
+                f = list(reversed(f))
+            b.face([b.v(x) for x in f], color)
 
     def tile_band(self, e0, e1, up, nrm, rows=3, row=0.3):
         """檐口那几排真的瓦：沿檐口一道道波浪（桟瓦），每排压着下一排，从檐口往上 rows 排"""
@@ -297,14 +312,12 @@ class Hero:
         """沿一条线排 1m 一段的零件（和 street.ts 的 runAlong 一样）：out = 朝外的水平方向"""
         out = Vector(out)
         Z = Vector((0, 0, 1))
-        X = out.cross(Z) * -1  # 沿着线（从外面看从左到右）
-        X = Z.cross(out)
+        X = Z.cross(out)  # 沿着线（从外面看从左到右）
         n = max(1, round(length))
         for k in range(n):
             c = Vector(mid) + X * (-length / 2 + (k + 0.5) * length / n)
-            basis = Matrix((X.to_4d(), (-out).to_4d(), Z.to_4d(), (0, 0, 0, 1))).transposed()
-            basis[0][3], basis[1][3], basis[2][3] = c.x, c.y, c.z
-            self.part(fn, basis @ R(-pitch, 4, 'X') @ S(length / n, 1, 1))
+            # 零件的 -Y 朝外（街），+Y 往里（顺着坡往上）：绕零件的 x 转 pitch，往里的那头抬起来
+            self.part(fn, basis(X, -out, Z, c) @ R(pitch, 4, 'X') @ S(length / n, 1, 1))
 
     def ridge(self, mid, length, out):
         self.run(K.ridge, mid, length, out)
@@ -313,11 +326,7 @@ class Hero:
         X = Z.cross(out)
         for sgn in (1, -1):
             c = Vector(mid) + X * (sgn * length / 2)
-            Xs = X * sgn
-            o = out * sgn
-            basis = Matrix((Xs.to_4d(), (-o).to_4d(), Z.to_4d(), (0, 0, 0, 1))).transposed()
-            basis[0][3], basis[1][3], basis[2][3] = c.x, c.y, c.z
-            self.part(K.ridge_end, basis)
+            self.part(K.ridge_end, basis(X * sgn, -out * sgn, Z, c))
 
     def eave(self, mid, length, out, pitch, gutter=True):
         self.run(K.eave_tiles, mid, length, out, pitch)
@@ -344,8 +353,8 @@ class Hero:
             front = [(-hw - SO, -OV, ye), (hw + SO, -OV, ye), (hw + SO, d / 2, yr), (-hw - SO, d / 2, yr)]
             back = [(hw + SO, d + OV, ye), (-hw - SO, d + OV, ye), (-hw - SO, d / 2, yr), (hw + SO, d / 2, yr)]
             for pts, o in ((front, (0, -1, 0)), (back, (0, 1, 0))):
-                self.slab(pts)
-                e0, e1, up = Vector(pts[0]), Vector(pts[1]), Vector(pts[3]) - Vector(pts[0])
+                P = self.slab(pts)
+                e0, e1, up = P[0], P[1], P[3] - P[0]
                 nrm = (e1 - e0).cross(up).normalized()
                 self.tile_band(e0, e1, up, nrm)
                 self.eave(((e0 + e1) / 2).to_tuple(), (e1 - e0).length, o, pitch, o[1] < 0)
@@ -359,8 +368,8 @@ class Hero:
             right = [(hw + OV, d + SO, ye), (hw + OV, -SO, ye), (0, -SO, yr), (0, d + SO, yr)]
             left = [(-hw - OV, -SO, ye), (-hw - OV, d + SO, ye), (0, d + SO, yr), (0, -SO, yr)]
             for pts, o in ((right, (1, 0, 0)), (left, (-1, 0, 0))):
-                self.slab(pts)
-                e0, e1, up = Vector(pts[0]), Vector(pts[1]), Vector(pts[3]) - Vector(pts[0])
+                P = self.slab(pts)
+                e0, e1, up = P[0], P[1], P[3] - P[0]
                 nrm = (e1 - e0).cross(up).normalized()
                 self.tile_band(e0, e1, up, nrm)
                 self.eave(((e0 + e1) / 2).to_tuple(), (e1 - e0).length, o, pitch, True)
@@ -372,7 +381,11 @@ class Hero:
             for sx in (1, -1):
                 a = Vector((sx * (hw + OV), -SO - 0.03, ye + 0.04))
                 c = Vector((0, -SO - 0.03, yr + 0.08))
-                self.beam(a, c, 0.06, 0.24, 'fascia', Vector((0, -1, 0)).cross((c - a).normalized()).normalized() * -1)
+                dv = (c - a).normalized()
+                nv = Vector((-dv.z, 0, dv.x))
+                if nv.z < 0:
+                    nv = -nv
+                self.beam(a, c, 0.06, 0.24, 'fascia', nv)
             b.box(-0.12, -SO - 0.08, yr - 0.45, 0.12, -SO - 0.02, yr - 0.05, 'fascia')
             for sx in (1, -1):
                 self.pipe(sx * (hw + 0.05), 0.12, ye - 0.15)
@@ -387,9 +400,9 @@ class Hero:
                 ([(El, d + OV, ye), (El, -OV, ye), (-xr, d / 2, yr)], (-1, 0, 0)),
             ]
             for pts, o in slabs:
-                self.slab(pts)
-                e0, e1 = Vector(pts[0]), Vector(pts[1])
-                apex = Vector(pts[2]) if len(pts) == 3 else Vector(pts[3])
+                P = self.slab(pts)
+                e0, e1 = P[0], P[1]
+                apex = P[2] if len(P) == 3 else P[3]
                 up = apex - e0
                 nrm = (e1 - e0).cross(up).normalized()
                 if o[1] != 0:
@@ -427,8 +440,8 @@ class Hero:
         hw = self.hw
         yb = GH - 0.05
         pts = [(-hw - 0.05, -0.95, yb - 0.3), (hw + 0.05, -0.95, yb - 0.3), (hw + 0.05, 0, yb + 0.12), (-hw - 0.05, 0, yb + 0.12)]
-        self.slab(pts, 0.08, rafters=False)
-        e0, e1, up = Vector(pts[0]), Vector(pts[1]), Vector(pts[3]) - Vector(pts[0])
+        P = self.slab(pts, 0.08, rafters=False)
+        e0, e1, up = P[0], P[1], P[3] - P[0]
         nrm = (e1 - e0).cross(up).normalized()
         self.tile_band(e0, e1, up, nrm, rows=3, row=0.32)
         self.run(K.eave_tiles, ((e0 + e1) / 2).to_tuple(), (e1 - e0).length, (0, -1, 0), math.atan2(0.42, 0.95))
@@ -437,7 +450,6 @@ class Hero:
         n = max(2, int(self.w / 1.5))
         for i in range(n + 1):
             x = -hw + 0.1 + i * (self.w - 0.2) / n
-            b.prism([(0.0, yb - 0.55), (-0.0, yb - 0.08), (-0.75, yb - 0.25)], x - 0.03, x + 0.03, 'fascia') if False else None
             self.beam((x, -0.01, yb - 0.55), (x, -0.8, yb - 0.27), 0.06, 0.08, 'fascia', Vector((0, 0, 1)))
 
     def awning(self, lights=False):
@@ -479,7 +491,6 @@ class Hero:
                 if prev:
                     b.cyl(prev, pnt, 0.004, 'black', seg=3, caps=False)
                 prev = pnt
-            self.light((0, -out + 0.1, low - 0.4), color='#ffcf8a', intensity=0.0, radius=0.0, glow=0.0, hours=[17, 23])
 
     def balcony(self, i0, i1, cafe=False):
         b, hw, bw = self.b, self.hw, self.bw

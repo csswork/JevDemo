@@ -207,7 +207,13 @@ class Mesher {
    * 把一份几何体（Blender 构件的一个零件）变换以后并进来：local = 零件 → 这个 Mesher 的局部坐标（再乘 setTransform 的变换）。
    * 可以不等比缩放（开间宽窄不一）：法线按逆转置变换。顶点色乘 tint；ext = 每个顶点带的三个数
    */
-  addGeometry(geo: THREE.BufferGeometry, local: THREE.Matrix4, tint?: THREE.Color, ext?: [number, number, number], plasterUV?: readonly number[]) {
+  addGeometry(
+    geo: THREE.BufferGeometry,
+    local: THREE.Matrix4,
+    tint?: THREE.Color,
+    ext?: [number, number, number] | ((q: THREE.Vector3) => [number, number, number]),
+    plasterUV?: readonly number[],
+  ) {
     const base = this.pos.length / 3;
     const M = _gm.multiplyMatrices(this.m, local);
     const N = _nm.getNormalMatrix(M);
@@ -231,7 +237,10 @@ class Mesher {
       this.col.push(r * (tint?.r ?? 1), g * (tint?.g ?? 1), bl * (tint?.b ?? 1));
       if (this.uv1) this.uv1.push(plasterUV && uv ? uv.getX(i) : 0, plasterUV && uv ? uv.getY(i) : 0);
       if (this.sway) this.sway.push(0, 0, 0, 0);
-      if (this.ext) this.ext.push(...(ext ?? [0, 0, 24]));
+      if (this.ext) {
+        if (typeof ext === 'function') this.ext.push(...ext(this.t.fromBufferAttribute(pos, i).applyMatrix4(local)));
+        else this.ext.push(...(ext ?? [0, 0, 24]));
+      }
     }
     const idx = geo.index;
     if (idx) for (let i = 0; i < idx.count; i++) this.idx.push(base + idx.getX(i));
@@ -391,6 +400,38 @@ class GlassMesher {
     const idx = geo.index;
     if (idx) for (let i = 0; i < idx.count; i++) this.idx.push(base + idx.getX(i));
     else for (let i = 0; i < pos.count; i++) this.idx.push(base + i);
+  }
+  /** 精建房子里的玻璃：房间按顶点在房子里的位置找（哪一层），窗帘的坐标用模型的 uv（Blender 那边每块玻璃 0..1） */
+  addHero(geo: THREE.BufferGeometry, M: THREE.Matrix4, roomOf: (q: THREE.Vector3) => RoomParams | null) {
+    const pos = geo.attributes.position;
+    const nrm = geo.attributes.normal;
+    const uv = geo.attributes.uv;
+    const N = _nm.getNormalMatrix(M);
+    const q = new THREE.Vector3();
+    const p = new THREE.Vector3();
+    const map = new Int32Array(pos.count).fill(-1);
+    for (let i = 0; i < pos.count; i++) {
+      q.fromBufferAttribute(pos, i);
+      const room = roomOf(q);
+      if (!room) continue;
+      map[i] = this.pos.length / 3;
+      p.copy(q).applyMatrix4(M);
+      this.pos.push(p.x, p.y, p.z);
+      this.n.fromBufferAttribute(nrm, i).applyMatrix3(N).normalize();
+      this.nrm.push(this.n.x, this.n.y, this.n.z);
+      this.roomPos.push(q.x - room.left, q.y - room.floor);
+      this.roomSize.push(...room.size);
+      this.roomInfo.push(...room.info);
+      this.winUv.push(uv ? uv.getX(i) : 0.5, uv ? uv.getY(i) : 0.5);
+    }
+    const idx = geo.index;
+    const n = idx ? idx.count : pos.count;
+    for (let k = 0; k < n; k += 3) {
+      const a = map[idx ? idx.getX(k) : k];
+      const b = map[idx ? idx.getX(k + 1) : k + 1];
+      const c = map[idx ? idx.getX(k + 2) : k + 2];
+      if (a >= 0 && b >= 0 && c >= 0) this.idx.push(a, b, c);
+    }
   }
   get empty() {
     return this.idx.length === 0;
@@ -965,7 +1006,7 @@ export function createStreet(): Backdrop {
     // （kitSpec.json 的规格，模型到了再拼，见后面的 bakeBuildings）。同一层的窗共用一个房间
     const floorRooms = Array.from({ length: floors }, (_, f) => floorRoom(f));
     // 远处（离她 60m 以外）和山坡上的房子用简化的构件；也不放瓦当、檐沟、落水管（远看分不出来）
-    const lod = b.y != null || center.length() > 60 ? 1 : 0;
+    const lod = b.y != null || center.length() > 50 ? 1 : 0;
     const basis = (ox: number, oz: number, X: THREE.Vector3, Z: THREE.Vector3) => new THREE.Matrix4().makeBasis(X, Y_UP, Z).setPosition(ox, 0, oz);
     for (let f = 0; f < floors; f++) {
       const ya = f === 0 ? 0 : GH + UH * (f - 1);
@@ -1724,11 +1765,12 @@ export function createStreet(): Backdrop {
     buildWires(kit.get('pole'));
   });
   // ---- 房子的构件（scripts/blender/building_kit.py → models/building_kit/kit.glb）：模型到了按记录拼进几个大网格 ----
-  const buildingGlowMat = buildingGlowMaterial(keep, { uLights: night.uLights, uHour: night.uHour, uGlowGain: { value: 0.85 } });
-  const bakeBuildings = (kit: Map<string, KitItem>) => {
+  const buildingGlowMat = buildingGlowMaterial(keep, { uLights: night.uLights, uHour: night.uHour, uGlowGain: { value: 0.7 } });
+  const bakeBuildings = (kit: Map<string, KitItem>, heroKit: Map<string, KitItem> | null) => {
     // 近处（精细的构件）、远处（简化的）各一套网格：远处的不投影 —— 合成一整块的网格，阴影那一趟会把整块再画一遍，
     // 远处的房子本来也在阴影范围（±22m）外面
     const meshers = () => ({
+      plaster: new Mesher({ uv1: true }),
       wood: new Mesher(),
       metal: new Mesher(),
       paint: new Mesher(),
@@ -1766,6 +1808,8 @@ export function createStreet(): Backdrop {
         if (full) for (const mark of full.marks) if (mark.name.startsWith('light')) nightLights.add(kitLight(mark, world.clone().multiply(r.cell)));
       }
     }
+    // 精建的那 8 栋并进近处那一套（同一个材质一次绘制）
+    if (heroKit) addHeroes(heroKit, sets[0], panes);
     const add = (m: Mesher, mat: THREE.Material, name: string, cast = true) => {
       if (m.empty) return;
       const mesh = new THREE.Mesh(keep(m.build()), mat);
@@ -1774,6 +1818,7 @@ export function createStreet(): Backdrop {
       mesh.name = name;
       group.add(mesh);
     };
+    add(sets[0].plaster, facadeMat, 'hero-walls');
     sets.forEach((ms, lodIdx) => {
       const cast = lodIdx === 0;
       const tag = lodIdx === 0 ? 'kit' : 'kit-far';
@@ -1793,9 +1838,78 @@ export function createStreet(): Backdrop {
       group.add(gm);
     }
   };
-  void loadKit(`${BASE}models/building_kit/kit.glb`, keep).then((kit) => {
-    if (!disposed) bakeBuildings(kit);
+  // 两个模型都到了再一起拼（精建房子的合进构件的网格里）；精建的没载到也照样拼构件
+  void Promise.all([loadKit(`${BASE}models/building_kit/kit.glb`, keep), loadKit(`${BASE}models/hero/hero.glb`, keep).catch(() => null)]).then(([kit, hero]) => {
+    if (!disposed) bakeBuildings(kit, hero);
   });
+  // ---- 她身边那 8 栋（scripts/blender/hero_buildings.py → models/hero/hero.glb）：整栋的模型摆到 building() 算好的位置上 ----
+  /** 几何体里三个顶点都满足 keep 的三角形（keep 拿到的是乘了 local 的位置），另做一份 */
+  const trianglesWhere = (geo: THREE.BufferGeometry, local: THREE.Matrix4, keepTri: (q: THREE.Vector3) => boolean) => {
+    const pos = geo.attributes.position;
+    const idx = geo.index;
+    const n = idx ? idx.count : pos.count;
+    const q = new THREE.Vector3();
+    const ok = (i: number) => keepTri(q.fromBufferAttribute(pos, i).applyMatrix4(local));
+    const out: number[] = [];
+    for (let k = 0; k < n; k += 3) {
+      const tri = [0, 1, 2].map((j) => (idx ? idx.getX(k + j) : k + j));
+      if (tri.every(ok)) out.push(...tri);
+    }
+    const g = geo.clone();
+    g.setIndex(out);
+    return g;
+  };
+  type KitMeshers = Record<'plaster' | 'wood' | 'metal' | 'paint' | 'fabric' | 'tile' | 'concrete' | 'glow' | 'clear', Mesher>;
+  function addHeroes(kit: Map<string, KitItem>, ms: KitMeshers, panes: GlassMesher) {
+    const side = cellUV(F.SIDE);
+    const GH = 3.2;
+    const UH = 2.9;
+    for (const h of heroPlace) {
+      const item = kit.get(h.id);
+      if (!item) continue;
+      const { b, w, M } = h;
+      const bw = w / b.ground.length;
+      const floorOf = (y: number) => (y < GH ? 0 : Math.min(b.upper.length, 1 + Math.floor((y - GH) / UH)));
+      const cellAt = (q: THREE.Vector3) => {
+        const f = floorOf(q.y);
+        const i = Math.max(0, Math.min(b.ground.length - 1, Math.floor((q.x + w / 2) / bw)));
+        const row = f === 0 ? b.ground : b.upper[f - 1];
+        return row[i % row.length];
+      };
+      // 没有现成房间的那一层：单独给一间（房子的局部坐标）
+      const rooms = h.rooms.map((r0, f) => r0 ?? { ...kitRoom(w - 0.2, f === 0 ? 0 : GH + UH * (f - 1), null), left: -w / 2 + 0.2 });
+      const onAt = 0.1 + rk() * 0.4;
+      // 夜里发光的部分：门脸那一圈按所在那一格的营业时间（kitSpec 的 glow），别的（壁灯、小灯泡、灯笼）17:00~23:30
+      const glowOf = (q: THREE.Vector3): [number, number, number] => {
+        if (q.z > -0.9) {
+          const spec = KIT.modules[CELL_NAME[cellAt(q)] as keyof typeof KIT.modules] as KitModule | undefined;
+          if (spec?.glow) return [onAt, spec.glow[0], spec.glow[1]];
+        }
+        return [onAt, 17, 23.5];
+      };
+      for (const part of item.parts) {
+        const slot = part.slot;
+        if (slot === 'pane') {
+          // 咖啡店一楼是透明玻璃（后面是真的 3D 店内），别的窗是室内映射
+          if (b.interior) {
+            const ground = trianglesWhere(part.geo, part.local, (q) => q.y < GH);
+            ms.clear.setTransform(M).addGeometry(ground, part.local);
+            ground.dispose();
+          }
+          panes.addHero(part.geo, M.clone().multiply(part.local), (q) => (b.interior && q.y < GH ? null : rooms[floorOf(q.y)]));
+        } else if (slot === 'frost' || slot === 'glow') {
+          ms.glow.setTransform(M).addGeometry(part.geo, part.local, undefined, glowOf);
+        } else if (slot === 'plaster') {
+          ms.plaster.setTransform(M).addGeometry(part.geo, part.local, undefined, undefined, side);
+        } else {
+          const m = ms[slot as keyof typeof ms] ?? ms.paint;
+          m.setTransform(M).addGeometry(part.geo, part.local);
+        }
+      }
+      for (const mark of item.marks) if (mark.name.startsWith('light')) nightLights.add(kitLight(mark, M));
+    }
+  }
+
   // 她身边那家咖啡店的店内（真的 3D，透过一楼的透明玻璃看得到）
   const ppCache = new Map<string, Promise<THREE.Object3D | null>>();
   const loadPP = (file: string) => {
