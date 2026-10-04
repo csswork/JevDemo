@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { canvasTexture, rng, type Backdrop, type LiveLighting } from './common';
-import { createClouds } from './clouds';
+import { createCirrus } from './clouds';
 import { createBatcher, createTreeMaker, type TreeVariant } from './foliage';
 import {
   HAZE,
@@ -58,7 +58,7 @@ import {
  *   街道设施  电线杆、变压器、杆上的小路灯、售货机、小黑板、长凳、花箱、格栅、井盖、栏杆立柱、旗杆
  *             都是 Blender 做的（scripts/blender/street_props.py），按材质槽换成这里的材质、实例化合批
  *   树        右边人行道的行道树、房子之间的庭院树、栏杆边一溜灌木（ez-tree，和公园同一套合批、透光、随风）
- *   远景      海、对岸的小镇和两层山、灯塔和防波堤、跨海桥（seaside.ts）、云（clouds.ts）；身后的小镇往山坡上爬
+ *   远景      海、对岸的小镇和两层山、灯塔和防波堤、跨海桥（seaside.ts）、高空的卷云（clouds.ts）；身后的小镇往山坡上爬
  *
  * 坐标和舞台一致：角色站在原点、面朝 +Z，主相机在 +Z 方向往 -Z 看，半身景别里看到的是她身后：
  * 她站在路上靠左那条车道（离左边路牙 1.4m），身后左边是咖啡店往后的一排店面，右边是栏杆和海，
@@ -693,24 +693,10 @@ export function createStreet(): Backdrop {
   // 海那一侧的方位角：从左前方（-150°）绕到右后方（80°）
   const SEA_FROM = THREE.MathUtils.degToRad(-150);
   const SEA_TO = THREE.MathUtils.degToRad(80);
-  // 云（clouds.ts，Blender 做的体积云）：海那一侧一排大积云，底边贴着山顶往上一点；她身后的山上方少一些、小一些。
-  // 风往方位角变大的方向吹：海那边的云从左前方漂向右后方，飘到头慢慢散掉、从另一头重新长出来。
-  // 比远山远（山最远约 2.6km），不然会盖到山前面
-  const clouds = createClouds(
-    keep,
-    {
-      dist: SKY_R * 0.9,
-      seed: 91,
-      drift: 0.1,
-      bands: [
-        { from: THREE.MathUtils.degToRad(-140), to: THREE.MathUtils.degToRad(40), count: 12, elev: [2.5, 6], width: [0.3, 0.5], kinds: ['tall', 'mid', 'flat'] },
-        { from: THREE.MathUtils.degToRad(40), to: THREE.MathUtils.degToRad(220), count: 6, elev: [3.5, 7], width: [0.22, 0.35], kinds: ['mid', 'flat'], opacity: [0.85, 0.9] },
-      ],
-    },
-    () => !disposed,
-  );
-  far(clouds.group);
-  const cu = clouds.uniforms;
+  // 高空的卷云（clouds.ts）：一缕缕顺着风拉长的细丝，随风慢慢移动
+  const cirrus = createCirrus(keep, { dist: SKY_R * 0.97, opacity: 0.6 });
+  far(cirrus.mesh);
+  const cu = cirrus.uniforms;
   far(createFarLand(keep, SEA_FROM, SEA_TO));
   const TOWN_FROM = THREE.MathUtils.degToRad(-128);
   const TOWN_TO = THREE.MathUtils.degToRad(-40);
@@ -2154,8 +2140,6 @@ export function createStreet(): Backdrop {
   const keyDir = new THREE.Vector3();
   const glintDir = new THREE.Vector3();
   const MOON_COL = new THREE.Color(0xb4c4ec);
-  /** 夜里映在云底的小镇灯光 */
-  const TOWN_GLOW = new THREE.Color(0xffa060);
   const wu = water.uniforms;
   let envSig = '';
   let lastHours = -1;
@@ -2211,7 +2195,7 @@ export function createStreet(): Backdrop {
       wind.uTime.value = time;
       water.update(time);
       boats.update(time, night.uLights.value);
-      clouds.update(dt);
+      cirrus.update(dt);
       gulls.update(time);
       if ((lampScan -= dt) <= 0) {
         lampScan = 0.5;
@@ -2279,8 +2263,7 @@ export function createStreet(): Backdrop {
         lighting.envVersion++;
       }
       fog.color.copy(pal.fog);
-      // 云：白天、黄昏被太阳照（太阳落到 -8° 以下就换成月亮），背光面是天光；月亮附近的云薄一些、透出月光；
-      // 云底映着小镇的灯；贴着地平线的融进地平线的颜色
+      // 卷云：白天、黄昏被太阳照（太阳落到 -8° 以下就换成月亮），背光面是天光；月亮附近的薄一些；贴着地平线的融进地平线的颜色
       if (elev > -8) {
         cu.uKeyDir.value.copy(sunW);
         cu.uKeyCol.value.copy(pal.cloud).multiplyScalar(smoothstep(-8, -3, elev) * 0.85 + 0.15);
@@ -2289,7 +2272,6 @@ export function createStreet(): Backdrop {
         cu.uKeyCol.value.copy(MOON_COL).multiplyScalar(0.3 * (0.4 + 0.6 * illum) * smoothstep(-2, 3, moonElev));
       }
       cu.uShade.value.copy(pal.cloudShade);
-      cu.uBelow.value.copy(TOWN_GLOW).multiplyScalar(lightsOn * 0.06);
       cu.uHaze.value.copy(pal.horizon);
       cu.uMoonDir.value.copy(moonW);
       cu.uMoonGlow.value = skyU.uMoon.value;

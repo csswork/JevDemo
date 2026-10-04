@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canvasTexture, pbrTextures, rng, type Backdrop } from './common';
 import { AMBIENCE_VOLUME } from '../../speech/ambience';
-import { createClouds } from './clouds';
+import { createCirrus } from './clouds';
 import { createDust, createLightShafts, type Shaft } from './sunlight';
 import { createBatcher, createTreeMaker, windDepth, windShader, type TreeVariant } from './foliage';
 
@@ -307,25 +307,15 @@ export function createPark(): Backdrop {
     group.add(sky);
   }
 
-  // ---- 云（clouds.ts，Blender 做的体积云，和街景共用）：天空球前面一圈，哪个方向看都不是一片空天。
-  // 晴天午后：太阳固定，颜色也固定；比街景的淡一些（隔着树冠看，太实了抢戏）
-  const clouds = createClouds(
-    keep,
-    {
-      dist: 132,
-      seed: 53,
-      drift: 0.1,
-      bands: [{ from: 0, to: Math.PI * 2, count: 14, elev: [4, 14], width: [0.3, 0.5], kinds: ['tall', 'mid', 'flat'], opacity: [0.75, 0.95] }],
-    },
-    () => !disposed,
-  );
+  // ---- 高空的卷云（clouds.ts，和街景共用）：晴天午后，太阳和颜色都固定 ----
+  const cirrus = createCirrus(keep, { dist: 140, opacity: 0.5 });
   {
-    const cu = clouds.uniforms;
+    const cu = cirrus.uniforms;
     cu.uKeyDir.value.copy(SUN_DIR);
     cu.uKeyCol.value.setHex(0xfff8ee);
     cu.uShade.value.setHex(0xbccadf);
     cu.uHaze.value.setHex(0xc4d5b6);
-    group.add(clouds.group);
+    group.add(cirrus.mesh);
   }
 
   // ---- 阳光：光柱 + 光里的尘埃（见 sunlight.ts）----
@@ -1013,7 +1003,7 @@ export function createPark(): Backdrop {
       time += dt;
       wind.uTime.value = time;
       shafts.update(time);
-      clouds.update(dt);
+      cirrus.update(dt);
       dust.update(time);
     },
     beforeRender(view, shadow) {
