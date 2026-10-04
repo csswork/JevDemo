@@ -732,13 +732,14 @@ export function createStreet(): Backdrop {
   const gulls = createGulls(keep, alive);
   group.add(gulls.group);
 
-  // ---- 陆地（身后的小镇和山）：一张 8m 一格的高度场 ----
+  // ---- 陆地（身后的小镇和山）：一张 11m 一格的高度场 ----
   {
     const X0 = -1100;
     const X1 = 520;
     const Z0 = -820;
     const Z1 = 1020;
-    const CS = 8;
+    // 11m 一格：大部分被房子挡着，只看得到山的轮廓（8m 一格时这一块九万多个三角形，主画面、海面反射各画一遍）
+    const CS = 11;
     const nx = Math.round((X1 - X0) / CS);
     const nz = Math.round((Z1 - Z0) / CS);
     const g = keep(new THREE.PlaneGeometry(X1 - X0, Z1 - Z0, nx, nz));
@@ -2154,7 +2155,8 @@ export function createStreet(): Backdrop {
       for (let p: THREE.Object3D | null = mesh; p; p = p.parent) if (p.name === 'cafe-interior') return;
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         if (lampDone.has(m) || noLamps.has(m)) continue;
-        if (!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && !(m as THREE.MeshPhongMaterial).isMeshPhongMaterial && !(m as THREE.MeshLambertMaterial).isMeshLambertMaterial) continue;
+        // 树叶（Phong）不加：叶子一层叠一层，满屏的叶子每个像素都跑一遍灯的循环，夜里 GPU 多花的大半在这里
+        if (!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && !(m as THREE.MeshLambertMaterial).isMeshLambertMaterial) continue;
         lampDone.add(m);
         lampLit(m, nightLights.uniforms);
         m.needsUpdate = true;

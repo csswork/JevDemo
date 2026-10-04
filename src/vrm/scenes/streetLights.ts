@@ -7,7 +7,7 @@ import * as THREE from 'three';
  *   1. 真实的点光源：固定 4 盏（Backdrop.lights，数量永远不变 —— 增删灯会让所有材质重新编译、卡一下），
  *      每帧分给离角色最近、最亮的几个光源，白天强度是 0。只有这一档照得到角色（MToon 认点光源）
  *   2. 街道材质里的轻量灯：往立面、路面、人行道、混凝土、木件、铁件……的着色器里注入一段循环（lampLit），
- *      算离角色最近的 32 个光源的漫反射（和 three 的点光源同一个衰减公式），路面上的光斑、墙上被照亮的那一圈都是它
+ *      算离角色最近的 16 个光源的漫反射（和 three 的点光源同一个衰减公式），路面上的光斑、墙上被照亮的那一圈都是它
  *   3. 光晕：每个光源一张朝着相机的柔和光斑，全部在一个 InstancedMesh 里（加法混合，跟着雾淡掉），
  *      也加进海面的反射层 —— 海面上拉长的倒影光柱就是它
  *
@@ -51,8 +51,11 @@ interface Live {
   id: number;
 }
 
-/** 轻量灯最多几个（着色器里的循环上限） */
-export const LAMP_MAX = 32;
+/**
+ * 轻量灯最多几个（着色器里的循环上限）。夜里 GPU 多出来的几乎全是这段循环（340 万像素：24 个 +0.75ms、12 个 +0.45ms，同一页面里交替量的），
+ * 16 个（加上 4 盏真实点光源，最近的 20 盏灯有光斑）夜里和公园差不多
+ */
+export const LAMP_MAX = 16;
 /** 真实点光源几盏 */
 const REAL = 4;
 const GLOW_CAP = 1024;
@@ -110,9 +113,11 @@ export function lampLit(mat: THREE.Material, u: LampUniforms) {
             if ( i >= uLampCount ) break;
             vec4 lp = uLampPos[ i ];
             vec3 L = lp.xyz - vLampW;
-            float d = length( L );
-            if ( d >= lp.w ) continue;
-            float att = pow2( saturate( 1.0 - pow4( d / lp.w ) ) ) / max( d * d, 0.01 );
+            float d2 = dot( L, L );
+            // 先比距离的平方：大部分像素离大部分灯都在照射范围外，不用开方
+            if ( d2 >= lp.w * lp.w ) continue;
+            float d = sqrt( d2 );
+            float att = pow2( saturate( 1.0 - pow4( d / lp.w ) ) ) / max( d2, 0.01 );
             reflectedLight.directDiffuse += BRDF_Lambert( material.diffuseColor ) * uLampCol[ i ] * ( saturate( dot( nW, L / d ) ) * att );
           }
         }`,
@@ -251,7 +256,7 @@ export function createLights(keep: <T extends { dispose(): void }>(x: T) => T, o
       l.intensity = L.a.intensity * L.f;
       l.distance = L.a.radius;
     }
-    // 第 2 档：接下来的 32 个（真实点光源照过的不再算）
+    // 第 2 档：接下来的 16 个（真实点光源照过的不再算）
     let n = 0;
     for (let i = REAL; i < pick.length && n < LAMP_MAX; i++) {
       const L = pick[i];

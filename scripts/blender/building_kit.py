@@ -656,6 +656,8 @@ def main():
     for name, fn in CELLS.items():
         for lod in (0, 1):
             b = Builder(COLORS, SLOTS)
+            if lod:
+                b.box_faces = ['-y', '+z']
             fn(b, lod)
             if not b.bm.faces:
                 b.bm.free()

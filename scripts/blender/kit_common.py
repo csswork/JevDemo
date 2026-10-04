@@ -123,6 +123,8 @@ class Builder:
         self.M = Matrix.Identity(4)
         self.face_color = {}
         self.face_uv = {}
+        # 只建盒子的这几个面（None = 全部）：远处的简化档只要正面和顶面（背面贴着墙、底面看不到）
+        self.box_faces = None
 
     @contextmanager
     def at(self, M):
@@ -154,7 +156,7 @@ class Builder:
         vs = [self.v(p) for p in ((x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1))]
         quads = {'-z': (0, 3, 2, 1), '+z': (4, 5, 6, 7), '-y': (0, 1, 5, 4), '+x': (1, 2, 6, 5), '+y': (2, 3, 7, 6), '-x': (3, 0, 4, 7)}
         for k, q in quads.items():
-            if faces == 'all' or k in faces:
+            if (faces == 'all' or k in faces) and (self.box_faces is None or k in self.box_faces):
                 self.face([vs[i] for i in q], color)
 
     def cyl(self, p0, p1, r0, color, r1=None, seg=12, caps=True, smooth=True, cap_color=None):
