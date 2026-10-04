@@ -7,6 +7,7 @@ import { IdleLayer } from './idle';
 import { HandLayer } from './hands';
 import { IDLE_BASE, MotionLayer, motionTalk } from './motion';
 import { GestureLayer } from './gestures';
+import { FootLock } from './feet';
 import { isProceduralMotion, type MotionId } from '../act/schema';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
@@ -17,13 +18,14 @@ import { decryptModel, fetchBytes, isProtected } from './protect';
  * 角色控制器 —— Act IR 的消费端。
  *
  * 每帧的层叠顺序是固定的，也是这个 demo 的核心：
- *   resetNormalizedPose → motion → idle → gesture → hands → gaze → flush → gesture IK → expression → lipsync → vrm.update
+ *   resetNormalizedPose → motion → idle → gesture → hands → gaze → flush → 脚底锁定 → gesture IK → expression → lipsync → vrm.update
  *
  * motion 写的是绝对姿势：底层是一直循环的动捕待机，对话触发的动作整体叠在它上面。
  * idle / gaze 是乘在上面的偏移：动作在播时按 (1 - 动作权重) 让出来；
  * 有动捕待机时 idle 只留姿态的微调（呼吸、重心、垂手都由动捕负责）。
  * 手指和说话时手上的小动作由 hands 层负责（动捕待机没有手指轨道）。
  * 程序生成的表演动作（gestures.ts）：身体是叠加的偏移，手碰脸的那只胳膊在 flush 之后用 IK 覆盖。
+ * 待机时脚踩住地面（feet.ts）：胯部的晃动由膝盖和大腿吸收，脚不跟着滑。
  *
  * 换渲染引擎（Live2D / Unity / AnimeActEngine）时，需要重写的只有这个文件和 vrm/ 目录；
  * act/ 和 jev/ 两层原样保留。
@@ -38,6 +40,7 @@ export class Character {
   readonly gaze: GazeLayer;
   readonly expression = new ExpressionLayer();
   readonly lipsync = new LipSyncLayer();
+  readonly feet = new FootLock();
 
   private acc = new PoseAccumulator();
   /** 调试开关：关掉后只跑 vrm.update，用于隔离"是我的层还是引擎本身"的问题 */
@@ -88,6 +91,7 @@ export class Character {
     this.lipsync.bind(vrm);
     this.motion.bind(vrm);
     this.gesture.bind(vrm);
+    this.feet.reset();
     // 有动捕待机就垫在最底下；没配（IDLE_BASE = null）或文件不在时用 idle 层的程序待机
     if (IDLE_BASE) void this.motion.setBase(IDLE_BASE);
 
@@ -243,6 +247,9 @@ export class Character {
       this.hands.update(dt, this.acc);
       this.gaze.update(dt, vrm, this.acc);
       this.acc.flush(vrm);
+      // 上层动作（转圈、深蹲……）自己会动脚，按它的权重让出来；动捕待机淡入淡出时重新落脚
+      const bw = this.motion.baseWeight;
+      this.feet.solve(vrm, 1 - this.motion.weight, bw > 0.02 && bw < 0.98);
       this.gesture.solve(vrm);
     }
 

@@ -176,7 +176,7 @@ export class IdleLayer {
     acc.add('spine', deg(-0.5) * breath * flip, 0, 0);
     acc.add('leftShoulder', 0, 0, deg(-0.8) * breath * flip);
     acc.add('rightShoulder', 0, 0, deg(0.8) * breath * flip);
-    acc.translateHips(0, 0.0035 * breath, 0);
+    // 呼吸不抬胯：骨盆本来就不随呼吸上下，而且静止姿势是直腿，胯往上抬脚就离地（feet.ts 锁不住）
 
     // --- 重心转移 (~9s) ---
     const shift = noise(t * 0.7, 11.3) * bm * live;
