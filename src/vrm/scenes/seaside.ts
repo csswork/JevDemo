@@ -4,7 +4,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import { canvasTexture, rng } from './common';
 
 /**
- * 街景（street.ts）的远景：天空（云在 clouds.ts）、对岸的山和小镇、防波堤上的灯塔、远处的跨海桥（海面本身见 water.ts），
+ * 街景（street.ts）的远景：天空、积云、对岸的山和小镇、防波堤上的灯塔、远处的跨海桥（海面本身见 water.ts），
  * 海上慢慢绕圈的几条渔船、头顶盘旋的海鸥（这两样是 Blender 做的模型，见 scripts/blender/）。
  *
  * 照着一张二次元风格的海边小镇插画搭：深蓝的天、地平线发白，大朵的积云堆在山后面；
@@ -270,6 +270,146 @@ export function createSkyEnv(keep: Keep, uniforms: SkyUniforms) {
   const mat = keep(new THREE.ShaderMaterial({ uniforms, vertexShader: SKY_VERT, fragmentShader: ENV_FRAG, side: THREE.BackSide, depthWrite: false }));
   scene.add(new THREE.Mesh(keep(new THREE.SphereGeometry(500, 48, 24)), mat));
   return scene;
+}
+
+// ---- 积云 ----
+/**
+ * 一朵动漫风格的积云（canvas）：先把所有云团画成背光的灰蓝剪影，再在每一团的左上方叠一个小一圈的白圆（只画在剪影里），
+ * 就是插画里那种"上面亮白、下面一层层灰蓝阴影"的体积感；底部压平、再暗一点
+ */
+function cumulusTexture(seed: number, tall: number) {
+  const r = rng(seed);
+  const W = 1024;
+  const H = 512;
+  return canvasTexture(W, H, (g) => {
+    const puffs: Array<[number, number, number]> = [];
+    const base = H * 0.86;
+    // 底下一排扁的，中间往上堆几座"塔"
+    for (let k = 0; k < 22; k++) {
+      const t = k / 21;
+      const x = 90 + t * (W - 180) + (r() - 0.5) * 30;
+      const rad = 38 + r() * 34;
+      puffs.push([x, base - rad * 0.5, rad]);
+    }
+    const towers = 2 + Math.floor(r() * 2);
+    for (let k = 0; k < towers; k++) {
+      const cx = 220 + r() * (W - 440);
+      const top = base - (160 + r() * 200) * tall;
+      const n = 9 + Math.floor(r() * 5);
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        const y = base - 40 + (top - base + 40) * t;
+        const spread = (1 - t * 0.55) * (90 + r() * 40);
+        const rad = (70 - t * 26) * (0.8 + r() * 0.4) * (0.75 + 0.35 * tall);
+        puffs.push([cx + (r() - 0.5) * spread * 1.4, y, rad]);
+        if (r() < 0.7) puffs.push([cx + (r() - 0.5) * spread * 1.8, y + rad * 0.3, rad * 0.7]);
+      }
+    }
+    // 1. 剪影（背光面的颜色）
+    g.fillStyle = '#b7c7e2';
+    for (const [x, y, rad] of puffs) {
+      g.beginPath();
+      g.arc(x, y, rad, 0, Math.PI * 2);
+      g.fill();
+    }
+    // 2. 亮面：每团左上方一个小一圈的白圆，只画在剪影里
+    g.globalCompositeOperation = 'source-atop';
+    for (const [x, y, rad] of puffs) {
+      const grd = g.createRadialGradient(x - rad * 0.3, y - rad * 0.35, rad * 0.2, x - rad * 0.12, y - rad * 0.18, rad * 0.92);
+      grd.addColorStop(0, 'rgba(255,255,255,1)');
+      grd.addColorStop(0.75, 'rgba(250,252,255,0.95)');
+      grd.addColorStop(1, 'rgba(236,242,252,0)');
+      g.fillStyle = grd;
+      g.beginPath();
+      g.arc(x - rad * 0.12, y - rad * 0.18, rad * 0.92, 0, Math.PI * 2);
+      g.fill();
+    }
+    // 3. 底部一层更暗的灰蓝（云底平、背光）
+    const shade = g.createLinearGradient(0, base - 70, 0, base + 20);
+    shade.addColorStop(0, 'rgba(150,168,204,0)');
+    shade.addColorStop(1, 'rgba(150,168,204,0.85)');
+    g.fillStyle = shade;
+    g.fillRect(0, base - 70, W, 90);
+    // 4. 底边压平：再往下的切掉
+    g.globalCompositeOperation = 'destination-out';
+    const cut = g.createLinearGradient(0, base - 6, 0, base + 18);
+    cut.addColorStop(0, 'rgba(0,0,0,0)');
+    cut.addColorStop(1, 'rgba(0,0,0,1)');
+    g.fillStyle = cut;
+    g.fillRect(0, base - 6, W, H - base + 6);
+    // 两头淡出，拼在一起不露边
+    for (const side of [0, 1]) {
+      const fx = g.createLinearGradient(side ? W : 0, 0, side ? W - 90 : 90, 0);
+      fx.addColorStop(0, 'rgba(0,0,0,1)');
+      fx.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = fx;
+      g.fillRect(side ? W - 90 : 0, 0, 90, H);
+    }
+  });
+}
+
+/** 高空的一缕缕卷云（很淡，横着拉长） */
+function cirrusTexture(seed: number) {
+  const r = rng(seed);
+  return canvasTexture(512, 128, (g) => {
+    for (let k = 0; k < 30; k++) {
+      const x = 40 + r() * 432;
+      const y = 30 + r() * 68;
+      const w = 60 + r() * 160;
+      const grd = g.createRadialGradient(x, y, 0, x, y, w / 2);
+      grd.addColorStop(0, `rgba(255,255,255,${0.25 + r() * 0.25})`);
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd;
+      g.save();
+      g.translate(x, y);
+      g.scale(1, 0.12 + r() * 0.1);
+      g.translate(-x, -y);
+      g.beginPath();
+      g.arc(x, y, w / 2, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    }
+  });
+}
+
+/**
+ * 云：一圈积云（海那一侧多、大），高处几缕卷云。都是正对角色的面片，在天空球里面。
+ * seaFrom / seaTo = 海那一侧的方位角范围（弧度，atan2(z, x)），积云主要堆在这里（山的后面）
+ */
+export function createClouds(keep: Keep, dist: number, seaFrom: number, seaTo: number) {
+  const group = new THREE.Group();
+  group.name = 'clouds';
+  const rc = rng(91);
+  const cumulus = [cumulusTexture(5, 1), cumulusTexture(8, 0.7), cumulusTexture(13, 1.25), cumulusTexture(21, 0.5)].map(keep);
+  const geo = keep(new THREE.PlaneGeometry(1, 0.5));
+  const place = (a: number, elev: number, w: number, mat: THREE.Material, d = dist) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(Math.cos(a) * Math.cos(elev) * d, Math.sin(elev) * d, Math.sin(a) * Math.cos(elev) * d);
+    m.scale.set(w * (rc() < 0.5 ? -1 : 1), w, 1);
+    m.lookAt(0, m.position.y, 0);
+    m.renderOrder = -1;
+    group.add(m);
+  };
+  const mat = (tex: THREE.Texture, opacity: number) =>
+    keep(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity }));
+  // 海那一侧：一排大积云，底边贴着山顶往上一点
+  const span = seaTo - seaFrom;
+  for (let k = 0; k < 18; k++) {
+    const a = seaFrom + ((k + 0.5) / 18) * span + (rc() - 0.5) * 0.1;
+    place(a, THREE.MathUtils.degToRad(3 + rc() * 4), dist * (0.36 + rc() * 0.3), mat(cumulus[k % cumulus.length], 0.94 + rc() * 0.06));
+  }
+  // 陆地那一侧（她身后的山上方）少一些、小一些
+  for (let k = 0; k < 7; k++) {
+    const a = seaTo + ((k + 0.5) / 7) * (Math.PI * 2 - span) + (rc() - 0.5) * 0.2;
+    place(a, THREE.MathUtils.degToRad(4 + rc() * 4), dist * (0.22 + rc() * 0.16), mat(cumulus[(k + 2) % cumulus.length], 0.85));
+  }
+  // 卷云：高一些、淡
+  const cirrus = [cirrusTexture(3), cirrusTexture(4)].map(keep);
+  for (let k = 0; k < 10; k++) {
+    const a = rc() * Math.PI * 2;
+    place(a, THREE.MathUtils.degToRad(14 + rc() * 22), dist * (0.35 + rc() * 0.3), mat(cirrus[k % 2], 0.5 + rc() * 0.3), dist * 0.95);
+  }
+  return group;
 }
 
 // ---- 对岸：山 + 小镇 ----
