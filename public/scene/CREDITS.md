@@ -2,8 +2,8 @@
 
 咖啡店场景本身是程序生成的（src/vrm/scenes/cafe.ts），这里只有它打光用的 HDRI；
 公园（src/vrm/scenes/park.ts）用全景背景 + 真实模型；
-街景（src/vrm/scenes/street.ts）的墙、路、屋瓦用下面的 PBR 材质，路灯、木板借用公园的，咖啡店里的小物件见后面的 Poly Pizza；
-海上的渔船和海鸥（`models/fishing_boat/`、`models/seagull/`）不是下载的素材，是本项目的 Blender 脚本生成的（`scripts/blender/`，Blender 5.2 后台跑一遍就重新导出），和代码同一个授权。
+街景（src/vrm/scenes/street.ts）的墙、路、屋瓦用下面的 PBR 材质，木板借用公园的，咖啡店里的小物件见后面的 Poly Pizza；
+海上的渔船和海鸥（`models/fishing_boat/`、`models/seagull/`）、路灯和街道设施（`models/street/`）不是下载的素材，是本项目的 Blender 脚本生成的（`scripts/blender/`，Blender 5.2 后台跑一遍就重新导出），和代码同一个授权。
 
 全部来自 [Poly Haven](https://polyhaven.com)，**CC0**（公有领域，可商用、可再分发、不要求署名）。
 由 `scripts/fetch-scene-assets.mjs` 下载（1k 分辨率）。署名不是必须的，这里列出作者以示感谢：
