@@ -1,0 +1,6 @@
+{
+  "schema": "game-room.opening-schedule.v1",
+  "roomId": "anime-tide-cafe",
+  "primaryArrival": {"openingId": "", "exception": ""},
+  "openings": []
+}
