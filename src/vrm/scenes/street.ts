@@ -21,6 +21,7 @@ import {
 } from './seaside';
 import { createPalette, createSkyMapping, dirOf, moonIllum, morningTint, samplePalette } from './streetTime';
 import { createLights, lampLit, type LightAnchor } from './streetLights';
+import { kitLight, kitMaterials, loadKit, type KitItem } from './streetKit';
 import type { TimeState } from '../timeOfDay';
 import { F, WINDOWS, bannerUV, cellUV, chalkboard, facadeAtlas, holeRects, signAtlas, signUV, type Cell } from './streetTextures';
 import { ROOMS, clearGlassMaterial, interiorGlassMaterial, roomAtlas, type GlassNight } from './glass';
@@ -57,8 +58,11 @@ import {
  * 她站在路上靠左那条车道（离左边路牙 1.4m），身后左边是咖啡店往后的一排店面，右边是栏杆和海，
  * 正后方是路的尽头 —— 路在那里往左拐，头后面是海、对岸和山，没有竖着的东西（视线走廊，和公园一样）。
  *
- * 灯光：舞台的主光当太阳用（右侧偏前、离地约 46°），左边一排店面朝着太阳、是亮的，遮阳篷和瓦檐在墙上投影；
- * 行道树在路面上投斑驳的影子。天光偏蓝、地面反光偏暖灰，环境光（IBL）还用公园那张名古屋的 HDR。
+ * 灯光：舞台的主光当太阳用（白天右侧偏前、离地约 46°），左边一排店面朝着太阳、是亮的，遮阳篷和瓦檐在墙上投影；
+ * 行道树在路面上投斑驳的影子。天光偏蓝、地面反光偏暖灰。
+ *
+ * 昼夜：太阳、天空、雾、海、云、环境光都按时间变（调色表和方位见 streetTime.ts，舞台每帧照着 lighting 设灯），
+ * 天黑了路灯、店门口、窗里、售货机、灯塔、船灯、对岸的灯一盏盏亮起来（streetLights.ts）。
  */
 
 const BASE = `${import.meta.env.BASE_URL}scene/`;
@@ -448,6 +452,15 @@ export function createStreet(): Backdrop {
   const rl = rng(911);
   const warm = (hex: number) => new THREE.Color(hex);
   const light = (a: Omit<LightAnchor, 'color'> & { color: number }) => nightLights.add({ ...a, color: warm(a.color) });
+  /**
+   * Blender 做的街道设施（scripts/blender/street_props.py → models/street/props.glb）：先把每样东西放在哪记下来，
+   * 模型到了一起合批（每个材质槽一次绘制），模型里标的光源登记进夜里的灯
+   */
+  const kitPlace: Array<{ name: string; at: THREE.Matrix4[]; shadow: boolean }> = [];
+  const place = (name: string, at: THREE.Matrix4[], shadow = true) => {
+    if (at.length) kitPlace.push({ name, at, shadow });
+  };
+  const kitNight = { uLights: night.uLights, uGlowGain: { value: 2.2 }, uBoxGain: { value: 0.6 } };
   const clearGlassMat = clearGlassMaterial(keep);
   const roofMat = roofMaterial(keep);
   const woodMat = woodMaterial(keep);
@@ -696,17 +709,26 @@ export function createStreet(): Backdrop {
     strip(gutters, NEAR0, NEAR1, [ROAD_HALF - GUTTER, 0.004], [ROAD_HALF, 0.004], 'up', WHITE);
     strip(gutters, NEAR0, NEAR1, [-ROAD_HALF, 0.004], [-ROAD_HALF + GUTTER, 0.004], 'up', WHITE);
     {
-      const gm = new THREE.Matrix4();
-      const dark = col(0x2b2d30);
+      const grates: THREE.Matrix4[] = [];
       for (let s = NEAR0 + 3; s < NEAR1; s += 15) {
         for (const side of [1, -1]) {
           const a = at(s);
           const p = a.p.clone().addScaledVector(a.l, side * (ROAD_HALF - GUTTER / 2));
-          metal.setTransform(gm.makeRotationY(Math.atan2(a.l.x, a.l.z)).setPosition(p.x, 0.004, p.z));
-          metal.box(-0.17, 0, -0.32, 0.17, 0.012, 0.32, dark);
-          for (let k = -4; k <= 4; k++) metal.box(-0.16, 0.012, k * 0.07 - 0.012, 0.16, 0.018, k * 0.07 + 0.012, IRON);
+          grates.push(new THREE.Matrix4().makeRotationY(Math.atan2(a.l.x, a.l.z)).setPosition(p.x, 0.004, p.z));
         }
       }
+      place('grate', grates, false);
+      // 井盖：两条车道的中间轮流，四十米上下一个；她脚下、人行横道上不放
+      const manholes: THREE.Matrix4[] = [];
+      let k = 0;
+      for (let s = NEAR0 + 20; s < NEAR1; s += 37 + (k % 3) * 6) {
+        k++;
+        if (Math.abs(s - S0) < 5 || Math.abs(s - (S0 + 28)) < 5) continue; // S0 + 28 = 人行横道（CROSS，在下面）
+        const a = at(s);
+        const p = a.p.clone().addScaledVector(a.l, k % 2 ? 1.5 : -1.5);
+        manholes.push(new THREE.Matrix4().makeRotationY(s * 0.37).setPosition(p.x, 0, p.z));
+      }
+      place('manhole', manholes, false);
     }
     // 白色的路边线（侧沟里面一点）；人行横道那一段断开
     const CROSS = S0 + 28;
@@ -749,13 +771,14 @@ export function createStreet(): Backdrop {
       strip(rails, NEAR0, NEAR1, [RAIL_D + 0.025, y - h / 2], [RAIL_D + 0.025, y + h / 2], 'left', iron);
       strip(rails, NEAR0, NEAR1, [RAIL_D - 0.025, y + h / 2], [RAIL_D - 0.025, y - h / 2], 'right', iron);
     }
-    const m = new THREE.Matrix4();
+    // 立柱（Blender 做的圆管、底座法兰、顶上的圆球）每 2m 一根
+    const posts: THREE.Matrix4[] = [];
     for (let s = NEAR0; s < NEAR1; s += 2) {
       const a = at(s);
       const p = a.p.clone().addScaledVector(a.l, RAIL_D);
-      rails.setTransform(m.makeRotationY(Math.atan2(a.l.x, a.l.z)).setPosition(p.x, WALL_TOP, p.z));
-      rails.box(-0.03, 0, -0.03, 0.03, 0.6, 0.03, iron);
+      posts.push(new THREE.Matrix4().makeRotationY(Math.atan2(a.l.x, a.l.z)).setPosition(p.x, WALL_TOP, p.z));
     }
+    place('rail_post', posts);
     const meshOf = (mm: Mesher, mat: THREE.Material, cast: boolean, name: string) => {
       const mesh = new THREE.Mesh(keep(mm.build()), mat);
       mesh.castShadow = cast;
@@ -1335,19 +1358,20 @@ export function createStreet(): Backdrop {
   }
 
   // ---- 咖啡店门口：立式小黑板、长凳、花箱、盆栽；路边插的布旗；自动售货机 ----
+  /** 店门口木头家具的木纹（公园那张旧木板，调亮一点）：Blender 模型的 wood 槽用，uv 按米（1.8m 一张） */
   const planks = (() => {
     const tl = new THREE.TextureLoader();
     const t = (file: string, color = false) => {
       const x = keep(tl.load(`${BASE}textures/weathered_brown_planks/${file}`));
       if (color) x.colorSpace = THREE.SRGBColorSpace;
       x.wrapS = x.wrapT = THREE.RepeatWrapping;
+      x.repeat.setScalar(1 / 1.8);
       return x;
     };
-    const m = keep(new THREE.MeshStandardMaterial({ map: t('diffuse.jpg', true), normalMap: t('nor_gl.jpg'), roughness: 0.85 }));
+    const m = keep(new THREE.MeshStandardMaterial({ map: t('diffuse.jpg', true), normalMap: t('nor_gl.jpg'), roughness: 0.85, vertexColors: true }));
     m.color.setScalar(1.35);
     return m;
   })();
-  const props = new Mesher();
   /** 人行道上 s 处、离中线 d 的一个局部坐标系：x 沿路往远处，z 朝着路（左边人行道上的东西用） */
   const frameAt = (s: number, d: number, y = KERB_H, face: 1 | -1 = 1) => {
     const a = at(s);
@@ -1356,86 +1380,49 @@ export function createStreet(): Backdrop {
     return new THREE.Matrix4().makeRotationY(Math.atan2(z.x, z.z)).setPosition(p.x, y, p.z);
   };
   const plantSpots: Array<{ s: number; d: number; h: number; variant: number }> = [];
+  /** 小黑板的黑板面（canvas 画的），Blender 模型的 board 槽用 */
+  const boardMat = keep(new THREE.MeshStandardMaterial({ map: keep(chalkboard()), roughness: 0.9 }));
   {
-    // 立式小黑板（A 字形，两面都是黑板）
-    const boardTex = keep(chalkboard());
-    const boardMat = keep(new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.9 }));
-    const bg = keep(new THREE.PlaneGeometry(0.56, 0.84));
-    const sign = new THREE.Group();
-    for (const side of [1, -1]) {
-      const p = new THREE.Mesh(bg, boardMat);
-      p.position.set(0, 0.4, side * 0.17);
-      p.rotation.set(-side * 0.2, side > 0 ? 0 : Math.PI, 0);
-      p.castShadow = true;
-      p.receiveShadow = true;
-      sign.add(p);
-    }
-    // 黑板面朝着往远处看的方向（她身后往远处看，正好是正面；从身后看是另一面）
-    const f = frameAt(S0 + 8.6, FRONT - 1.7);
-    sign.applyMatrix4(f);
-    sign.rotateY(-Math.PI / 2 - 0.35);
-    group.add(sign);
+    // 立式小黑板（A 字形，两面都是黑板）：黑板面朝着往远处看的方向（她身后往远处看，正好是正面；从身后看是另一面）
+    place('board', [frameAt(S0 + 8.6, FRONT - 1.7).multiply(new THREE.Matrix4().makeRotationY(-Math.PI / 2 - 0.35))]);
     // 长凳（靠着咖啡店的窗）
-    props.setTransform(frameAt(S0 + 2.2, FRONT - 0.45));
-    const woodC = col(0xffffff);
-    props.box(-0.75, 0.42, -0.2, 0.75, 0.47, 0.2, woodC, 1.2);
-    for (const x of [-0.62, 0.52]) props.box(x, 0, -0.17, x + 0.1, 0.42, 0.17, woodC, 1.2);
-    // 花箱：咖啡店两头各一个，里面种灌木
-    for (const s of [S0 - 2.6, S0 + 6.9]) {
-      props.setTransform(frameAt(s, FRONT - 0.55));
-      props.box(-0.6, 0, -0.25, 0.6, 0.45, 0.25, woodC, 1.2);
-      plantSpots.push({ s, d: FRONT - 0.55, h: 0.95, variant: 0 });
-    }
-    // 陶器店门口一个花箱
-    props.setTransform(frameAt(S0 + 11.3, FRONT - 0.4));
-    props.box(-0.45, 0, -0.2, 0.45, 0.4, 0.2, woodC, 1.2);
+    place('bench', [frameAt(S0 + 2.2, FRONT - 0.45)]);
+    // 花箱：咖啡店两头各一个大的、陶器店门口一个小的，里面种灌木
+    place('planter_l', [frameAt(S0 - 2.6, FRONT - 0.55), frameAt(S0 + 6.9, FRONT - 0.55)]);
+    plantSpots.push({ s: S0 - 2.6, d: FRONT - 0.55, h: 0.95, variant: 0 }, { s: S0 + 6.9, d: FRONT - 0.55, h: 0.95, variant: 0 });
+    place('planter_s', [frameAt(S0 + 11.3, FRONT - 0.4)]);
     plantSpots.push({ s: S0 + 11.3, d: FRONT - 0.4, h: 0.8, variant: 1 });
-    const mesh = new THREE.Mesh(keep(props.build()), planks);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.name = 'props';
-    group.add(mesh);
-    // 自动售货机：立在住家和土特产店之间的缝里，面朝街
-    const vend = new Mesher({ uv1: true });
-    vend.setTransform(frameAt(S0 + 24.6, FRONT - 0.45));
-    vend.quad(v3(-0.5, 0, 0.38), v3(0.5, 0, 0.38), v3(0.5, 1.83, 0.38), v3(-0.5, 1.83, 0.38), cellUV(F.VENDING), WHITE);
-    facade.setTransform(frameAt(S0 + 24.6, FRONT - 0.45));
-    trim.setTransform(frameAt(S0 + 24.6, FRONT - 0.45));
-    // 侧面刷成蓝色（从路上往远处看，看到的主要是售货机的侧面；第一版灰白的像个空盒子）
-    trim.box(-0.52, 0, -0.38, 0.52, 1.86, 0.37, col(0x2f68b0));
-    trim.box(-0.53, 1.62, -0.39, 0.53, 1.86, 0.38, col(0xf2f4f5));
-    const vm = new THREE.Mesh(keep(vend.build()), facadeMat);
-    vm.castShadow = true;
-    group.add(vm);
-    // 售货机的灯箱：一整面冷白的光，照亮脚下的人行道
-    light({ pos: v3(0, 1.0, 0.7).applyMatrix4(frameAt(S0 + 24.6, FRONT - 0.45)), color: 0xe4eeff, intensity: 3.5, radius: 5, glow: 1.1, glowGain: 0.22, onAt: 0.05 });
+    // 自动售货机：立在住家和土特产店之间的缝里，面朝街（灯箱一直亮着，夜里照亮脚下的人行道 —— 光源标在模型里）
+    place('vending', [frameAt(S0 + 24.6, FRONT - 0.45)]);
   }
   /** 路边插的布旗：一根细杆、顶上一根横杆，旗面朝着街的方向（d 在哪边人行道上） */
+  const noboriAt: THREE.Matrix4[] = [];
   const nobori = (s: number, d: number, idx: number) => {
     const M = frameAt(s, d, KERB_H);
     const p = new THREE.Vector3().setFromMatrixPosition(M);
     if (inHeadCorridor(p)) return;
-    trim.setTransform(M);
-    trim.box(-0.02, 0, -0.02, 0.02, 2.55, 0.02, col(0xe9e9e6));
+    noboriAt.push(M);
     hangingBanner(M, 0, idx, 2.5, -0.05, 0.6);
   };
   nobori(S0 + 27.2, FRONT - 1.9, 3);
   nobori(S0 + 31.4, FRONT - 1.9, 5);
   nobori(S0 - 9.8, FRONT - 1.9, 5);
+  // 旗杆和注水底座是 Blender 做的
+  place('nobori', noboriAt);
 
   // ---- 电线杆 + 电线 ----
+  // 杆子、变压器、杆上的小路灯是 Blender 做的（模型到了再摆，见后面的 loadKit）；电线挂在模型里标的绝缘子上，也等模型到了再画
+  interface PoleSpot {
+    M: THREE.Matrix4;
+    p: THREE.Vector3;
+    s: number;
+    /** 引到房子墙上的入户线的另一头（没有就是 null） */
+    drop: THREE.Vector3 | null;
+  }
+  const poleSpots: PoleSpot[] = [];
+  /** 电线杆的混凝土（Blender 模型的 concrete 槽） */
+  const poleConcrete = concreteMaterial(keep, 'plain');
   {
-    // 杆身是混凝土（PBR），横担、绝缘子、变压器这些放进铁件那一批
-    const poles = new Mesher();
-    const dark = col(0x55595e);
-    const grey = col(0x8f9499);
-    const wires: number[] = [];
-    interface Pole {
-      top: THREE.Vector3[];
-      tel: THREE.Vector3;
-      p: THREE.Vector3;
-    }
-    const list: Pole[] = [];
     for (let s = S0 - 438; s < S0 + 330; s += 28) {
       // 咖啡店和陶器店之间那根（插画左边那根）；别的按间距
       const ss = Math.abs(s - (S0 + 10)) < 14 ? S0 + 10.2 : s;
@@ -1444,73 +1431,45 @@ export function createStreet(): Backdrop {
       const p = a.p.clone().addScaledVector(a.l, d);
       if (inHeadCorridor(p)) continue;
       const M = new THREE.Matrix4().makeRotationY(Math.atan2(a.l.x, a.l.z)).setPosition(p.x, KERB_H, p.z);
-      poles.setTransform(M);
-      metal.setTransform(M);
-      // 杆子：8 边形的锥台（远看是圆的就够了），uv 按米：u 绕一圈、v 往上
-      const H = 10.8;
-      const seg = 8;
-      for (let k = 0; k < seg; k++) {
-        const a0 = (k / seg) * Math.PI * 2;
-        const a1 = ((k + 1) / seg) * Math.PI * 2;
-        const rb = 0.19;
-        const rt = 0.13;
-        const perim = 2 * Math.PI * rb;
-        poles.quad(
-          v3(Math.cos(a1) * rb, 0, Math.sin(a1) * rb),
-          v3(Math.cos(a0) * rb, 0, Math.sin(a0) * rb),
-          v3(Math.cos(a0) * rt, H, Math.sin(a0) * rt),
-          v3(Math.cos(a1) * rt, H, Math.sin(a1) * rt),
-          [((k + 1) / seg) * perim, 0, (k / seg) * perim, H],
-          WHITE,
-        );
-      }
-      // 横担（垂直于路）+ 绝缘子；第二根短横担；隔一根挂一个变压器
-      metal.box(-0.12, H - 0.75, -0.95, 0.06, H - 0.6, 0.95, grey);
-      metal.box(-0.12, H - 1.65, -0.6, 0.06, H - 1.5, 0.6, grey);
-      const top: THREE.Vector3[] = [];
-      for (const z of [-0.85, 0, 0.85]) {
-        metal.box(-0.05, H - 0.6, z - 0.04, 0.03, H - 0.42, z + 0.04, col(0xeeeeec));
-        top.push(v3(-0.01, H - 0.42, z).applyMatrix4(M));
-      }
-      if (list.length % 2 === 0) {
-        metal.box(0.2, H - 3.4, -0.32, 0.8, H - 2.4, 0.32, grey);
-        metal.box(0.12, H - 2.4, -0.04, 0.2, H - 2.3, 0.04, dark);
-      }
-      // 电话线（低一些、粗一点的黑线）挂在杆子朝路那一侧
-      const tel = v3(0.2, 6.2, 0).applyMatrix4(M);
-      metal.box(0.12, 6.1, -0.05, 0.24, 6.3, 0.05, dark);
-      list.push({ top, tel, p });
-      if (r() < 0.6 && Math.abs(ss - S0) < 300) {
-        // 引到房子墙上的入户线
-        const q = pt(ss + (r() - 0.5) * 6, FRONT + 0.05, 5.4);
-        sag(wires, v3(0.1, H - 1.55, 0.4).applyMatrix4(M), q, 0.25);
-      }
+      // 引到房子墙上的入户线（随机数的用法和原来一样，不打乱后面的布局）
+      let drop: THREE.Vector3 | null = null;
+      if (r() < 0.6 && Math.abs(ss - S0) < 300) drop = pt(ss + (r() - 0.5) * 6, FRONT + 0.05, 5.4);
+      poleSpots.push({ M, p, s: ss, drop });
     }
-    for (let i = 0; i + 1 < list.length; i++) {
-      const a = list[i];
-      const b = list[i + 1];
+    place('pole', poleSpots.map((q) => q.M));
+    // 隔一根挂一个变压器；近处（前后 300m）的杆子都有一盏小路灯（防犯灯，陆地那一侧夜里也有灯）
+    place('transformer', poleSpots.filter((_, i) => i % 2 === 0).map((q) => q.M));
+    place('pole_lamp', poleSpots.filter((q) => Math.abs(q.s - S0) < 300).map((q) => q.M));
+    // 近处的电线杆挡镜头
+    for (const q of poleSpots) {
+      if (q.p.length() > 14) continue;
+      const g = new THREE.CylinderGeometry(0.25, 0.25, 11, 8);
+      g.translate(0, 5.5, 0);
+      collider(g, new THREE.Matrix4().makeTranslation(q.p.x, 0, q.p.z));
+    }
+  }
+  /** 电线：相邻两根杆子之间三根电线、一根电话线（挂点按模型里标的 wire0..2、tel），入户线从 drop 拉到墙上 */
+  const buildWires = (pole: KitItem | undefined) => {
+    if (!pole) return;
+    const mk = (n: string) => pole.marks.find((m) => m.name.startsWith(n))?.pos;
+    const tops = [mk('wire0'), mk('wire1'), mk('wire2')];
+    const tel = mk('tel');
+    const drop = mk('drop');
+    const wires: number[] = [];
+    for (let i = 0; i + 1 < poleSpots.length; i++) {
+      const a = poleSpots[i];
+      const b = poleSpots[i + 1];
       if (a.p.distanceTo(b.p) > 45) continue;
-      for (let k = 0; k < 3; k++) sag(wires, a.top[k], b.top[k], 0.55);
-      sag(wires, a.tel, b.tel, 0.7);
+      for (const t of tops) if (t) sag(wires, t.clone().applyMatrix4(a.M), t.clone().applyMatrix4(b.M), 0.55);
+      if (tel) sag(wires, tel.clone().applyMatrix4(a.M), tel.clone().applyMatrix4(b.M), 0.7);
     }
-    const pm = new THREE.Mesh(keep(poles.build()), concreteMaterial(keep, 'plain'));
-    pm.castShadow = true;
-    pm.receiveShadow = true;
-    pm.name = 'poles';
-    group.add(pm);
+    if (drop) for (const q of poleSpots) if (q.drop) sag(wires, drop.clone().applyMatrix4(q.M), q.drop, 0.25);
     const wg = keep(new THREE.BufferGeometry());
     wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3));
     const lines = new THREE.LineSegments(wg, keep(new THREE.LineBasicMaterial({ color: 0x2a2c31 })));
     lines.name = 'wires';
     group.add(lines);
-    // 近处的电线杆挡镜头
-    for (const p of list) {
-      if (p.p.length() > 14) continue;
-      const g = new THREE.CylinderGeometry(0.25, 0.25, 11, 8);
-      g.translate(0, 5.5, 0);
-      collider(g, new THREE.Matrix4().makeTranslation(p.p.x, 0, p.p.z));
-    }
-  }
+  };
   /** 两点之间垂下来的一根线（悬链线用抛物线近似），按线段存 */
   function sag(out: number[], a: THREE.Vector3, b: THREE.Vector3, depth: number) {
     const n = 14;
@@ -1638,7 +1597,7 @@ export function createStreet(): Backdrop {
     });
   });
 
-  // ---- 路灯（公园那盏欧式路灯，放大一点），灯杆上挂旗 ----
+  // ---- 路灯（Blender 做的海边复古柱灯），灯杆上挂旗 ----
   const loader = new GLTFLoader();
   const own = (root: THREE.Object3D) =>
     root.traverse((o) => {
@@ -1650,9 +1609,6 @@ export function createStreet(): Backdrop {
         for (const val of Object.values(m)) if (val instanceof THREE.Texture) keep(val);
       }
     });
-  const LAMP_SCALE = 1.25;
-  /** 路灯的灯泡、灯罩材质（夜里发光）和各自最亮时的自发光强度 */
-  const lampGlow: Array<[THREE.MeshStandardMaterial, number]> = [];
   {
     lampSpots.forEach(({ s, p, l }) => {
       // 旗子挂在灯杆朝路的那一侧，旗面朝着街的方向
@@ -1667,30 +1623,22 @@ export function createStreet(): Backdrop {
       }
     });
   }
-  loader.load(`${BASE}models/street_lamp_01/street_lamp_01.gltf`, (gltf) => {
-    own(gltf.scene);
+  // 路灯本身：Blender 做的海边复古柱灯（灯罩夜里发光，光源标在模型里）
+  place(
+    'lamp',
+    lampSpots.map(({ p, l }) => new THREE.Matrix4().makeRotationY(Math.atan2(l.x, l.z) + Math.PI / 2).setPosition(p.x, KERB_H, p.z)),
+  );
+  // ---- 街道设施的模型到了：按材质槽合批（每个槽一次绘制、自带剔除和投影），登记光源，画电线 ----
+  const kitMat = kitMaterials(keep, { metal: metalMat, wood: planks, concrete: poleConcrete, board: boardMat }, kitNight);
+  void loadKit(`${BASE}models/street/props.glb`, keep).then((kit) => {
     if (disposed) return;
-    gltf.scene.updateMatrixWorld(true);
-    const places = lampSpots.map(({ p, l }) =>
-      new THREE.Matrix4().compose(v3(p.x, KERB_H, p.z), new THREE.Quaternion().setFromAxisAngle(v3(0, 1, 0), Math.atan2(l.x, l.z) + Math.PI / 2), v3(LAMP_SCALE, LAMP_SCALE, LAMP_SCALE)),
-    );
-    gltf.scene.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      // 夜里灯泡、灯罩发光（第 2 期换成 Blender 做的路灯）；灯泡的位置就是光源
-      if (/bulb/.test(mat.name)) {
-        mat.emissive.set(0xffd9a0);
-        lampGlow.push([mat, 3]);
-        mesh.geometry.computeBoundingBox();
-        const c = mesh.geometry.boundingBox!.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld);
-        for (const m of places) light({ pos: c.clone().applyMatrix4(m), color: 0xffd6a0, intensity: 75, radius: 24, glow: 0.9, onAt: 0.15 + rl() * 0.4 });
-      } else if (/glass/.test(mat.name)) {
-        mat.emissive.set(0xffe6c0);
-        lampGlow.push([mat, 0.7]);
-      }
-      batch(mesh.geometry, mat, places.map((m) => m.clone().multiply(mesh.matrixWorld)), mat.transparent ? null : {});
-    });
+    for (const { name, at: list, shadow } of kitPlace) {
+      const item = kit.get(name);
+      if (!item) continue;
+      for (const part of item.parts) batch(part.geo, kitMat(part.slot), list.map((m) => m.clone().multiply(part.local)), shadow && part.slot !== 'glass' ? {} : null);
+      for (const mark of item.marks) if (mark.name.startsWith('light')) for (const m of list) nightLights.add(kitLight(mark, m));
+    }
+    buildWires(kit.get('pole'));
   });
   // 她身边那家咖啡店的店内（真的 3D，透过一楼的透明玻璃看得到）
   const ppCache = new Map<string, Promise<THREE.Object3D | null>>();
@@ -1973,8 +1921,7 @@ export function createStreet(): Backdrop {
       for (const m of leafMats) m.emissiveIntensity = 0.3 * pal.leafE;
       facadeMat.emissiveIntensity = 0.85 + 0.5 * lightsOn;
       for (const l of interiorLights) l.intensity = 7 * (1 + 0.8 * lightsOn);
-      const lampK = smoothstep(0.15, 0.5, lightsOn);
-      for (const [m, k] of lampGlow) m.emissiveIntensity = k * lampK;
+      kitNight.uBoxGain.value = 0.6 + 0.5 * lightsOn;
       // 灯：时间是一下跳过去的（截图、刚打开）就不闪
       let dh = Math.abs(t.hours - lastHours);
       if (dh > 12) dh = 24 - dh;
