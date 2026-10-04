@@ -175,17 +175,17 @@ function chalkboard() {
     g.fillStyle = '#f4efe2';
     g.textAlign = 'center';
     g.font = 'bold 64px "Hiragino Sans GB", "PingFang SC", sans-serif';
-    g.fillText('CAFÉ  MENU', 384, 86);
+    g.fillText('饮 品 菜 单', 384, 86);
     g.font = '26px "PingFang SC", sans-serif';
     g.fillStyle = '#e8c27a';
     g.fillText('— 今日手冲 · 埃塞俄比亚 耶加雪菲 —', 384, 130);
     const items: Array<[string, string]> = [
-      ['美式 Americano', '¥24'],
-      ['拿铁 Latte', '¥30'],
-      ['卡布奇诺 Cappuccino', '¥30'],
-      ['抹茶拿铁 Matcha Latte', '¥32'],
-      ['热可可 Hot Cocoa', '¥26'],
-      ['提拉米苏 Tiramisu', '¥28'],
+      ['美式咖啡', '¥24'],
+      ['拿铁', '¥30'],
+      ['卡布奇诺', '¥30'],
+      ['抹茶拿铁', '¥32'],
+      ['热可可', '¥26'],
+      ['提拉米苏', '¥28'],
     ];
     g.font = '32px "PingFang SC", sans-serif';
     items.forEach(([name, price], i) => {
@@ -240,10 +240,10 @@ function shopSign() {
     g.stroke();
     g.fillStyle = '#efe4c8';
     g.textAlign = 'center';
-    g.font = 'bold 64px Georgia, serif';
-    g.fillText('CAFÉ', 256, 190);
-    g.font = '34px Georgia, serif';
-    g.fillText('— since 2026 —', 256, 400);
+    g.font = 'bold 72px "Songti SC", "STSong", "Noto Serif SC", serif';
+    g.fillText('咖啡馆', 256, 190);
+    g.font = '34px "Songti SC", "STSong", "Noto Serif SC", serif';
+    g.fillText('— 始于 2026 —', 256, 400);
     // 杯子
     g.fillRect(196, 236, 120, 86);
     g.beginPath();

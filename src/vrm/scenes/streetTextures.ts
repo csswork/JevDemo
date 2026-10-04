@@ -10,15 +10,16 @@ import { canvasTexture, rng } from './common';
  *            按颜色算出遮罩，着色器里遮罩为 0 的地方露出 PBR 灰泥。
  *            房子的立面按开间一格一格拼（同一个材质，所有房子合成一个网格画一次）。
  *            同样布局的另一张图是自发光：店里暖黄的灯光、售货机的灯箱 —— 遮阳篷底下的阴影里也是亮的
- *   旗子      竖的布旗（海のカフェ、やきもの、海の見える街……）和横的招牌，一张图集
+ *   旗子      竖的布旗（海边咖啡、陶器、看得见海的街……）和横的招牌，一张图集
  *   黑板      咖啡店门口的立式小黑板
  *
  * 招牌、旗子的配色往插画靠（饱和、干净）；墙、路、瓦这些大面积的表面用实拍材质，和公园同一个写实档次。
  */
 
-export const FONT_JP =
-  '"Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", "YuGothic", "Meiryo", "Noto Sans JP", "Noto Sans CJK JP", sans-serif';
-const FONT_SERIF_JP = '"Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", "Noto Serif CJK JP", serif';
+/** 简体中文字体（日文字体里没有"边""鲜"这些简体字）：圆体 / 黑体、宋体、手写体 */
+const FONT_CN = '"Yuanti SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", sans-serif';
+const FONT_SERIF_CN = '"Songti SC", "STSong", "SimSun", "Noto Serif SC", "Noto Serif CJK SC", serif';
+const FONT_HAND_CN = '"HanziPen SC", "Hannotate SC", "Kaiti SC", "STKaiti", "KaiTi", cursive';
 
 type G = CanvasRenderingContext2D;
 type R = () => number;
@@ -329,10 +330,10 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     g.arc(128, y0 + 40, 18, 0, Math.PI * 2);
     g.stroke();
     g.fillStyle = '#ffffff';
-    g.font = `bold 20px ${FONT_SERIF_JP}`;
+    g.font = `bold 20px ${FONT_SERIF_CN}`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('窯', 128, y0 + 41);
+    g.fillText('窑', 128, y0 + 41);
   },
   [F.LATTICE]: (g, _e, r) => {
     plaster(g, r);
@@ -602,10 +603,10 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     g.fillStyle = '#2a63b0';
     g.fillRect(0, 0, CELL, 26);
     g.fillStyle = '#ffffff';
-    g.font = `bold 16px ${FONT_JP}`;
+    g.font = `bold 16px ${FONT_CN}`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('つめた〜い', 128, 13);
+    g.fillText('冰镇', 128, 13);
     for (const [ctx, k] of [
       [g, 1],
       [e, 0.9],
@@ -651,10 +652,10 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     g.fillStyle = '#23345e';
     g.fillRect(20, y0, 216, 52);
     g.fillStyle = '#ffffff';
-    g.font = `bold 28px ${FONT_SERIF_JP}`;
+    g.font = `bold 28px ${FONT_SERIF_CN}`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('地魚', 98, y0 + 28);
+    g.fillText('鲜鱼', 98, y0 + 28);
     g.fillText('酒', 180, y0 + 28);
     g.fillStyle = 'rgba(0,0,0,0.2)';
     for (const x of [92, 164]) g.fillRect(x, y0, 3, 52);
@@ -680,7 +681,7 @@ const PAINTERS: Partial<Record<Cell, Painter>> = {
     g.fillStyle = '#1e1a18';
     g.fillRect(212, y0 + 68, 16, 4);
     g.fillRect(212, y0 + 112, 16, 4);
-    g.font = `bold 14px ${FONT_SERIF_JP}`;
+    g.font = `bold 14px ${FONT_SERIF_CN}`;
     g.fillText('酒', 220, y0 + 93);
   },
   [F.GLASS_SHOP]: (g, _e, r) => {
@@ -754,25 +755,25 @@ export function facadeAtlas() {
 
 /** 竖的布旗：[字, 底色, 字的颜色]。插画里的旗是靛蓝底、白字，底部一道白浪 */
 export const BANNERS = [
-  ['海のカフェ', '#34508f', '#ffffff'],
-  ['やきもの', '#34508f', '#ffffff'],
-  ['海の見える街', '#2f4c8a', '#ffffff'],
-  ['かき氷', '#ffffff', '#d8392c'],
-  ['珈琲', '#6b3f2a', '#fff5e6'],
-  ['おみやげ', '#2e7d6b', '#ffffff'],
-  ['地魚料理', '#23345e', '#ffffff'],
-  ['潮風通り', '#2f4c8a', '#ffffff'],
+  ['海边咖啡', '#34508f', '#ffffff'],
+  ['陶器', '#34508f', '#ffffff'],
+  ['看得见海的街', '#2f4c8a', '#ffffff'],
+  ['刨冰', '#ffffff', '#d8392c'],
+  ['咖啡', '#6b3f2a', '#fff5e6'],
+  ['伴手礼', '#2e7d6b', '#ffffff'],
+  ['海鲜料理', '#23345e', '#ffffff'],
+  ['海风街', '#2f4c8a', '#ffffff'],
 ] as const;
 
 /** 横的招牌：[主字, 小字, 底色, 字色] */
 export const SIGNS = [
-  ['海のカフェ', 'SEASIDE CAFE', '#f4ead6', '#3b2a20'],
-  ['青海窯', 'やきもの・器', '#3a2a20', '#f3e3c3'],
-  ['しおかぜ商店', 'おみやげ・雑貨', '#f6f3ec', '#2f4c8a'],
-  ['花のアトリエ', 'FLOWER', '#ffffff', '#3e7a4a'],
-  ['魚よし', '地魚料理', '#2a2420', '#f6f0e4'],
-  ['潮騒', 'Surf & Coffee', '#e9f2f6', '#2f5c7a'],
-  ['OPEN', 'いらっしゃいませ', '#f3ead8', '#4a3326'],
+  ['海边咖啡', '手冲 · 甜点', '#f4ead6', '#3b2a20'],
+  ['青海窑', '陶器 · 器皿', '#3a2a20', '#f3e3c3'],
+  ['海风商店', '伴手礼 · 杂货', '#f6f3ec', '#2f4c8a'],
+  ['花之工坊', '鲜花 · 绿植', '#ffffff', '#3e7a4a'],
+  ['渔家', '海鲜料理', '#2a2420', '#f6f0e4'],
+  ['潮声', '冲浪 · 咖啡', '#e9f2f6', '#2f5c7a'],
+  ['营业中', '欢迎光临', '#f3ead8', '#4a3326'],
 ] as const;
 
 const BANNER_W = 128;
@@ -811,7 +812,7 @@ export function signAtlas() {
       const room = BANNER_H - 120 - (i === 0 ? 70 : 0);
       const size = Math.min(76, (room / chars.length) * 0.92);
       g.fillStyle = fg;
-      g.font = `bold ${size}px ${FONT_JP}`;
+      g.font = `bold ${size}px ${FONT_CN}`;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       chars.forEach((ch, k) => g.fillText(ch, BANNER_W / 2, 40 + size / 2 + k * (size * 1.06)));
@@ -855,9 +856,9 @@ export function signAtlas() {
       g.fillStyle = fg;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.font = `bold 56px ${FONT_SERIF_JP}`;
+      g.font = `bold 56px ${FONT_SERIF_CN}`;
       g.fillText(main, SIGN_W / 2, SIGN_H / 2 - 10);
-      g.font = `bold 20px ${FONT_JP}`;
+      g.font = `bold 20px ${FONT_CN}`;
       g.fillText(sub, SIGN_W / 2, SIGN_H / 2 + 34);
       g.restore();
     });
@@ -877,7 +878,7 @@ export function signUV(i: number): [number, number, number, number] {
   return [(x + 6) / 1024, 1 - (y + SIGN_H - 8) / 1024, (x + SIGN_W - 6) / 1024, 1 - (y + 8) / 1024];
 }
 
-/** 咖啡店门口的立式小黑板（插画里写的是 Cafe / Good Coffee / Better Days） */
+/** 咖啡店门口的立式小黑板（插画里写的是 Cafe / Good Coffee / Better Days，换成中文：咖啡 / 一杯好咖啡 / 一天好心情） */
 export function chalkboard() {
   return canvasTexture(256, 384, (g) => {
     g.fillStyle = '#7a5538';
@@ -917,11 +918,11 @@ export function chalkboard() {
     }
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.font = 'italic bold 60px "Snell Roundhand", "Brush Script MT", "Segoe Script", Georgia, cursive';
-    g.fillText('Cafe', 128, 188);
-    g.font = 'italic 26px Georgia, serif';
-    g.fillText('Good Coffee', 128, 256);
-    g.fillText('Better Days', 128, 294);
+    g.font = `bold 58px ${FONT_HAND_CN}`;
+    g.fillText('咖啡', 128, 188);
+    g.font = `28px ${FONT_HAND_CN}`;
+    g.fillText('一杯好咖啡', 128, 256);
+    g.fillText('一天好心情', 128, 294);
     g.lineWidth = 2;
     g.beginPath();
     g.moveTo(60, 222);

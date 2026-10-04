@@ -163,13 +163,15 @@ class Hero:
                     b.quad(p(a, ya), p(c, ya), p(c, z0), p(a, z0), color)
                 if yb - z1 > 1e-3:
                     b.quad(p(a, z1), p(c, z1), p(c, yb), p(a, yb), color)
-        # 窗套（洞口四个内侧面）
+        # 窗套（洞口四个内侧面）。底面压低 5mm：构件的窗台顶面正好在洞口底边、往墙里伸 12cm，
+        # 和底面重合的话那一条一直闪（深度打架）；墙的正面还是到洞口底边，多出一道 5mm 的小台阶，看不出来（street.ts 的 bay() 同样处理）
         for x0, z0, x1, z1 in holes:
+            zr = z0 - 0.005 if z0 > ya + 0.01 else z0
             if z0 > ya + 0.01:
-                b.quad(p(x0, z0), p(x1, z0), p(x1, z0, depth), p(x0, z0, depth), 'plaster_shade')
+                b.quad(p(x0, zr), p(x1, zr), p(x1, zr, depth), p(x0, zr, depth), 'plaster_shade')
             b.quad(p(x0, z1, depth), p(x1, z1, depth), p(x1, z1), p(x0, z1), 'plaster_shade')
-            b.quad(p(x0, z0), p(x0, z0, depth), p(x0, z1, depth), p(x0, z1), 'plaster_shade')
-            b.quad(p(x1, z0, depth), p(x1, z0), p(x1, z1), p(x1, z1, depth), 'plaster_shade')
+            b.quad(p(x0, zr), p(x0, zr, depth), p(x0, z1, depth), p(x0, z1), 'plaster_shade')
+            b.quad(p(x1, zr, depth), p(x1, zr), p(x1, z1), p(x1, z1, depth), 'plaster_shade')
 
     def walls(self):
         h, b, hw, d = self.h, self.b, self.hw, self.d

@@ -51,10 +51,10 @@ import {
  *             右边（+X）是窄一点的人行道、花岗岩矮墙和黑色铁栏杆，栏杆外面就是海
  *   房子      全部程序生成：开间 × 楼层一格一格拼立面（streetTextures.ts 的立面图集，canvas 画的），
  *             屋顶是带厚度的瓦面（硬山 / 悬山、山墙朝街的、四坡顶、平顶），所有房子按材质合成几个网格，各画一次
- *   店门口    咖啡店的深蓝遮阳篷、立式小黑板、长凳、花箱和盆栽，挂在墙上的竖旗（海のカフェ、やきもの……
+ *   店门口    咖啡店的深蓝遮阳篷、立式小黑板、长凳、花箱和盆栽，挂在墙上的竖旗（海边咖啡、陶器……
  *             旗子面朝街的方向，从她身后往远处看正好是正面），路边插的布旗，自动售货机
  *   电线杆    水泥电线杆、横担、变压器，杆子之间垂着电线（插画里头顶那几根线）
- *   路灯      右边人行道上的海边复古柱灯（Blender 做的，乳白灯罩夜里发光），灯杆上挂"海の見える街"的旗
+ *   路灯      右边人行道上的海边复古柱灯（Blender 做的，乳白灯罩夜里发光），灯杆上挂"看得见海的街"的旗
  *   街道设施  电线杆、变压器、杆上的小路灯、售货机、小黑板、长凳、花箱、格栅、井盖、栏杆立柱、旗杆
  *             都是 Blender 做的（scripts/blender/street_props.py），按材质槽换成这里的材质、实例化合批
  *   树        右边人行道的行道树、房子之间的庭院树、栏杆边一溜灌木（ez-tree，和公园同一套合批、透光、随风）
@@ -1057,12 +1057,15 @@ export function createStreet(): Backdrop {
         wallQ(x1, ya, h2, yb);
         wallQ(x0, ya, x1, y0);
         wallQ(x0, y1, x1, yb);
-        // 窗套：开口的四个内侧面（灰泥），18cm 深（窗框在 12cm，纸拉门在更里面一点）
+        // 窗套：开口的四个内侧面（灰泥），18cm 深（窗框在 12cm，纸拉门在更里面一点）。
+        // 底面压低 5mm：构件的窗台（木的、铝的、铁栏的底座）顶面正好在洞口底边、往墙里伸 12cm，
+        // 和底面重合的话那一条一直闪（深度打架）；墙的正面还是到洞口底边，多出一道 5mm 的小台阶，看不出来
         const zg = -0.18;
-        if (y0 > ya + 0.01) fac.quad(toB(x0, y0), toB(x1, y0), toB(x1, y0, zg), toB(x0, y0, zg), su, tint);
+        const yr = y0 > ya + 0.01 ? y0 - 0.005 : y0;
+        if (y0 > ya + 0.01) fac.quad(toB(x0, yr), toB(x1, yr), toB(x1, yr, zg), toB(x0, yr, zg), su, tint);
         fac.quad(toB(x0, y1, zg), toB(x1, y1, zg), toB(x1, y1), toB(x0, y1), su, tint.clone().multiplyScalar(0.85));
-        fac.quad(toB(x0, y0), toB(x0, y0, zg), toB(x0, y1, zg), toB(x0, y1), su, tint.clone().multiplyScalar(0.92));
-        fac.quad(toB(x1, y0, zg), toB(x1, y0), toB(x1, y1), toB(x1, y1, zg), su, tint.clone().multiplyScalar(0.92));
+        fac.quad(toB(x0, yr), toB(x0, yr, zg), toB(x0, y1, zg), toB(x0, y1), su, tint.clone().multiplyScalar(0.92));
+        fac.quad(toB(x1, yr, zg), toB(x1, yr), toB(x1, y1), toB(x1, y1, zg), su, tint.clone().multiplyScalar(0.92));
       }
       // 一楼的墙根：一道比墙面凸出 3cm 的石台基（洞开到地面的地方断开）
       if (f === 0) {
@@ -1074,7 +1077,7 @@ export function createStreet(): Backdrop {
         } else plinth(-h2, h2);
         tr.setTransform(M);
       }
-      // 她身边那家咖啡店的门：玻璃后面挂一块 OPEN 的小木牌
+      // 她身边那家咖啡店的门：玻璃后面挂一块"营业中"的小木牌
       if (b.interior && cell === F.CAFE_DOOR) {
         const sy = 1.446;
         signs.quad(toB(-0.22, sy, -0.15), toB(0.22, sy, -0.15), toB(0.22, sy + 0.11, -0.15), toB(-0.22, sy + 0.11, -0.15), signUV(6), WHITE);
@@ -1503,13 +1506,15 @@ export function createStreet(): Backdrop {
     return new THREE.Matrix4().makeRotationY(Math.atan2(z.x, z.z)).setPosition(p.x, y, p.z);
   };
   const plantSpots: Array<{ s: number; d: number; h: number; variant: number }> = [];
-  /** 小黑板的黑板面（canvas 画的），Blender 模型的 board 槽用 */
-  const boardMat = keep(new THREE.MeshStandardMaterial({ map: keep(chalkboard()), roughness: 0.9 }));
+  /** 小黑板的黑板面（canvas 画的），Blender 模型的 board 槽用。模型的 uv 是 v 朝下的（street_props.py），贴图不翻 */
+  const boardTex = keep(chalkboard());
+  boardTex.flipY = false;
+  const boardMat = keep(new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.9 }));
   {
     // 立式小黑板（A 字形，两面都是黑板）：黑板面朝着往远处看的方向（她身后往远处看，正好是正面；从身后看是另一面）
     place('board', [frameAt(S0 + 8.6, FRONT - 1.7).multiply(new THREE.Matrix4().makeRotationY(-Math.PI / 2 - 0.35))]);
-    // 长凳（靠着咖啡店的窗）
-    place('bench', [frameAt(S0 + 2.2, FRONT - 0.45)]);
+    // 长凳（靠着咖啡店左边那扇窗）：门在 S0 + 1.9 ~ 4.5，门两边是咖啡店模型自带的两盆橄榄树（S0 + 1.45、4.95），都要让开
+    place('bench', [frameAt(S0 + 0.2, FRONT - 0.45)]);
     // 花箱：咖啡店两头各一个大的、陶器店门口一个小的，里面种灌木
     place('planter_l', [frameAt(S0 - 2.6, FRONT - 0.55), frameAt(S0 + 6.9, FRONT - 0.55)]);
     plantSpots.push({ s: S0 - 2.6, d: FRONT - 0.55, h: 0.95, variant: 0 }, { s: S0 + 6.9, d: FRONT - 0.55, h: 0.95, variant: 0 });
@@ -1737,7 +1742,7 @@ export function createStreet(): Backdrop {
       // 旗子挂在灯杆朝路的那一侧，旗面朝着街的方向
       const z = l.clone();
       const M = new THREE.Matrix4().makeRotationY(Math.atan2(z.x, z.z)).setPosition(p.x, KERB_H, p.z);
-      // 海の見える街 / 潮風通り 隔一盏换一面（她身后右边那盏是"海の見える街"）
+      // 看得见海的街 / 海风街 隔一盏换一面（她身后右边那盏是"看得见海的街"）
       hangingBanner(M, 0, Math.round((s - S0 - 15.5) / 20) % 2 === 0 ? 2 : 7, 3.75, 0.12, 0.5);
       if (p.length() < 12) {
         const g = new THREE.CylinderGeometry(0.15, 0.15, 4.8, 6);
@@ -2063,12 +2068,8 @@ export function createStreet(): Backdrop {
     interiorLights.push(...lights);
     for (const m of materials) interiorMats.push([m, m.color.clone()]);
   }
-  // 咖啡店门口的盆栽（Poly Pizza 的低多边形绿植，咖啡店场景里那几盆）
-  for (const [file, s, d, h] of [
-    ['houseplant_1', S0 + 1.4, FRONT - 0.35, 0.9],
-    ['houseplant_3', S0 + 4.9, FRONT - 0.35, 1.05],
-    ['houseplant_2', S0 + 17.2, FRONT - 0.3, 0.7],
-  ] as const) {
+  // 门口的盆栽（Poly Pizza 的低多边形绿植，咖啡店场景里那几盆）。咖啡店门两边不放：那里是咖啡店模型自带的两盆橄榄树
+  for (const [file, s, d, h] of [['houseplant_2', S0 + 17.2, FRONT - 0.3, 0.7]] as const) {
     loader.load(`${BASE}polypizza/${file}.glb`, (gltf) => {
       own(gltf.scene);
       if (disposed) return;
