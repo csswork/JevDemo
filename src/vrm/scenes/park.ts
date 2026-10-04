@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canvasTexture, pbrTextures, rng, type Backdrop } from './common';
 import { AMBIENCE_VOLUME } from '../../speech/ambience';
+import { createClouds } from './clouds';
 import { createDust, createLightShafts, type Shaft } from './sunlight';
 import { createBatcher, createTreeMaker, windDepth, windShader, type TreeVariant } from './foliage';
 
@@ -306,68 +307,25 @@ export function createPark(): Backdrop {
     group.add(sky);
   }
 
-  // ---- 云：天空球前面一圈半透明的云片（canvas 画的积云，正对角色），哪个方向看都不是一片空天 ----
+  // ---- 云（clouds.ts，Blender 做的体积云，和街景共用）：天空球前面一圈，哪个方向看都不是一片空天。
+  // 晴天午后：太阳固定，颜色也固定；比街景的淡一些（隔着树冠看，太实了抢戏）
+  const clouds = createClouds(
+    keep,
+    {
+      dist: 132,
+      seed: 53,
+      drift: 0.1,
+      bands: [{ from: 0, to: Math.PI * 2, count: 14, elev: [4, 14], width: [0.3, 0.5], kinds: ['tall', 'mid', 'flat'], opacity: [0.75, 0.95] }],
+    },
+    () => !disposed,
+  );
   {
-    const rc = rng(53);
-    const cloudTex = (seed: number) => {
-      const rr = rng(seed);
-      return keep(
-        canvasTexture(512, 256, (g) => {
-          // 一团团白色的圆叠起来，底部压平；下半部稍微偏灰蓝（云的背光面）
-          for (let k = 0; k < 26; k++) {
-            const t = k / 25;
-            const x = 70 + t * 372 + (rr() - 0.5) * 40;
-            const top = 1 - Math.abs(t - 0.5) * 2;
-            const rad = 34 + top * 58 + rr() * 26;
-            const y = 190 - rad * (0.55 + rr() * 0.25);
-            const grd = g.createRadialGradient(x, y - rad * 0.2, 0, x, y, rad);
-            grd.addColorStop(0, 'rgba(255,255,255,0.9)');
-            grd.addColorStop(0.55, 'rgba(250,251,255,0.55)');
-            grd.addColorStop(1, 'rgba(240,244,252,0)');
-            g.fillStyle = grd;
-            g.beginPath();
-            g.arc(x, y, rad, 0, Math.PI * 2);
-            g.fill();
-          }
-          // 底边：从下往上淡出，云底是平的
-          g.globalCompositeOperation = 'destination-out';
-          const fade = g.createLinearGradient(0, 256, 0, 170);
-          fade.addColorStop(0, 'rgba(0,0,0,1)');
-          fade.addColorStop(1, 'rgba(0,0,0,0)');
-          g.fillStyle = fade;
-          g.fillRect(0, 170, 512, 86);
-          g.globalCompositeOperation = 'source-atop';
-          const shade = g.createLinearGradient(0, 80, 0, 200);
-          shade.addColorStop(0, 'rgba(255,255,255,0)');
-          shade.addColorStop(1, 'rgba(196,208,226,0.55)');
-          g.fillStyle = shade;
-          g.fillRect(0, 0, 512, 256);
-        }),
-      );
-    };
-    const texes = [cloudTex(1), cloudTex(2), cloudTex(3)];
-    const geo = keep(new THREE.PlaneGeometry(1, 0.5));
-    for (let k = 0; k < 16; k++) {
-      const a = (k / 16) * Math.PI * 2 + (rc() - 0.5) * 0.35;
-      const elev = THREE.MathUtils.degToRad(5 + rc() * 14);
-      const d = 132;
-      const w = 34 + rc() * 40;
-      const mat = keep(
-        new THREE.MeshBasicMaterial({
-          map: texes[k % texes.length],
-          transparent: true,
-          depthWrite: false,
-          fog: false,
-          opacity: 0.55 + rc() * 0.35,
-        }),
-      );
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(Math.cos(a) * Math.cos(elev) * d, Math.sin(elev) * d, Math.sin(a) * Math.cos(elev) * d);
-      m.scale.set(w * (rc() < 0.5 ? -1 : 1), w, 1);
-      m.lookAt(0, m.position.y * 0.6, 0);
-      m.renderOrder = -0.5;
-      group.add(m);
-    }
+    const cu = clouds.uniforms;
+    cu.uKeyDir.value.copy(SUN_DIR);
+    cu.uKeyCol.value.setHex(0xfff8ee);
+    cu.uShade.value.setHex(0xbccadf);
+    cu.uHaze.value.setHex(0xc4d5b6);
+    group.add(clouds.group);
   }
 
   // ---- 阳光：光柱 + 光里的尘埃（见 sunlight.ts）----
@@ -1055,6 +1013,7 @@ export function createPark(): Backdrop {
       time += dt;
       wind.uTime.value = time;
       shafts.update(time);
+      clouds.update(dt);
       dust.update(time);
     },
     beforeRender(view, shadow) {

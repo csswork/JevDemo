@@ -32,7 +32,9 @@ interface Key {
   hemiI: number;
   fog: number;
   env: number;
+  /** 云被太阳照到的那一面、天光照着的背光面（clouds.ts） */
   cloud: number;
+  cloudShade: number;
   deep: number;
   shallow: number;
   scatter: number;
@@ -64,6 +66,7 @@ const DAY: Key = {
   fog: 0xd3e8f5,
   env: 0.35,
   cloud: 0xffffff,
+  cloudShade: 0xb7c7e2,
   deep: 0x1d66a6,
   shallow: 0x17707c,
   scatter: 0x1f9a9a,
@@ -96,6 +99,7 @@ const KEYS: Key[] = [
     fog: 0xd9e2ea,
     env: 0.34,
     cloud: 0xfff8ee,
+    cloudShade: 0xb2c0da,
     deep: 0x1c62a0,
     shallow: 0x176c78,
     scatter: 0x2a9890,
@@ -123,6 +127,7 @@ const KEYS: Key[] = [
     fog: 0xe6d4c0,
     env: 0.3,
     cloud: 0xffe2c4,
+    cloudShade: 0xaea8c4,
     deep: 0x1a5690,
     shallow: 0x1a6270,
     scatter: 0x7a7a5a,
@@ -154,6 +159,7 @@ const KEYS: Key[] = [
     fog: 0xd89a80,
     env: 0.26,
     cloud: 0xffb48c,
+    cloudShade: 0x8a80a8,
     deep: 0x18467c,
     shallow: 0x1c5262,
     scatter: 0xa0603e,
@@ -185,6 +191,7 @@ const KEYS: Key[] = [
     fog: 0x4c5276,
     env: 0.9,
     cloud: 0x9a8090,
+    cloudShade: 0x4c4a68,
     deep: 0x0d2a50,
     shallow: 0x102e40,
     scatter: 0x3a3050,
@@ -216,6 +223,7 @@ const KEYS: Key[] = [
     fog: 0x1e2644,
     env: 1,
     cloud: 0x363c54,
+    cloudShade: 0x1e2236,
     deep: 0x06183a,
     shallow: 0x08202e,
     scatter: 0x1a2040,
@@ -247,6 +255,7 @@ const KEYS: Key[] = [
     fog: 0x121a32,
     env: 1,
     cloud: 0x242a3e,
+    cloudShade: 0x141826,
     deep: 0x041430,
     shallow: 0x061a26,
     scatter: 0x101830,
@@ -275,6 +284,7 @@ const COLOR_FIELDS = [
   'hemiGround',
   'fog',
   'cloud',
+  'cloudShade',
   'deep',
   'shallow',
   'scatter',

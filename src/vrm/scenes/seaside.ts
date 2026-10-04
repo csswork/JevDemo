@@ -423,7 +423,8 @@ export function farShore(a: number) {
   const t = (deg + 90) / 170; // -90° → 0, 80° → 1
   const right = 1000 + 650 * smoothstep(0, 1, t) + 90 * Math.sin(deg * 0.09);
   const left = 1000 + 350 * smoothstep(-90, -150, deg) + 60 * Math.sin(deg * 0.13 + 1);
-  return deg >= -90 ? right : left;
+  // 左右两段在正前方接上：两边的起伏对不上（差 145m），一刀切开会在山上留一道竖着的断崖，前后 10° 里慢慢过渡
+  return THREE.MathUtils.lerp(left, right, smoothstep(-100, -80, deg));
 }
 
 /**
