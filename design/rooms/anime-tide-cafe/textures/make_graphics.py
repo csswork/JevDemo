@@ -2,18 +2,18 @@ from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import random,math
 P=Path(__file__).resolve().parent
-font='/System/Library/Fonts/Supplemental/Arial.ttf'
+font='/System/Library/Fonts/STHeiti Medium.ttc'
 def f(n):return ImageFont.truetype(font,n)
 im=Image.new('RGB',(1536,900),'#243332');d=ImageDraw.Draw(im)
 r=random.Random(19)
 for i in range(7000):
  x,y=r.randrange(1536),r.randrange(900);d.point((x,y),fill=(45+r.randrange(9),59+r.randrange(7),55+r.randrange(7)))
 d.rounded_rectangle((35,35,1500,865),radius=12,outline='#b8a987',width=3)
-d.text((90,74),'TIDE & LEAF',font=f(76),fill='#e3d4b1');d.text((93,166),'COFFEE  /  PATISSERIE',font=f(28),fill='#c5b48e')
+d.text((90,74),'潮汐咖啡馆',font=f(76),fill='#e3d4b1');d.text((93,166),'咖啡 · 手作甜点',font=f(28),fill='#c5b48e')
 d.line((88,222,1440,222),fill='#bfaf8d',width=2)
-for i,(a,b,c,e) in enumerate([('Espresso','22','Butter croissant','18'),('Americano','24','Strawberry tart','32'),('Cafe latte','30','Lemon cheesecake','28'),('Cappuccino','30','Chocolate gateau','30'),('Matcha latte','32','Seasonal fruit cake','34'),('Pour over','36','Afternoon tea set','68')]):
+for i,(a,b,c,e) in enumerate([('浓缩咖啡','22','黄油可颂','18'),('美式咖啡','24','草莓挞','32'),('拿铁咖啡','30','柠檬芝士蛋糕','28'),('卡布奇诺','30','巧克力蛋糕','30'),('抹茶拿铁','32','时令水果蛋糕','34'),('手冲咖啡','36','下午茶套餐','68')]):
  y=290+i*80;d.text((90,y),a,font=f(38),fill='#e6dccc');d.text((590,y),b,font=f(38),fill='#d6c393');d.text((790,y),c,font=f(34),fill='#e6dccc');d.text((1340,y),e,font=f(36),fill='#d6c393');d.line((90,y+55,660,y+55),fill='#54615a');d.line((790,y+55,1430,y+55),fill='#54615a')
-d.text((96,806),'Slow mornings, good coffee, a little sea breeze.',font=f(26),fill='#bfc7b8');im.save(P/'menu.png')
+d.text((96,806),'慢一点，让咖啡和海风陪你。',font=f(26),fill='#bfc7b8');im.save(P/'menu.png')
 for i in range(3):
  im=Image.new('RGB',(512,680),'#e8dfc7');d=ImageDraw.Draw(im)
  if i<2:
@@ -25,3 +25,11 @@ for i in range(3):
   d.rectangle((30,70,480,370),fill='#9ac9df');d.rectangle((30,370,480,590),fill='#8eafb2');d.polygon([(30,370),(150,225),(270,320),(400,200),(480,355)],fill='#90a58a');d.polygon([(30,420),(140,365),(250,375),(370,355),(480,405)],fill='#b2c0ab');d.text((110,625),'COASTAL AFTERNOON',font=f(22),fill='#5c6657')
  im.save(P/f'art-{i}.png')
 print('menu and three illustrated wall prints created')
+
+im=Image.new('RGB',(1200,600),'#ece4d2');d=ImageDraw.Draw(im)
+d.rectangle((24,24,1176,576),outline='#9d8866',width=3)
+d.text((300,105),'潮汐咖啡馆',font=f(80),fill='#526855')
+d.text((310,235),'一杯咖啡 · 一段慢时光',font=f(37),fill='#756753')
+d.arc((100,190,265,365),0,180,fill='#526855',width=9);d.line((101,275,101,302),fill='#526855',width=8);d.line((264,275,264,302),fill='#526855',width=8);d.arc((252,270,310,330),270,90,fill='#526855',width=8);d.line((90,375,280,375),fill='#9d8866',width=6)
+for x in [145,182,219]:d.arc((x,155,x+22,225),90,270,fill='#9d8866',width=4)
+d.text((305,375),'欢迎坐坐，今天也辛苦了。',font=f(33),fill='#756753');im.save(P/'welcome.png')

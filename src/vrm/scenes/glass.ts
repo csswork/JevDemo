@@ -463,11 +463,11 @@ export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture, night: G
  * 透明玻璃（她身边那家咖啡店，后面是真的 3D 室内）：只输出反射（环境 + 太阳的高光），
  * 自定义混合：结果 = 反射 + 后面 ×（1 − a），a 随菲涅耳变大（斜着看更像镜子、更挡后面）
  */
-export function clearGlassMaterial(keep: Keep) {
+export function clearGlassMaterial(keep: Keep, reflectionStrength = 2.0) {
   const mat = keep(
     new THREE.MeshStandardMaterial({
       color: 0x000000,
-      roughness: 0.04,
+      roughness: reflectionStrength < 1 ? 0.12 : 0.04,
       metalness: 0,
       transparent: true,
       depthWrite: false,
@@ -479,41 +479,32 @@ export function clearGlassMaterial(keep: Keep) {
   );
   mat.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${GLASS_REFLECTION(2.0)}`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${GLASS_REFLECTION(reflectionStrength)}`)
       .replace(
         '#include <opaque_fragment>',
         `float glassF = 0.04 + 0.96 * pow( 1.0 - saturate( dot( normal, normalize( vViewPosition ) ) ), 5.0 );
+        ${reflectionStrength < 1 ? 'outgoingLight = min( outgoingLight, vec3( 0.12 ) );' : ''}
         gl_FragColor = vec4( outgoingLight, 0.08 + 0.75 * glassF );`,
       );
   };
-  mat.customProgramCacheKey = () => 'street-clear-glass';
+  mat.customProgramCacheKey = () => `street-clear-glass-${reflectionStrength}`;
   return mat;
 }
 
-/** Diffusing privacy glazing: preserves soft daylight and rough reflections,
- * but has no transparent blend path through which exterior geometry can show.
- * The height gradient represents scattered sky/land light, not a backdrop image.
- */
+/** Rough physical transmission blurs exterior silhouettes while retaining
+ * refraction, Fresnel highlights and genuine see-through glass depth. */
 export function frostedGlassMaterial(keep: Keep) {
-  const mat = keep(new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 0.62,
+  return keep(new THREE.MeshPhysicalMaterial({
+    color: 0xe5eeee,
+    roughness: 0.46,
     metalness: 0,
-    envMapIntensity: 0.55,
-    side: THREE.DoubleSide,
+    transmission: 0.88,
+    thickness: 0.12,
+    ior: 1.45,
+    attenuationColor: new THREE.Color(0xeaf0e9),
+    attenuationDistance: 2,
+    envMapIntensity: 0.35,
+    specularIntensity: 0.45,
+    side: THREE.FrontSide,
   }));
-  mat.onBeforeCompile = (shader) => {
-    shader.vertexShader = `varying vec3 vFrostWorld;\n${shader.vertexShader}`
-      .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
-        vFrostWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`);
-    shader.fragmentShader = `varying vec3 vFrostWorld;\n${shader.fragmentShader}`
-      .replace('#include <color_fragment>', `#include <color_fragment>
-        float sky = smoothstep( 0.45, 3.3, vFrostWorld.y );
-        vec3 scattered = mix( vec3( 0.53, 0.62, 0.52 ), vec3( 0.68, 0.82, 0.87 ), sky );
-        diffuseColor.rgb *= scattered;`)
-      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        totalEmissiveRadiance += scattered * 0.24;`);
-  };
-  mat.customProgramCacheKey = () => 'cafe-frosted-privacy-glass-v1';
-  return mat;
 }

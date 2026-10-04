@@ -84,7 +84,7 @@ for o in separated:
  index=o.data.polygons[0].material_index;m=o.data.materials[index] if o.data.materials else None
  key=m.name if m else 'unpainted'
  source_name=o.get('sourceName','')
- if m and ('glass' in m.name.lower() or 'glazing' in m.name.lower()) and (source_name.startswith(('entry glass','window-')) or source_name=='nook rear glass'):
+ if m and ('glass' in m.name.lower() or 'glazing' in m.name.lower()) and (source_name.startswith(('entry glass','window-')) or source_name.startswith('nook rear glass')):
   key='window privacy glazing'
  groups.setdefault(key,[]).append(o)
  # Material separation can retain unused slots; use the face's actual material.

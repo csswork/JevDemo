@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import type { Backdrop } from './common';
+import { canvasTexture, type Backdrop } from './common';
 import { clearGlassMaterial, frostedGlassMaterial } from './glass';
 
 const BASE = `${import.meta.env.BASE_URL}scene/models/anime_cafe/`;
@@ -35,6 +35,25 @@ export function createAnimeCafe(): Backdrop {
     for (const value of Object.values(material)) if (value instanceof THREE.Texture) own(value);
   };
 
+  // Physical transmission samples rendered scenery, so it needs actual sky
+  // behind the windows rather than the page's CSS background or a black clear.
+  const skyMap = own(canvasTexture(16, 256, (context) => {
+    const gradient = context.createLinearGradient(0, 0, 0, 256);
+    gradient.addColorStop(0, '#99cce1');
+    gradient.addColorStop(0.5, '#dae5df');
+    gradient.addColorStop(0.7, '#e7e5cf');
+    gradient.addColorStop(1, '#b9c6ad');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 16, 256);
+  }));
+  const sky = new THREE.Mesh(
+    own(new THREE.SphereGeometry(80, 24, 16)),
+    own(new THREE.MeshBasicMaterial({ map: skyMap, side: THREE.BackSide, depthWrite: false })),
+  );
+  sky.name = 'cafe-transmission-sky';
+  sky.renderOrder = -100;
+  group.add(sky);
+
   // A small contact receiver supports the avatar without replacing the room's real shadow receivers.
   const contact = new THREE.Mesh(
     own(new THREE.PlaneGeometry(5.8, 5.8)),
@@ -66,8 +85,8 @@ export function createAnimeCafe(): Backdrop {
     if (disposed) return;
     const root = gltf.scene;
     root.position.y += FLOOR_OFFSET;
-    const clearGlass = clearGlassMaterial(own);
-    clearGlass.side = THREE.DoubleSide;
+    const clearGlass = clearGlassMaterial(own, 0.35);
+    clearGlass.side = THREE.FrontSide;
     const windowGlass = frostedGlassMaterial(own);
     root.traverse((object) => {
       const mesh = object as THREE.Mesh;
