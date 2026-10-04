@@ -1005,7 +1005,7 @@ export default function App() {
               ))}
             </select>
           </label>
-          <label title="场景的环境音：咖啡店的人声 / 公园的鸟鸣（CC0 素材，说话时自动压低）">
+          <label title="场景的环境音：咖啡店的人声 / 公园的鸟鸣 / 海边的海浪（CC0 素材，说话时自动压低）">
             <input type="checkbox" checked={ambient} onChange={(e) => pickAmbient(e.target.checked)} />
             背景音
           </label>

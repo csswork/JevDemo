@@ -544,6 +544,7 @@ export class Runtime {
   }
 
   private backdrop: BackdropId = 'none';
+  private ambienceTimer = 0;
   private timeMode: TimeMode | number = 'now';
 
   /** 背景场景（mount 前后调用都行） */
@@ -622,6 +623,13 @@ export class Runtime {
 
     this.step(dt);
     stage.render();
+
+    // 环境音的音量可能随时间变（街景夜里调低）：每秒对一次，变了才推（播放层 0.4 秒平滑过去，不会重播）
+    this.ambienceTimer += dt;
+    if (this.ambienceTimer >= 1) {
+      this.ambienceTimer = 0;
+      this.applyAmbience();
+    }
 
     this.fpsAccum += dt;
     this.fpsFrames++;

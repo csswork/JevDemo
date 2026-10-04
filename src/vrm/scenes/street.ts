@@ -23,6 +23,7 @@ import {
 import { createPalette, createSkyMapping, dirOf, moonIllum, morningTint, samplePalette } from './streetTime';
 import { createLights, lampLit, type LightAnchor } from './streetLights';
 import { buildingGlowMaterial, kitLight, kitMaterials, loadKit, type KitItem } from './streetKit';
+import { AMBIENCE_VOLUME } from '../../speech/ambience';
 import KIT from './kit/kitSpec.json';
 import HERO from './kit/heroSpecs.json';
 import type { TimeState } from '../timeOfDay';
@@ -2165,6 +2166,8 @@ export function createStreet(): Backdrop {
   };
   litAll();
   let time = 0;
+  /** 环境音换成夜里那条了没有（天黑到 0.6 换过去，亮到 0.3 换回来，中间不来回跳） */
+  let nightAmbience = false;
   return {
     group,
     // 4 盏真实点光源（夜里分给离她最近的灯）+ 咖啡店里的一盏暖光
@@ -2177,6 +2180,15 @@ export function createStreet(): Backdrop {
     shadowBounds: 3,
     sun: { color: 0xfff3e0, intensity: 2.5, bounds: 22, position: SUN_POS, fill: 0.3, rim: 0.4 },
     lighting,
+    // 海边的环境音：白天是海浪 + 海鸥（Freesound kkenny101，CC0），天黑了（海鸥也不飞了）换成只有海浪的那条（SamsterBirdies，CC0）。
+    // 两条都比公园、咖啡店的响得多（整体 RMS 0.047 / 0.066，公园 0.022），音量往下压，夜里更轻。
+    // 运行时每秒读一次（runtime.ts），换了录音就淡出旧的、淡入新的
+    get ambience() {
+      return `${import.meta.env.BASE_URL}audio/${nightAmbience ? 'street_night' : 'street'}.ogg`;
+    },
+    get ambienceVolume() {
+      return AMBIENCE_VOLUME * (nightAmbience ? 0.25 : 0.45);
+    },
     far: SKY_R + 200,
     // 不设像素预算：满屏逐像素算光的只有右上角那点树叶，GPU 每帧 2~4ms（同样 340 万像素下公园要 8ms），
     // 留着 Retina 的满分辨率，旗子和招牌上的字更清楚
@@ -2273,6 +2285,8 @@ export function createStreet(): Backdrop {
         wu.uGlint.value.set(260, 14, 28, 0.3);
       }
       gulls.group.visible = elev > -3;
+      if (lightsOn > 0.6) nightAmbience = true;
+      else if (lightsOn < 0.3) nightAmbience = false;
 
       // 窗里的店内、树叶、立面上画的灯（暖帘、灯笼、售货机）、店里的灯
       night.uLights.value = lightsOn;

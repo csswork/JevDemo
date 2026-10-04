@@ -97,7 +97,7 @@ const POLY_PIZZA = [
 const AUDIO_CREDITS = `
 ## 场景背景音（\`public/audio/\`）
 
-每个场景一条循环环境音（咖啡店人声 / 公园鸟鸣），**CC0**（公有领域，可商用、可再分发、不要求署名）。
+每个场景一条循环环境音（咖啡店人声 / 公园鸟鸣 / 海边的海浪），**CC0**（公有领域，可商用、可再分发、不要求署名）。
 播放见 \`src/speech/ambience.ts\`：整段解码成 AudioBuffer 之后按缓冲区循环 —— 浏览器在**样本级**绕回开头。
 
 > **素材必须是 OGG（Opus/Vorbis），不能用 MP3。** MP3 编码器的补零会在每圈接缝处留一小段静音，
@@ -105,6 +105,8 @@ const AUDIO_CREDITS = `
 
 - 咖啡店 [coffee shop ambience](https://freesound.org/people/waweee/sounds/370973/) — waweee，CC0（4:56）
 - 公园 [Spring Birds & Woodpeckers (Loop)](https://freesound.org/people/Resaural/sounds/634511/) — Resaural，CC0（7:11，作者录的就是无缝循环）
+- 街景（海边，白天） [Seagull Beach Ambience Loop](https://freesound.org/people/kkenny101/sounds/853455/) — kkenny101，CC0（4:28，海浪和海鸥，作者剪成了无缝循环；用的是 Freesound 的高质量试听版 OGG）
+- 街景（海边，夜里） [Calm ocean waves](https://freesound.org/people/SamsterBirdies/sounds/578524/) — SamsterBirdies，CC0（3:00，只有平静的海浪，作者录的可以循环；高质量试听版 OGG）
 `;
 
 async function api(p) {

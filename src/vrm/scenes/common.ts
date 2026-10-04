@@ -46,6 +46,7 @@ export interface Backdrop {
   /**
    * 环境音的音量（线性增益）。省略 = 用播放层的默认值（AMBIENCE_VOLUME）。
    * 同一档音量在不同素材上听感差很多（人声很近、鸟鸣很远），所以由场景自己定。
+   * ambience、ambienceVolume 可以随时间变（写成 getter，比如街景夜里换成只有海浪的那条、更轻）：运行时每秒读一次
    */
   ambienceVolume?: number;
   /** 投影的范围：舞台的主光只在这个盒子里算阴影（角色和身边的东西） */

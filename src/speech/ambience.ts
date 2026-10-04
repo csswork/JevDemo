@@ -8,6 +8,7 @@
  * 1. **无缝循环靠 Web Audio，不靠文件本身。** 整段解码成 AudioBuffer 之后
  *    `source.loop = true`，浏览器在**样本级**绕回开头；而 `<audio loop>` + MP3
  *    会被编码器的补零影响，接缝处每圈"咔"一下。所以素材一律用 OGG（Opus/Vorbis），不用 MP3。
+ *    解码以后再把首尾交叉淡入淡出一下（seamless），录音本身接缝没处理好的也不会"咔"一下。
  * 2. **复用 Runtime 那一个 AudioContext。** 它在用户手势里创建（unlockAudio），
  *    浏览器的自动播放策略才放行；另开一个 ctx 会和语音合成的时序打架。
  *
@@ -206,11 +207,36 @@ export class AmbiencePlayer {
       // Vite 对不存在的路径会回退成 index.html（状态码还是 200），所以光看 res.ok 不够 ——
       // 和 models.ts 的 probeModels 一样看类型
       if (!res.ok || (res.headers.get('content-type') ?? '').includes('text/html')) return null;
-      const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
+      const buf = seamless(this.ctx, await this.ctx.decodeAudioData(await res.arrayBuffer()));
       this.buffers.set(url, buf);
       return buf;
     } catch {
       return null;
     }
   }
+}
+
+/**
+ * 把一段录音修成首尾接得上的循环：裁掉结尾 10ms（编码器在最后补出来的几个样本会突然跳一下），
+ * 再把剩下的最后 0.25 秒和开头交叉淡入淡出（等功率），绕回开头那一下前后是连续的波形。
+ * 作者录成无缝循环的素材也照样过一遍，听不出差别；接缝没处理好的（海边那条：结尾几乎是静音、开头一下子有声音）不会"咔"了
+ */
+function seamless(ctx: BaseAudioContext, buf: AudioBuffer): AudioBuffer {
+  const sr = buf.sampleRate;
+  const trim = Math.round(sr * 0.01);
+  const fade = Math.round(sr * 0.25);
+  const len = buf.length - trim - fade;
+  if (len < sr * 2) return buf;
+  const out = ctx.createBuffer(buf.numberOfChannels, len, sr);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const src = buf.getChannelData(c);
+    const dst = out.getChannelData(c);
+    dst.set(src.subarray(0, len));
+    // 开头这 0.25 秒：原来的开头淡入、被裁掉的最后 0.25 秒淡出叠上去 —— 循环到结尾时接着的正是它
+    for (let i = 0; i < fade; i++) {
+      const t = (i / fade) * (Math.PI / 2);
+      dst[i] = src[i] * Math.sin(t) + src[len + i] * Math.cos(t);
+    }
+  }
+  return out;
 }
