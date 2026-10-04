@@ -6,7 +6,8 @@ import { chalkboard } from './streetTextures';
 /**
  * 她身边那家咖啡店的店内（真的 3D，透过透明玻璃看进去，见 glass.ts）：
  * 木地板、米色的灰泥墙 + 深色木墙裙、深色木梁的天花板；吧台、咖啡机、蛋糕和杯子、吧台凳，靠窗几张圆桌和椅子，
- * 吧台上方和桌子上方的吊灯，后墙的置物架和黑板菜单，角落的绿植、沙发。模型是咖啡店场景用的那些（Poly Pizza，见 CREDITS.md）。
+ * 吧台上方和桌子上方的吊灯，后墙的置物架和黑板菜单，角落的绿植、沙发。模型是 Blender 做的（scripts/blender/cafe_props.py），
+ * 名字和原来用的 Poly Pizza 模型一样。
  * 店里一盏暖色的点光源（吧台上方，照不到 6m 以外：街上和角色身上都不受影响）。
  *
  * 模型都到了以后按材质合并成几十个网格（Poly Pizza 的模型一个就有好几个部件，加上罐子、木箱子，摆完三百多个网格，
@@ -28,14 +29,14 @@ export interface CafeInteriorOptions {
   /** 店里地板的高度（局部 y），天花板高度 */
   floorY: number;
   ceilY: number;
-  /** 载入一个 Poly Pizza 模型（缓存过的） */
+  /** 按名字取一件模型（scripts/blender/cafe_props.py 导出的，缓存过的） */
   load: (file: string) => Promise<THREE.Object3D | null>;
   /** 门在哪（局部 x 的范围）：门口留出通道 */
   door: [number, number];
 }
 
-/** 椅子模型默认面朝 -Z（实测，和咖啡店场景一样），转到面朝桌子时补半圈 */
-const CHAIR_FACING = Math.PI;
+/** 椅子模型默认面朝 +Z（Blender 做的，正面朝 -Y 导出），转到面朝桌子不用补 */
+const CHAIR_FACING = 0;
 
 export function buildCafeInterior(o: CafeInteriorOptions) {
   const { group, keep, M, w, d, floorY: F0, ceilY } = o;
@@ -211,8 +212,7 @@ export function buildCafeInterior(o: CafeInteriorOptions) {
   ] as const)
     void place(file, x, F0, z, h, x);
 
-  // ---- 吊灯：吧台上方三盏、桌子上方两盏。灯泡是不受光照的暖白小球；一盏暖色点光源照亮店里 ----
-  const bulbMat = keep(new THREE.MeshBasicMaterial({ color: 0xffe2a8 }));
+  // ---- 吊灯：吧台上方三盏、桌子上方两盏（模型里的灯泡营业时间亮，见 street.ts）；一盏暖色点光源照亮店里 ----
   for (const [lx, lz] of [
     [-2.4, cz],
     [-0.4, cz],
@@ -222,9 +222,6 @@ export function buildCafeInterior(o: CafeInteriorOptions) {
   ] as const) {
     const ly = ceilY - 0.75;
     void place('light_ceiling', lx, ly - 0.06, lz, ceilY - (ly - 0.06));
-    const bulb = new THREE.Mesh(keep(new THREE.SphereGeometry(0.045, 16, 8)), bulbMat);
-    bulb.position.set(lx, ly - 0.03, lz);
-    root.add(bulb);
   }
   // 模型都到了：不透明的按材质 + 属性合并（半透明的蛋糕罩留着单独画，要排序）
   void Promise.all(pending).then(() => {
@@ -258,8 +255,9 @@ export function buildCafeInterior(o: CafeInteriorOptions) {
     }
   });
 
-  const light = new THREE.PointLight(0xffc98a, 7, 6.5, 2);
+  const light = new THREE.PointLight(0xffc98a, 7, 9.5, 2);
   light.position.set(-0.4, ceilY - 0.6, cz + 1.2);
   light.position.applyMatrix4(M);
-  return { lights: [light] };
+  // 店里的材质为白天的阳光压暗过：夜里外面黑了、只剩店里的灯，代码按时间把它们调亮一点（materials）
+  return { lights: [light], materials: [floorMat, wallMat, panelMat, darkWood, lightWood, ceilMat] };
 }

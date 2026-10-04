@@ -184,7 +184,7 @@ async function main() {
   console.log(`Poly Pizza ${POLY_PIZZA.length} 个模型`);
   fs.writeFileSync(
     path.join(OUT, 'CREDITS.md'),
-    `# 场景素材\n\n咖啡店场景本身是程序生成的（src/vrm/scenes/cafe.ts），这里只有它打光用的 HDRI；\n公园（src/vrm/scenes/park.ts）用全景背景 + 真实模型；\n街景（src/vrm/scenes/street.ts）的墙、路、屋瓦用下面的 PBR 材质，木板借用公园的，咖啡店里的小物件见后面的 Poly Pizza；\n海上的渔船和海鸥（\`models/fishing_boat/\`、\`models/seagull/\`）、路灯和街道设施（\`models/street/\`）不是下载的素材，是本项目的 Blender 脚本生成的（\`scripts/blender/\`，Blender 5.2 后台跑一遍就重新导出），和代码同一个授权。\n\n全部来自 [Poly Haven](https://polyhaven.com)，**CC0**（公有领域，可商用、可再分发、不要求署名）。\n` +
+    `# 场景素材\n\n咖啡店场景本身是程序生成的（src/vrm/scenes/cafe.ts），这里只有它打光用的 HDRI；\n公园（src/vrm/scenes/park.ts）用全景背景 + 真实模型；\n街景（src/vrm/scenes/street.ts）的墙、路、屋瓦用下面的 PBR 材质，木板借用公园的；\n街景里所有的模型 —— 渔船、海鸥、路灯和街道设施、房子的构件、身边那 8 栋、远景、咖啡店里的小物件（\`models/\` 下的 fishing_boat、seagull、street、building_kit、hero、far、cafe）—— 都不是下载的素材，是本项目的 Blender 脚本生成的（\`scripts/blender/\`，Blender 5.2 后台跑一遍就重新导出），和代码同一个授权。后面的 Poly Pizza 模型只有咖啡店背景（cafe.ts）在用。\n\n全部来自 [Poly Haven](https://polyhaven.com)，**CC0**（公有领域，可商用、可再分发、不要求署名）。\n` +
       `由 \`scripts/fetch-scene-assets.mjs\` 下载（${RES} 分辨率）。署名不是必须的，这里列出作者以示感谢：\n\n${credits.join('\n')}\n` +
       `\n公园的树和灌木由 [ez-tree](https://github.com/dgreenheck/ez-tree)（npm \`@dgreenheck/ez-tree\`，© 2024 Daniel Greenheck，**MIT**）生成，` +
       `树皮和树叶贴图打包在那个 npm 包里；\`eztree/grass.glb\`（草丛模型）来自 ez-tree 的演示场景，授权原文见 \`eztree/LICENSE\`。\n` +

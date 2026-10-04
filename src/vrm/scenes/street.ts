@@ -2029,25 +2029,39 @@ export function createStreet(): Backdrop {
     if (!disposed) bakeFar(kit);
   });
   // 她身边那家咖啡店的店内（真的 3D，透过一楼的透明玻璃看得到）
-  const ppCache = new Map<string, Promise<THREE.Object3D | null>>();
-  const loadPP = (file: string) => {
-    let p = ppCache.get(file);
-    if (!p) {
-      p = loader
-        .loadAsync(`${BASE}polypizza/${file}.glb`)
-        .then((gltf) => {
-          own(gltf.scene);
-          return disposed ? null : gltf.scene;
-        })
-        .catch(() => null);
-      ppCache.set(file, p);
-    }
-    return p.then((src) => (disposed ? null : src));
-  };
+  // 店里的小物件：Blender 做的（scripts/blender/cafe_props.py → models/cafe/props.glb），按名字取；灯泡、台灯灯罩营业时间亮
+  const cafeGlow = { value: 0 };
+  const cafeKit = loader
+    .loadAsync(`${BASE}models/cafe/props.glb`)
+    .then((gltf) => {
+      own(gltf.scene);
+      let glowMat: THREE.MeshStandardMaterial | null = null;
+      gltf.scene.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || (mesh.material as THREE.Material).name !== 'glow') return;
+        if (!glowMat) {
+          glowMat = keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 }));
+          glowMat.onBeforeCompile = (shader) => {
+            shader.uniforms.uCafeGlow = cafeGlow;
+            shader.fragmentShader = shader.fragmentShader
+              .replace('#include <common>', '#include <common>\nuniform float uCafeGlow;')
+              .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance = vColor.rgb * uCafeGlow;');
+          };
+          glowMat.customProgramCacheKey = () => 'cafe-lamp-glow';
+        }
+        mesh.material = glowMat;
+      });
+      return disposed ? null : gltf.scene;
+    })
+    .catch(() => null);
+  const loadPP = (name: string) => cafeKit.then((scene) => (disposed || !scene ? null : (scene.getObjectByName(name) ?? null)));
   const interiorLights: THREE.Light[] = [];
+  /** 店里的材质和它们白天的颜色（夜里调亮） */
+  const interiorMats: Array<[THREE.MeshStandardMaterial, THREE.Color]> = [];
   if (heroCafe) {
-    const { lights } = buildCafeInterior({ group, keep, M: heroCafe.M, w: heroCafe.w, d: heroCafe.d, floorY: 0.25, ceilY: 3.12, load: loadPP, door: heroCafe.door });
+    const { lights, materials } = buildCafeInterior({ group, keep, M: heroCafe.M, w: heroCafe.w, d: heroCafe.d, floorY: 0.25, ceilY: 3.12, load: loadPP, door: heroCafe.door });
     interiorLights.push(...lights);
+    for (const m of materials) interiorMats.push([m, m.color.clone()]);
   }
   // 咖啡店门口的盆栽（Poly Pizza 的低多边形绿植，咖啡店场景里那几盆）
   for (const [file, s, d, h] of [
@@ -2264,7 +2278,11 @@ export function createStreet(): Backdrop {
       leafLight.value = pal.leaf;
       for (const m of leafMats) m.emissiveIntensity = 0.3 * pal.leafE;
       facadeMat.emissiveIntensity = 0.85 + 0.5 * lightsOn;
-      for (const l of interiorLights) l.intensity = 7 * (1 + 0.8 * lightsOn);
+      // 咖啡店 7:00~23:00 营业：店里的灯开着（夜里更亮，店内的材质也调亮一点）；关门以后只留一点
+      const cafeOpen = t.hours >= 7 && t.hours < 23 ? 1 : 0;
+      for (const l of interiorLights) l.intensity = 7 * (cafeOpen ? 1 + 2.2 * lightsOn : 0.05);
+      cafeGlow.value = cafeOpen ? 1.2 + 1.6 * lightsOn : 0;
+      for (const [m, c] of interiorMats) m.color.copy(c).multiplyScalar(1 + 0.35 * lightsOn * cafeOpen);
       kitNight.uBoxGain.value = 0.6 + 0.5 * lightsOn;
       // 灯：时间是一下跳过去的（截图、刚打开）就不闪
       let dh = Math.abs(t.hours - lastHours);
