@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Backdrop } from './common';
+import { clearGlassMaterial, frostedGlassMaterial } from './glass';
 
 const BASE = `${import.meta.env.BASE_URL}scene/models/anime_cafe/`;
 /** Authored porcelain top is 26 mm above Blender's slab origin; the avatar stands at y=0. */
@@ -65,6 +66,9 @@ export function createAnimeCafe(): Backdrop {
     if (disposed) return;
     const root = gltf.scene;
     root.position.y += FLOOR_OFFSET;
+    const clearGlass = clearGlassMaterial(own);
+    clearGlass.side = THREE.DoubleSide;
+    const windowGlass = frostedGlassMaterial(own);
     root.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -85,15 +89,10 @@ export function createAnimeCafe(): Backdrop {
         const standard = material as THREE.MeshStandardMaterial;
         if (standard.map) standard.map.anisotropy = 8;
       }
-      if (kind === 'glass') {
+      if (kind === 'glass' || kind === 'window-glass') {
         mesh.castShadow = false;
         mesh.receiveShadow = false;
-        for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-          material.transparent = true;
-          material.opacity = 0.15;
-          material.depthWrite = false;
-          material.side = THREE.DoubleSide;
-        }
+        mesh.material = kind === 'window-glass' ? windowGlass : clearGlass;
       }
     });
     group.add(root);

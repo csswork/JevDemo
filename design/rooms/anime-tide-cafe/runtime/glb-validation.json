@@ -1,44 +1,98 @@
 {
   "room.glb": {
-    "bytes": 13544200,
-    "sha256": "504d77cf2f94b5978b968ec453a533137280acfaa46b10c0064eb05d4957ccf5",
-    "renderTriangles": 218748,
-    "renderPrimitives": 18,
+    "bytes": 11349252,
+    "sha256": "ad539391de88a090cb5e131095e43d7776a582b5e31b5748316eae40ec0a88c9",
+    "renderTriangles": 194296,
+    "renderPrimitives": 34,
     "colliders": 20,
-    "atlasDimensions": [
+    "privacyGlassBatches": 1,
+    "clearGlassBatches": 1,
+    "textureDimensions": [
       [
-        1024,
-        1024
+        512,
+        680
+      ],
+      [
+        512,
+        680
+      ],
+      [
+        512,
+        680
       ],
       [
         1536,
-        1536
+        900
       ],
       [
-        1536,
-        1536
+        512,
+        512
+      ],
+      [
+        512,
+        512
+      ],
+      [
+        512,
+        512
+      ],
+      [
+        512,
+        512
+      ],
+      [
+        512,
+        512
       ]
-    ]
+    ],
+    "decodedTextureBytes": 14950400
   },
   "room-low.glb": {
-    "bytes": 6420628,
-    "sha256": "b2da4b26061001c718d0298fed5d08fde773976b71767a88aaf4a8def04a629f",
-    "renderTriangles": 98873,
-    "renderPrimitives": 18,
+    "bytes": 6831516,
+    "sha256": "5c778c095512ecbd9f90948d62010cede8ba5dc8ccf812c8122204a80091a155",
+    "renderTriangles": 87833,
+    "renderPrimitives": 34,
     "colliders": 20,
-    "atlasDimensions": [
+    "privacyGlassBatches": 1,
+    "clearGlassBatches": 1,
+    "textureDimensions": [
+      [
+        512,
+        680
+      ],
+      [
+        512,
+        680
+      ],
+      [
+        512,
+        680
+      ],
+      [
+        1536,
+        900
+      ],
       [
         256,
         256
       ],
       [
-        512,
-        512
+        256,
+        256
       ],
       [
-        512,
-        512
+        256,
+        256
+      ],
+      [
+        256,
+        256
+      ],
+      [
+        256,
+        256
       ]
-    ]
+    ],
+    "decodedTextureBytes": 11018240
   }
 }

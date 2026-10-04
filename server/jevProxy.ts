@@ -6,6 +6,8 @@ import { detectBackend, judgePerformance, judgeReaction, type JevBackend, type J
 import { writeSpeech } from './deepseek.ts';
 import { appendChat, loadChat, recentForModel, resetChat, validSession } from './chatStore.ts';
 import { personaOf, personaPrompt } from './personas.ts';
+import { scenePrompt } from './scene.ts';
+import type { SceneContext } from '../src/jev/scene.ts';
 
 /**
  * Jev 决策层的服务端代理。
@@ -121,6 +123,8 @@ interface DecideRequest {
   history?: Array<{ role: 'user' | 'character'; text: string }>;
   /** 前端的规则模板台词。只在输入层没配 DeepSeek 时用得上。 */
   draft?: string;
+  /** 此刻在哪、几点了（输入层用，见 server/scene.ts） */
+  scene?: SceneContext;
 }
 
 async function viaPassthrough(cfg: JevConfig, payload: DecideRequest): Promise<ActScript> {
@@ -147,9 +151,10 @@ async function viaPassthrough(cfg: JevConfig, payload: DecideRequest): Promise<A
  * 拆出来是为了让前端拿到台词就能开口 —— 判断层要等 Jev，而 Jev 判断的对象
  * 正是这句话，两者天然串行，没法并发。既然不能并发，就让说话别等判断。
  */
-async function runSpeech(cfg: JevConfig, payload: DecideRequest): Promise<string> {
+async function runSpeech(cfg: JevConfig, payload: DecideRequest): Promise<{ speech: string; scene: string | null }> {
   const session = validSession(payload.session) ? payload.session : null;
   const history = session ? recentForModel(loadChat(session)) : (payload.history ?? []).slice(-8);
+  const scene = scenePrompt(session, payload.scene);
   const speech =
     cfg.speechSource === 'deepseek' && cfg.deepseekKey
       ? await writeSpeech(
@@ -161,7 +166,7 @@ async function runSpeech(cfg: JevConfig, payload: DecideRequest): Promise<string
             personaPath: cfg.personaPath,
             character: personaPrompt(personaOf(session)),
           },
-          { input: payload.input, history },
+          { input: payload.input, history, scene },
         )
       : (payload.draft || '').trim();
 
@@ -175,7 +180,7 @@ async function runSpeech(cfg: JevConfig, payload: DecideRequest): Promise<string
       { role: 'character', text: speech },
     ]);
   }
-  return speech;
+  return { speech, scene };
 }
 
 /**
@@ -237,10 +242,10 @@ async function runReaction(
 async function viaJev(
   cfg: JevConfig,
   payload: DecideRequest,
-): Promise<ActScript & { _jev?: JevMeta; _jevError?: string; _speechSource?: string }> {
-  const speech = await runSpeech(cfg, payload);
+): Promise<ActScript & { _jev?: JevMeta; _jevError?: string; _speechSource?: string; _scene?: string | null }> {
+  const { speech, scene } = await runSpeech(cfg, payload);
   const judged = await runJudge(cfg, { ...payload, speech });
-  return { ...judged, _speechSource: cfg.speechSource };
+  return { ...judged, _speechSource: cfg.speechSource, _scene: scene };
 }
 
 export function jevProxy(): Plugin {
@@ -276,8 +281,9 @@ export function jevProxy(): Plugin {
           try {
             const payload = await readJson(req);
             if (!payload?.input) return json(res, 400, { error: '缺少 input 字段' });
-            const speech = await runSpeech(cfg, payload);
-            json(res, 200, { speech, source: cfg.speechSource });
+            const { speech, scene } = await runSpeech(cfg, payload);
+            // scene：这一轮给输入层的场景描述，调试面板显示
+            json(res, 200, { speech, source: cfg.speechSource, scene });
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             server_log(msg);

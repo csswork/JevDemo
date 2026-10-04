@@ -14,6 +14,7 @@ import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
 import { DEFAULT_BACKDROP, DEFAULT_MODEL, MODELS, VISIBLE_MODELS, modelUrl, probeModels } from './models';
 import { appendChat, openChat, resetChat, type ChatSession } from './chat';
 import type { BackdropId, CameraView } from './vrm/stage';
+import type { SceneContext } from './jev/scene';
 import { presetHours, TIME_MODES } from './vrm/timeOfDay';
 import { Picker, type PickerItem } from './ui/Picker';
 import { TimeSlider } from './ui/TimeSlider';
@@ -275,6 +276,8 @@ export default function App() {
   const [jev, setJev] = useState<JevStatus>({ configured: false, mode: 'unconfigured' });
   const [jevMeta, setJevMeta] = useState<JevMeta | null>(null);
   const [jevError, setJevError] = useState<string | null>(null);
+  // 上一轮服务端告诉输入层的场景（调试面板看"她知道自己在哪、几点了"）
+  const [sceneNote, setSceneNote] = useState<string | null>(null);
   // 测试预览（仅 dev）
   const [previewing, setPreviewing] = useState<string | null>(null);
   // 模型
@@ -721,6 +724,26 @@ export default function App() {
     setPreviewing(null);
   };
 
+  /**
+   * 此刻的场景，跟着这一轮对话发给输入层：她就知道自己在哪、几点了。
+   * 时间只有有昼夜的场景（街景）才带，取的是场景里实际的时间（过渡中就是此刻过渡到的那一刻）
+   */
+  const sceneNow = (): SceneContext => {
+    const t = runtimeRef.current?.stage?.time;
+    if (backdrop !== 'street' || !t) return { id: backdrop };
+    const live = timeMode === 'now';
+    const d = new Date();
+    return {
+      id: backdrop,
+      time: {
+        hours: t.hours,
+        sunElev: t.sunElev,
+        live,
+        date: live ? { month: d.getMonth() + 1, day: d.getDate(), weekday: d.getDay() } : undefined,
+      },
+    };
+  };
+
   const send = useCallback(async () => {
     const text = input.trim();
     const rt = runtimeRef.current;
@@ -737,7 +760,7 @@ export default function App() {
     // 背景音和语音共用同一个 AudioContext，所以不开语音时也要解锁
     if (useVoice || ambient) rt.unlockAudio();
     const history = turns.slice(-6).map(({ role, text }) => ({ role, text }));
-    const ctx = { history, session };
+    const ctx = { history, session, scene: sceneNow() };
     // 台词不是服务端写的（规则模板、passthrough）时，由前端把这一轮记进聊天记录
     const record = (reply: string) => {
       if (!chatError) void appendChat(session, [{ role: 'user', text }, { role: 'character', text: reply }]).catch(() => {});
@@ -813,6 +836,7 @@ export default function App() {
         : Promise.resolve();
       try {
         const speech = await decider.speak(text, ctx);
+        setSceneNote(decider.lastScene);
         // 整句判断立刻发出去，不等语音 —— 语音后面几段要等它给语气
         const judgeP = decider.judge(text, ctx, speech);
         if (useVoice) {
@@ -858,6 +882,7 @@ export default function App() {
       setLastAct(act);
       setJevMeta(decider instanceof HttpDecider ? decider.lastMeta : null);
       setJevError(decider instanceof HttpDecider ? decider.lastError : null);
+      if (decider instanceof HttpDecider) setSceneNote(decider.lastScene);
       const compiled = rt.play(act);
       setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
       // Jev 模式下这条路的台词也是服务端写的（已经记了），其余情况前端记
@@ -871,7 +896,8 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [input, busy, turns, jev.progressive, jev.reaction, jev.mode, useVoice, ambient, session, chatError, modelLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sceneNow 只读 backdrop / timeMode，已经在依赖里
+  }, [input, busy, turns, jev.progressive, jev.reaction, jev.mode, useVoice, ambient, session, chatError, modelLoading, backdrop, timeMode]);
 
 
 
@@ -1215,6 +1241,16 @@ export default function App() {
                   <Track label="姿态" value={live.posture} />
                   <Track label="动作" value={live.motion ? motionLabel(live.motion as MotionId) : '—'} active={!!live.motion} />
                 </div>
+              </details>
+            )}
+
+            {sceneNote && (
+              <details className="section">
+                <summary>
+                  她感知到的场景 <span className="count">上一轮</span>
+                </summary>
+                <div className="hint">每一轮跟着对话发给输入层（server/scene.ts）。换背景、拖时间之后，下一句就按新的来。</div>
+                <pre className="schema">{sceneNote}</pre>
               </details>
             )}
 

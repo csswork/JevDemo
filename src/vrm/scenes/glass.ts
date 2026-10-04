@@ -489,3 +489,31 @@ export function clearGlassMaterial(keep: Keep) {
   mat.customProgramCacheKey = () => 'street-clear-glass';
   return mat;
 }
+
+/** Diffusing privacy glazing: preserves soft daylight and rough reflections,
+ * but has no transparent blend path through which exterior geometry can show.
+ * The height gradient represents scattered sky/land light, not a backdrop image.
+ */
+export function frostedGlassMaterial(keep: Keep) {
+  const mat = keep(new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.62,
+    metalness: 0,
+    envMapIntensity: 0.55,
+    side: THREE.DoubleSide,
+  }));
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = `varying vec3 vFrostWorld;\n${shader.vertexShader}`
+      .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+        vFrostWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`);
+    shader.fragmentShader = `varying vec3 vFrostWorld;\n${shader.fragmentShader}`
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float sky = smoothstep( 0.45, 3.3, vFrostWorld.y );
+        vec3 scattered = mix( vec3( 0.53, 0.62, 0.52 ), vec3( 0.68, 0.82, 0.87 ), sky );
+        diffuseColor.rgb *= scattered;`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance += scattered * 0.24;`);
+  };
+  mat.customProgramCacheKey = () => 'cafe-frosted-privacy-glass-v1';
+  return mat;
+}

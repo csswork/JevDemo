@@ -73,6 +73,8 @@ export async function writeSpeech(
     input: string;
     /** 调用方已经按长度截好（见 chatStore.recentForModel），这里原样全带上 */
     history?: Array<{ role: 'user' | 'character'; text: string }>;
+    /** 此刻在哪、几点了（server/scene.ts 写好的一段）。没有就不加 */
+    scene?: string | null;
   },
 ): Promise<string> {
   const url = `${(opts.baseUrl || DEFAULT_BASE).replace(/\/+$/, '')}/chat/completions`;
@@ -80,6 +82,8 @@ export async function writeSpeech(
   const persona = [opts.character, readPersona(opts.personaPath)].filter(Boolean).join('\n\n');
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: persona },
+    // 场景每一轮都按当前的写（换了背景、拖了时间，这一句就知道）
+    ...(params.scene ? [{ role: 'system' as const, content: params.scene }] : []),
     {
       role: 'system',
       // 说清楚只要台词本身：加了旁白或动作描述，后面 Jev 拿到的 state 就脏了

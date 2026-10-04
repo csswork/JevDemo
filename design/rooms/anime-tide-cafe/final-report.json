@@ -43,12 +43,12 @@
     "environment": {}
   },
   "runtimeChecks": {
-    "vlow": false,
-    "textureTiers": false,
+    "vlow": true,
+    "textureTiers": true,
     "lightmap": false,
-    "lightingManifest": false,
-    "performance": false,
-    "browserCapture": "",
+    "lightingManifest": true,
+    "performance": true,
+    "browserCapture": "runtime/frosted-window-preview.png",
     "errors": []
   },
   "postmortem": {
@@ -59,12 +59,14 @@
       "修复拱形 Boolean 切割体法线，确保真实通道。",
       "让薄玻璃透过阴影射线，保留窗框日光阴影。",
       "将简单咖啡机换为精细单独建模的双头机器。",
-      "在真实舞台机位中将咖啡机和磨豆机移向右侧，保留人物头部后方留白。"
+      "在真实舞台机位中将咖啡机和磨豆机移向右侧，保留人物头部后方留白。",
+      "Replace entire-room baked atlas with reusable per-object PBR textures to prevent dirty seams and lost source vertex colors.",
+      "Separate exterior privacy glazing from clear display-case glass.",
+      "Replace random exterior leaf cards and scattered boxes with coherent tree crowns and supported, aligned houses."
     ],
     "remainingRisks": [
-      "Function/Form human review pending",
-      "Runtime camera fit, collision, texture tiers and draw-call budgets unverified",
-      "Skill validator mandates positive Meshy budget but project remains local modelling with zero spend"
+      "Runtime revision is available for local review; no deployment requested.",
+      "Full generic skill validator remains incompatible with zero-spend local Blender production."
     ]
   },
   "proposedLessons": [
@@ -80,14 +82,31 @@
     "reference": "reference/user-cafe.png",
     "source": "blender/tide-cafe.blend",
     "meshEvidence": "blender/geometry-audit.json",
-    "runtimeIntegrated": false,
-    "evaluatedVisibleMeshObjects": 3600,
-    "evaluatedTriangles": 212236,
+    "runtimeIntegrated": true,
+    "evaluatedVisibleMeshObjects": 2780,
+    "evaluatedTriangles": 187912,
     "allApertureCentersClear": true,
     "allStructuralMeshesManifold": true,
-    "sourceSha256": "e748af5a2d6601b25bb2f46cfb6aded11856eec8a87ee9330c4b19295a33a482",
+    "sourceSha256": "9664a77892679444e0c308c5e236b585fada75e34c6d0e9799b1a5230fd519db",
     "referenceSha256": "9eda55ad70a80a7b7aeedfcb130ced648ed18b793002f03759a77757feb8dd2b",
     "fourViews": "renders/blender-review-sheet.jpg",
     "reviewRenderCount": 12
+  },
+  "runtimeMaterialRevision": {
+    "method": "reusable PBR material textures, per-object UV projection, preserved artwork and vertex colors; runtime lights",
+    "windows": "opaque diffuse privacy glass: scattered daylight, rough reflections, no transmitted exterior geometry",
+    "displayGlass": "reuses street clearGlassMaterial",
+    "exterior": "3 coherent tree crowns, 6 aligned pitched-roof houses with windows, doors and supporting shore",
+    "evidence": [
+      "runtime/glb-validation.json",
+      "runtime/frosted-window-preview.png",
+      "runtime/exterior-preview.png"
+    ],
+    "validation": [
+      "npm run build passed",
+      "npm run lint passed",
+      "browser shader/load error logs empty",
+      "actual character scene checked"
+    ]
   }
 }

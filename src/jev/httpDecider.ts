@@ -57,6 +57,8 @@ export class HttpDecider implements ActDecider {
   lastMeta: JevMeta | null = null;
   /** 判断层降级时的原因（台词照常，只是表演退回基线） */
   lastError: string | null = null;
+  /** 最近一轮服务端给输入层的场景描述（调试面板看"她知道自己在哪"） */
+  lastScene: string | null = null;
 
   constructor(opts: { endpoint?: string; draftSource?: ActDecider | null } = {}) {
     this.endpoint = opts.endpoint ?? JEV_PROXY;
@@ -71,16 +73,17 @@ export class HttpDecider implements ActDecider {
     const res = await fetch(this.endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, draft }),
+      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, scene: ctx.scene, draft }),
     });
 
     if (!res.ok) {
       throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
     }
 
-    const json = (await res.json()) as { _jev?: JevMeta; _jevError?: string };
+    const json = (await res.json()) as { _jev?: JevMeta; _jevError?: string; _scene?: string | null };
     this.lastMeta = json._jev ?? null;
     this.lastError = json._jevError ?? null;
+    this.lastScene = json._scene ?? null;
     return sanitizeAct(json, '（Jev 没有返回台词）');
   }
 
@@ -98,10 +101,12 @@ export class HttpDecider implements ActDecider {
     const res = await fetch(JEV_SPEECH_API, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, draft }),
+      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, scene: ctx.scene, draft }),
     });
     if (!res.ok) throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
-    return ((await res.json()) as { speech: string }).speech;
+    const json = (await res.json()) as { speech: string; scene?: string | null };
+    this.lastScene = json.scene ?? null;
+    return json.speech;
   }
 
   /**

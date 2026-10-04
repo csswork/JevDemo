@@ -82,7 +82,11 @@ groups={}
 for o in separated:
  if not len(o.data.polygons):continue
  index=o.data.polygons[0].material_index;m=o.data.materials[index] if o.data.materials else None
- key=m.name if m else 'unpainted';groups.setdefault(key,[]).append(o)
+ key=m.name if m else 'unpainted'
+ source_name=o.get('sourceName','')
+ if m and ('glass' in m.name.lower() or 'glazing' in m.name.lower()) and (source_name.startswith(('entry glass','window-')) or source_name=='nook rear glass'):
+  key='window privacy glazing'
+ groups.setdefault(key,[]).append(o)
  # Material separation can retain unused slots; use the face's actual material.
  if m:
   o.data.materials.clear();o.data.materials.append(m)
@@ -91,7 +95,7 @@ batches=[]
 for name,objects in groups.items():
  bpy.ops.object.select_all(action='DESELECT')
  for o in objects:o.select_set(True)
- bpy.context.view_layer.objects.active=objects[0];bpy.ops.object.join();o=bpy.context.object;o.name='surface '+name;o['runtimeKind']='glass' if any(s in name.lower() for s in ['glass','glazing']) else 'pbr';batches.append(o)
+ bpy.context.view_layer.objects.active=objects[0];bpy.ops.object.join();o=bpy.context.object;o.name='surface '+name;o['runtimeKind']='window-glass' if name=='window privacy glazing' else 'glass' if any(s in name.lower() for s in ['glass','glazing']) else 'pbr';batches.append(o)
 cm=bpy.data.materials.new('collision material');cm.diffuse_color=(1,0,0,1)
 for o in colliders:o.data.materials.clear();o.data.materials.append(cm)
 for o in sc.objects:o.select_set(o in batches+colliders)
@@ -104,7 +108,7 @@ high_triangles=sum(len(o.data.loop_triangles) for o in batches)
 export(OUT/'room.glb')
 for image in images.values():image.scale(256,256)
 for o in batches:
- if o.get('runtimeKind')=='glass':continue
+ if o.get('runtimeKind') in {'glass','window-glass'}:continue
  modifier=o.modifiers.new('Low tier geometric reduction','DECIMATE');modifier.ratio=.45
  bpy.context.view_layer.objects.active=o;bpy.ops.object.modifier_apply(modifier=modifier.name)
 export(OUT/'room-low.glb')
