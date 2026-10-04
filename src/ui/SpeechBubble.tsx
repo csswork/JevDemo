@@ -4,10 +4,14 @@ import type { Runtime } from '../runtime';
 /**
  * 漫画式的对话气泡：挂在角色头边上，跟着镜头转、跟着人动（每帧把头的位置投到屏幕上）。
  *
- *  - 说到哪个字亮到哪个字（没说到的字先淡淡地占着位置，气泡大小从一开始就定了，不会边说边变形）
+ *  - 说到哪个字，哪个字"蹦"出来（没说到的字先淡淡地占着位置，气泡大小从一开始就定了，不会边说边变形）；
+ *    感叹号、问号蹦得更大一点。字少的句子字大（"诶？！"这种），字多的字小
+ *  - 描边是手画的、微微在"抖"（漫画 / 动画里的 boiling line：每 0.14 秒换一次噪声），说话时一直轻轻浮着
+ *  - 名牌像一张歪着贴的小贴纸，说话的时候旁边有三根跳动的声波
  *  - 气泡的样子跟着脸上的情绪变：开心会轻轻跳、有小音符；惊讶抖一下、冒出惊叹线；生气是红边加青筋；
  *    难过是冷色、往下沉一点；放松是淡绿、慢慢晃
- *  - 等台词的时候是一朵"思考云"（三个点在冒）
+ *  - 等台词的时候是一朵真的"云"（三个点在冒），从头边冒出两个小泡泡连过去
+ *  - 出现是弹性的（压扁 → 拉长 → 回弹），消失是缩回嘴边
  *  - 说完停 3 秒淡出
  *  - 放在哪：脸的右边 / 左边 / 头顶上，哪个不挡面板和输入框就放哪（右边优先，换位置有"惯性"，免得来回跳）；
  *    贴着画面边被推回来之后，尾巴重新瞄准脸
@@ -27,6 +31,27 @@ const TAIL = 34;
 const MARGIN = 12;
 /** 气泡最宽多少（窗口窄时再收） */
 const MAX_W = 330;
+/** 描边"抖"的节奏（秒）：手绘动画一拍三 ≈ 8 帧每秒 */
+const BOIL = 0.14;
+/** 蹦得更大的字 */
+const BANG = /[！？!?…]/;
+
+/** 一句台词拆成一个个字的 span（按 UTF-16 下标记好位置，和 speechProgress 的字数对得上） */
+function fillChars(box: HTMLElement, text: string) {
+  box.textContent = '';
+  let i = 0;
+  for (const c of text) {
+    const span = document.createElement('span');
+    span.className = BANG.test(c) ? 'ch bang' : 'ch';
+    span.textContent = c;
+    span.dataset.i = String(i);
+    box.appendChild(span);
+    i += c.length;
+  }
+}
+
+/** 字数 → 字号档：短句大字，长句小字 */
+const sizeOf = (n: number) => (n <= 8 ? 'xl' : n <= 18 ? 'l' : n <= 60 ? 'm' : 's');
 
 export function SpeechBubble({
   runtime,
@@ -43,8 +68,8 @@ export function SpeechBubble({
 }) {
   const root = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  const spoken = useRef<HTMLSpanElement>(null);
-  const rest = useRef<HTMLSpanElement>(null);
+  const textBox = useRef<HTMLDivElement>(null);
+  const turb = useRef<SVGFETurbulenceElement>(null);
   const textRef = useRef(text);
   const thinkingRef = useRef(thinking);
   useEffect(() => {
@@ -56,8 +81,8 @@ export function SpeechBubble({
   useEffect(() => {
     const el = root.current;
     if (!el) return;
-    if (spoken.current) spoken.current.textContent = '';
-    if (rest.current) rest.current.textContent = text;
+    if (textBox.current) fillChars(textBox.current, text);
+    el.dataset.size = sizeOf(text.length);
     el.classList.remove('pop');
     if (text || thinking) {
       void el.offsetWidth;
@@ -76,7 +101,9 @@ export function SpeechBubble({
     let moodTimer = 0;
     let doneAt = -1;
     let shown = '';
-    let lastN = -1;
+    let lastN = 0;
+    let boil = 0;
+    let seed = 1;
     let last = performance.now();
 
     const frame = () => {
@@ -106,22 +133,33 @@ export function SpeechBubble({
       if (el.dataset.mode !== mode) el.dataset.mode = mode;
       el.classList.toggle('show', visible);
 
-      // ---- 逐字点亮 ----
-      if (txt && prog) {
-        const n = Math.min(txt.length, Math.ceil(prog.chars));
-        if (txt !== shown || n !== lastN) {
+      // ---- 逐字蹦出来 ----
+      const box = textBox.current;
+      if (txt && prog && box) {
+        if (txt !== shown) {
           shown = txt;
+          lastN = 0;
+          box.scrollTop = 0;
+        }
+        const n = Math.min(txt.length, Math.ceil(prog.chars));
+        if (n > lastN) {
+          let latest: HTMLElement | null = null;
+          for (const ch of box.children as HTMLCollectionOf<HTMLElement>) {
+            const i = Number(ch.dataset.i);
+            if (i >= lastN && i < n) {
+              ch.classList.add('on');
+              latest = ch;
+            }
+          }
           lastN = n;
-          spoken.current!.textContent = txt.slice(0, n);
-          rest.current!.textContent = txt.slice(n);
           // 长台词：让正在说的那一行留在气泡里
-          const s = spoken.current!;
-          const line = s.offsetTop + s.offsetHeight;
-          const box = b.querySelector<HTMLElement>('.bubble-text');
-          if (box && line > box.clientHeight) box.scrollTop = line - box.clientHeight + 6;
-          else if (box && n === 0) box.scrollTop = 0;
+          if (latest) {
+            const line = latest.offsetTop + latest.offsetHeight;
+            if (line > box.clientHeight + box.scrollTop) box.scrollTo({ top: line - box.clientHeight + 4, behavior: 'smooth' });
+          }
         }
       }
+      el.classList.toggle('speaking', !!prog?.playing);
 
       // ---- 情绪 → 气泡的样子（每 0.15 秒看一次脸） ----
       moodTimer -= dt;
@@ -142,6 +180,14 @@ export function SpeechBubble({
         // 下一句重新挑位置（不带上一句的"惯性"）
         fresh = true;
         return;
+      }
+
+      // ---- 描边在"抖"：换一下噪声的种子 ----
+      boil -= dt;
+      if (boil <= 0 && turb.current) {
+        boil = BOIL;
+        seed = (seed % 5) + 1;
+        turb.current.setAttribute('seed', String(seed));
       }
 
       // ---- 跟着头走 ----
@@ -230,7 +276,14 @@ export function SpeechBubble({
   }, [runtime]);
 
   return (
-    <div className="bubble" ref={root} data-mood="calm" data-side="r" data-mode="speech" aria-live="polite">
+    <div className="bubble" ref={root} data-mood="calm" data-side="r" data-mode="speech" data-size="m" aria-live="polite">
+      {/* 手绘描边用的滤镜：噪声把边缘推歪一点点 */}
+      <svg className="bubble-defs" aria-hidden>
+        <filter id="bubble-wobble" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence ref={turb} type="fractalNoise" baseFrequency="0.035" numOctaves={2} seed={1} />
+          <feDisplacementMap in="SourceGraphic" scale={3.2} />
+        </filter>
+      </svg>
       <div className="bubble-inner">
         <div className="bubble-mood">
           {/* 尾巴分两层：描边在身体下面，填充盖在身体的描边上 —— 接口处就没有线了，像手画的 */}
@@ -238,11 +291,17 @@ export function SpeechBubble({
             <path d="M24 0C22 20 13 35 0 46C20 41 37 27 48 0Z" />
           </svg>
           <div className="bubble-body" ref={body}>
-            {name && <span className="bubble-name">{name}</span>}
-            <div className="bubble-text">
-              <span className="spoken" ref={spoken} />
-              <span className="rest" ref={rest} />
-            </div>
+            {name && (
+              <span className="bubble-name">
+                {name}
+                <span className="bubble-wave" aria-hidden>
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </span>
+            )}
+            <div className="bubble-text" ref={textBox} />
             <div className="bubble-dots" aria-label="思考中">
               <i />
               <i />
@@ -251,6 +310,19 @@ export function SpeechBubble({
           </div>
           <svg className="bubble-tail over" viewBox="0 0 52 46" aria-hidden>
             <path d="M24 0C22 20 13 35 0 46C20 41 37 27 48 0Z" />
+          </svg>
+          {/* 思考云：几个圆叠起来，先画一层粗的描边、再盖一层白 —— 外轮廓就是云 */}
+          <svg className="bubble-cloud" viewBox="0 0 104 64" aria-hidden>
+            {[0, 1].map((layer) => (
+              <g key={layer} className={layer ? 'fill' : 'line'}>
+                <circle cx="26" cy="36" r="16" />
+                <circle cx="44" cy="23" r="18" />
+                <circle cx="65" cy="24" r="16" />
+                <circle cx="81" cy="37" r="14" />
+                <circle cx="58" cy="44" r="15" />
+                <circle cx="36" cy="46" r="12" />
+              </g>
+            ))}
           </svg>
           {/* 思考云的小泡泡 */}
           <span className="thought-puff p1" />
