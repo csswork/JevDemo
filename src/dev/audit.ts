@@ -633,7 +633,49 @@ export function installAudit(rt: Runtime) {
     return res.json();
   };
 
+  /**
+   * 角色头像：每个模型在透明背景上拍一张头部特写（PNG，带透明），存到 dev-out/avatar_<id>.png。
+   * 再拷到 public/avatars/<id>.png 给左上角的角色卡用（见 App 的 Avatar）。拍完刷新页面（界面上的模型、背景这时对不上了）
+   *   await __avatars()                   下拉框里的全部模型
+   *   await __avatars(['vivi'], 17)       只拍薇薇，视角 17°（越大框得越宽）
+   */
+  const avatars = async (ids?: string[], fov = 15, size = 192) => {
+    const { MODELS, VISIBLE_MODELS, modelUrl } = await import('../models');
+    const stage = rt.stage!;
+    const cvs = stage.renderer.domElement;
+    const list = ids ? MODELS.filter((m) => ids.includes(m.id)) : VISIBLE_MODELS;
+    rt.setBackdrop('none');
+    const out: string[] = [];
+    for (const m of list) {
+      if (!(await rt.setModel(modelUrl(m)))) continue;
+      const exr = ch().expression;
+      const ex = exr as unknown as { nextBlink: number };
+      exr.microEnabled = false;
+      rt.stopMotion();
+      exr.reset();
+      // 头像带一点点笑意，比面无表情亲切
+      exr.setBlend({ happy: 0.35 }, 0.2);
+      for (let t = 0; t < 1.5; t += 1 / 60) {
+        ex.nextBlink = 1e9;
+        rt.step(1 / 60);
+      }
+      const p = node('head').getWorldPosition(new THREE.Vector3());
+      // 对准脸的中间偏上一点（头骨在下巴后面），留出头发
+      closeup([p.x, p.y + 0.085, p.z + 0.06], fov);
+      const sheet = document.createElement('canvas');
+      sheet.width = sheet.height = size;
+      const s = cvs.height;
+      sheet.getContext('2d')!.drawImage(cvs, (cvs.width - s) / 2, 0, s, s, 0, 0, size, size);
+      closeup(null);
+      const blob = await new Promise<Blob>((res) => sheet.toBlob((b) => res(b!), 'image/png'));
+      await fetch(`/__dev/save?name=avatar_${m.id}.png`, { method: 'POST', body: blob });
+      out.push(m.id);
+    }
+    return out;
+  };
+
   const w = window as unknown as Record<string, unknown>;
+  w.__avatars = avatars;
   w.__times = times;
   w.__views = views;
   w.__shots = shots;

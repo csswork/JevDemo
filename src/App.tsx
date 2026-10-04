@@ -881,7 +881,7 @@ export default function App() {
     desc: m.desc,
     disabled: !modelAvail[m.id],
     note: modelAvail[m.id] ? undefined : '未下载',
-    lead: <Avatar id={m.id} name={m.name} size={30} />,
+    lead: <Avatar id={m.id} name={m.name} size={36} />,
   }));
   const voiceItems: PickerItem[] = groups.flatMap((g) =>
     voices
@@ -1451,21 +1451,21 @@ function Switch({
   );
 }
 
-/** 角色的头像：没有立绘，用名字的第一个字 + 按 id 定的渐变色 */
+/**
+ * 角色的头像：每个模型提前拍好的头部特写（public/avatars/<id>.png，透明背景；用 dev 工具 __avatars() 重拍）。
+ * 没有图（地址栏 ?model= 指定的模型等）就退回名字的第一个字
+ */
 function Avatar({ id, name, size }: { id: string; name: string; size: number }) {
-  let h = 0;
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
+  // 记的是"哪个 id 没有图"：换了角色自动重新试
+  const [missingId, setMissingId] = useState<string | null>(null);
+  const missing = missingId === id;
   return (
-    <span
-      className="avatar"
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.44,
-        background: `linear-gradient(135deg, hsl(${h} 70% 68%), hsl(${(h + 40) % 360} 65% 52%))`,
-      }}
-    >
-      {name.slice(0, 1)}
+    <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.44 }}>
+      {missing ? (
+        name.slice(0, 1)
+      ) : (
+        <img src={`${import.meta.env.BASE_URL}avatars/${id}.png`} alt="" draggable={false} onError={() => setMissingId(id)} />
+      )}
     </span>
   );
 }
