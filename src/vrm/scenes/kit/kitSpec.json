@@ -1,0 +1,247 @@
+{
+  "_doc": "房子构件的开口规格（Blender 的 building_kit.py 和 street.ts 共用）。每种格子一个构件，按标准开间建模：宽 cellW、一楼高 groundH、楼上高 upperH；代码按实际开间宽度缩放。hole = 墙上开的洞 [u0, v0, u1, v1]（开间宽、层高的比例，v 从下往上）；room = 玻璃后面室内映射的房间（none = 没有能看进去的玻璃）；glow = 夜里发光部分（毛玻璃门、门灯、灯笼）亮的钟点 [开, 关)",
+  "cellW": 2.6,
+  "groundH": 3.2,
+  "upperH": 2.9,
+  "modules": {
+    "CAFE_WIN": {
+      "floor": "ground",
+      "hole": [
+        0.052,
+        0.236,
+        0.948,
+        0.836
+      ],
+      "room": "cafe"
+    },
+    "CAFE_DOOR": {
+      "floor": "ground",
+      "hole": [
+        0.052,
+        0.1,
+        0.948,
+        0.836
+      ],
+      "room": "cafe"
+    },
+    "SHOP_WIN": {
+      "floor": "ground",
+      "hole": [
+        0.048,
+        0.244,
+        0.952,
+        0.836
+      ],
+      "room": "pottery"
+    },
+    "SOUVENIR": {
+      "floor": "ground",
+      "hole": [
+        0.044,
+        0.196,
+        0.956,
+        0.836
+      ],
+      "room": "souvenir"
+    },
+    "GLASS_SHOP": {
+      "floor": "ground",
+      "hole": [
+        0.036,
+        0.124,
+        0.964,
+        0.844
+      ],
+      "room": "clothes"
+    },
+    "FLOWER": {
+      "floor": "ground",
+      "hole": [
+        0.044,
+        0.132,
+        0.956,
+        0.836
+      ],
+      "room": "flower"
+    },
+    "NOREN": {
+      "floor": "ground",
+      "hole": [
+        0.06,
+        0.1,
+        0.94,
+        0.84
+      ],
+      "room": "none",
+      "glow": [
+        11,
+        22
+      ]
+    },
+    "LATTICE": {
+      "floor": "ground",
+      "hole": [
+        0.05,
+        0.1,
+        0.95,
+        0.84
+      ],
+      "room": "none",
+      "glow": [
+        17,
+        23
+      ]
+    },
+    "SHUTTER": {
+      "floor": "ground",
+      "hole": [
+        0.05,
+        0.0,
+        0.95,
+        0.8
+      ],
+      "room": "none"
+    },
+    "GENKAN": {
+      "floor": "ground",
+      "hole": [
+        0.15,
+        0.08,
+        0.67,
+        0.72
+      ],
+      "room": "none",
+      "glow": [
+        17,
+        23.5
+      ]
+    },
+    "IZAKAYA": {
+      "floor": "ground",
+      "hole": [
+        0.06,
+        0.1,
+        0.94,
+        0.84
+      ],
+      "room": "none",
+      "glow": [
+        17,
+        1
+      ]
+    },
+    "WALL_G": {
+      "floor": "ground",
+      "hole": [
+        0.56,
+        0.52,
+        0.84,
+        0.74
+      ],
+      "room": "none",
+      "glow": [
+        18,
+        23
+      ]
+    },
+    "WIN_WOOD": {
+      "floor": "upper",
+      "hole": [
+        0.252,
+        0.332,
+        0.748,
+        0.748
+      ],
+      "room": "home"
+    },
+    "WIN_ALU": {
+      "floor": "upper",
+      "hole": [
+        0.188,
+        0.348,
+        0.748,
+        0.724
+      ],
+      "room": "home"
+    },
+    "WIN_LATTICE": {
+      "floor": "upper",
+      "hole": [
+        0.188,
+        0.312,
+        0.788,
+        0.792
+      ],
+      "room": "home"
+    },
+    "WALL_U": {
+      "floor": "upper",
+      "hole": null,
+      "room": "none"
+    },
+    "BALC_DOOR": {
+      "floor": "upper",
+      "hole": [
+        0.116,
+        0.036,
+        0.884,
+        0.852
+      ],
+      "room": "home"
+    },
+    "WIN_SMALL": {
+      "floor": "upper",
+      "hole": [
+        0.368,
+        0.44,
+        0.608,
+        0.672
+      ],
+      "room": "none",
+      "glow": [
+        19,
+        23
+      ]
+    },
+    "WIN_TALL": {
+      "floor": "upper",
+      "hole": [
+        0.28,
+        0.056,
+        0.72,
+        0.872
+      ],
+      "room": "home"
+    },
+    "WALL_AC": {
+      "floor": "upper",
+      "hole": [
+        0.148,
+        0.532,
+        0.408,
+        0.732
+      ],
+      "room": "home"
+    },
+    "SIDE": {
+      "floor": "upper",
+      "hole": null,
+      "room": "none"
+    },
+    "SIDE_WIN": {
+      "floor": "upper",
+      "hole": [
+        0.368,
+        0.412,
+        0.608,
+        0.692
+      ],
+      "room": "home"
+    },
+    "SIDE_PIPE": {
+      "floor": "upper",
+      "hole": null,
+      "room": "none"
+    }
+  }
+}

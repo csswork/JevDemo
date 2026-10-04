@@ -1,0 +1,204 @@
+{
+  "_doc": "她身边那 8 栋（Blender 的 hero_buildings.py 整栋精建，street.ts 照着摆）：s = 门脸中点在路上的位置（离她脚下的弧长，米）；格子、屋顶、遮阳篷……和 BuildingSpec 一样，颜色写成 #rrggbb",
+  "buildings": [
+    {
+      "id": "cafe",
+      "s": 3.2,
+      "w": 13,
+      "depth": 10,
+      "ground": [
+        "CAFE_WIN",
+        "CAFE_WIN",
+        "CAFE_DOOR",
+        "CAFE_WIN",
+        "CAFE_WIN"
+      ],
+      "upper": [
+        [
+          "WIN_TALL",
+          "BALC_DOOR",
+          "BALC_DOOR",
+          "BALC_DOOR",
+          "WIN_TALL"
+        ]
+      ],
+      "tint": "#fff3e0",
+      "roof": "hira",
+      "roofTint": "#5f6672",
+      "balcony": [
+        1,
+        4
+      ],
+      "awning": "#2c3350",
+      "banner": [
+        0,
+        1
+      ],
+      "solid": true,
+      "interior": true
+    },
+    {
+      "id": "pottery",
+      "s": 13.8,
+      "w": 7,
+      "depth": 9,
+      "ground": [
+        "SHOP_WIN",
+        "NOREN",
+        "SHOP_WIN"
+      ],
+      "upper": [
+        [
+          "WIN_LATTICE",
+          "WIN_WOOD",
+          "WIN_LATTICE"
+        ]
+      ],
+      "tint": "#f7efe2",
+      "roof": "tsuma",
+      "roofTint": "#8ea0bc",
+      "pitch": 30,
+      "hisashi": true,
+      "sign": 1,
+      "banner": [
+        1,
+        1
+      ],
+      "solid": true
+    },
+    {
+      "id": "house",
+      "s": 20.9,
+      "w": 6.2,
+      "depth": 8,
+      "ground": [
+        "GENKAN",
+        "WALL_G"
+      ],
+      "upper": [
+        [
+          "WIN_ALU",
+          "WALL_AC"
+        ]
+      ],
+      "tint": "#e9eef2",
+      "roof": "hira",
+      "roofTint": "#7d8aa0",
+      "solid": true
+    },
+    {
+      "id": "souvenir",
+      "s": 29,
+      "w": 8,
+      "depth": 9,
+      "ground": [
+        "SOUVENIR",
+        "CAFE_DOOR",
+        "SOUVENIR"
+      ],
+      "upper": [
+        [
+          "WIN_WOOD",
+          "WIN_ALU",
+          "WIN_WOOD"
+        ]
+      ],
+      "tint": "#fbf2e2",
+      "roof": "yose",
+      "roofTint": "#8ea0bc",
+      "awning": "#3d6fb4",
+      "sign": 2
+    },
+    {
+      "id": "tower",
+      "s": 36.6,
+      "w": 6.2,
+      "depth": 9,
+      "ground": [
+        "SHUTTER",
+        "GENKAN"
+      ],
+      "upper": [
+        [
+          "WIN_ALU",
+          "WIN_ALU"
+        ],
+        [
+          "WIN_SMALL",
+          "WALL_AC"
+        ]
+      ],
+      "tint": "#eeeeec",
+      "roof": "flat",
+      "roofTint": "#7d8aa0"
+    },
+    {
+      "id": "izakaya",
+      "s": 43.4,
+      "w": 6.4,
+      "depth": 9,
+      "ground": [
+        "IZAKAYA",
+        "IZAKAYA"
+      ],
+      "upper": [
+        [
+          "WIN_LATTICE",
+          "WIN_LATTICE"
+        ]
+      ],
+      "tint": "#f6e8d2",
+      "roof": "hira",
+      "roofTint": "#5f6672",
+      "hisashi": true,
+      "sign": 4,
+      "banner": [
+        6,
+        0
+      ]
+    },
+    {
+      "id": "flower",
+      "s": -7.4,
+      "w": 6.6,
+      "depth": 9,
+      "ground": [
+        "FLOWER",
+        "FLOWER"
+      ],
+      "upper": [
+        [
+          "WIN_WOOD",
+          "WIN_WOOD"
+        ]
+      ],
+      "tint": "#ffffff",
+      "roof": "hira",
+      "roofTint": "#8ea0bc",
+      "awning": "#4e8a5c",
+      "sign": 3,
+      "solid": true
+    },
+    {
+      "id": "lattice",
+      "s": -14.6,
+      "w": 6.8,
+      "depth": 8.5,
+      "ground": [
+        "LATTICE",
+        "GENKAN"
+      ],
+      "upper": [
+        [
+          "WIN_LATTICE",
+          "WIN_WOOD"
+        ]
+      ],
+      "tint": "#f6e8d2",
+      "roof": "yose",
+      "roofTint": "#7d8aa0",
+      "hisashi": true,
+      "solid": true
+    }
+  ]
+}

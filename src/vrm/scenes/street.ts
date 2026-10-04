@@ -21,7 +21,9 @@ import {
 } from './seaside';
 import { createPalette, createSkyMapping, dirOf, moonIllum, morningTint, samplePalette } from './streetTime';
 import { createLights, lampLit, type LightAnchor } from './streetLights';
-import { kitLight, kitMaterials, loadKit, type KitItem } from './streetKit';
+import { buildingGlowMaterial, kitLight, kitMaterials, loadKit, type KitItem } from './streetKit';
+import KIT from './kit/kitSpec.json';
+import HERO from './kit/heroSpecs.json';
 import type { TimeState } from '../timeOfDay';
 import { F, WINDOWS, bannerUV, cellUV, chalkboard, facadeAtlas, holeRects, signAtlas, signUV, type Cell } from './streetTextures';
 import { ROOMS, clearGlassMaterial, interiorGlassMaterial, roomAtlas, type GlassNight } from './glass';
@@ -169,6 +171,8 @@ interface BuildingSpec {
   solid?: boolean;
   /** 一楼是真的 3D 店内（透明玻璃）：她身边那家咖啡店。别的房子的窗都是室内映射（glass.ts） */
   interior?: boolean;
+  /** 她身边那 8 栋：整栋是 Blender 精建的（hero_buildings.py），building() 照常走一遍（随机数的用法不变）但不出几何体 */
+  hero?: string;
 }
 
 /**
@@ -177,6 +181,8 @@ interface BuildingSpec {
  * uv1：墙面的灰泥贴图用（立面图集用 uv）。按变换前的局部坐标算：u = 沿着这个面的水平方向（米），v = 高度（米），
  * 同一面墙上一格挨一格的接得上
  */
+const _gm = new THREE.Matrix4();
+const _nm = new THREE.Matrix3();
 class Mesher {
   pos: number[] = [];
   nrm: number[] = [];
@@ -185,14 +191,51 @@ class Mesher {
   col: number[] = [];
   idx: number[] = [];
   sway: number[] | null;
+  /** 每个顶点再带三个数（房子构件的灯：几时亮，见 streetKit.ts 的 buildingGlowMaterial） */
+  ext: number[] | null;
   private m = new THREE.Matrix4();
   private readonly a = new THREE.Vector3();
   private readonly b = new THREE.Vector3();
   private readonly t = new THREE.Vector3();
   private readonly w = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-  constructor({ sway = false, uv1 = false }: { sway?: boolean; uv1?: boolean } = {}) {
+  constructor({ sway = false, uv1 = false, ext = false }: { sway?: boolean; uv1?: boolean; ext?: boolean } = {}) {
     this.sway = sway ? [] : null;
     this.uv1 = uv1 ? [] : null;
+    this.ext = ext ? [] : null;
+  }
+  /**
+   * 把一份几何体（Blender 构件的一个零件）变换以后并进来：local = 零件 → 这个 Mesher 的局部坐标（再乘 setTransform 的变换）。
+   * 可以不等比缩放（开间宽窄不一）：法线按逆转置变换。顶点色乘 tint；ext = 每个顶点带的三个数
+   */
+  addGeometry(geo: THREE.BufferGeometry, local: THREE.Matrix4, tint?: THREE.Color, ext?: [number, number, number], plasterUV?: readonly number[]) {
+    const base = this.pos.length / 3;
+    const M = _gm.multiplyMatrices(this.m, local);
+    const N = _nm.getNormalMatrix(M);
+    const pos = geo.attributes.position;
+    const nrm = geo.attributes.normal;
+    const uv = geo.attributes.uv;
+    const col = geo.attributes.color;
+    const p = this.a;
+    const n = this.b;
+    for (let i = 0; i < pos.count; i++) {
+      p.fromBufferAttribute(pos, i).applyMatrix4(M);
+      this.pos.push(p.x, p.y, p.z);
+      n.fromBufferAttribute(nrm, i).applyMatrix3(N).normalize();
+      this.nrm.push(n.x, n.y, n.z);
+      // 灰泥（墙）：模型的 uv（按米）放进 uv1，uv 指着立面图集里素墙那一格（墙的材质按 uv1 铺灰泥、按 uv 盖图集）
+      if (plasterUV) this.uv.push((plasterUV[0] + plasterUV[2]) / 2, (plasterUV[1] + plasterUV[3]) / 2);
+      else this.uv.push(uv ? uv.getX(i) : 0, uv ? uv.getY(i) : 0);
+      const r = col ? col.getX(i) : 1;
+      const g = col ? col.getY(i) : 1;
+      const bl = col ? col.getZ(i) : 1;
+      this.col.push(r * (tint?.r ?? 1), g * (tint?.g ?? 1), bl * (tint?.b ?? 1));
+      if (this.uv1) this.uv1.push(plasterUV && uv ? uv.getX(i) : 0, plasterUV && uv ? uv.getY(i) : 0);
+      if (this.sway) this.sway.push(0, 0, 0, 0);
+      if (this.ext) this.ext.push(...(ext ?? [0, 0, 24]));
+    }
+    const idx = geo.index;
+    if (idx) for (let i = 0; i < idx.count; i++) this.idx.push(base + idx.getX(i));
+    else for (let i = 0; i < pos.count; i++) this.idx.push(base + i);
   }
   setTransform(m: THREE.Matrix4) {
     this.m.copy(m);
@@ -264,6 +307,7 @@ class Mesher {
     if (this.uv1) g.setAttribute('uv1', new THREE.Float32BufferAttribute(this.uv1, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     if (this.sway) g.setAttribute('aSway', new THREE.Float32BufferAttribute(this.sway, 4));
+    if (this.ext) g.setAttribute('aGlow', new THREE.Float32BufferAttribute(this.ext, 3));
     g.setIndex(this.idx);
     g.computeBoundingSphere();
     return g;
@@ -319,6 +363,35 @@ class GlassMesher {
     });
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
+  /**
+   * 构件里的玻璃（pane 槽）：frame = 开间 → 房子的局部坐标，cell = 零件 → 开间的局部坐标（x 沿墙、y 向上、墙面 z = 0）。
+   * 房间参数按开间的局部坐标算（room.left、floor 也是开间坐标），rect = 窗洞（窗帘按它铺）
+   */
+  addGeometry(geo: THREE.BufferGeometry, frame: THREE.Matrix4, cell: THREE.Matrix4, room: RoomParams, rect: [number, number, number, number]) {
+    const base = this.pos.length / 3;
+    const toBay = cell;
+    const M = _gm.multiplyMatrices(this.m, frame).multiply(cell);
+    const N = _nm.getNormalMatrix(M);
+    const pos = geo.attributes.position;
+    const nrm = geo.attributes.normal;
+    const q = new THREE.Vector3();
+    const p = new THREE.Vector3();
+    const [x0, y0, x1, y1] = rect;
+    for (let i = 0; i < pos.count; i++) {
+      q.fromBufferAttribute(pos, i).applyMatrix4(toBay);
+      p.fromBufferAttribute(pos, i).applyMatrix4(M);
+      this.pos.push(p.x, p.y, p.z);
+      this.n.fromBufferAttribute(nrm, i).applyMatrix3(N).normalize();
+      this.nrm.push(this.n.x, this.n.y, this.n.z);
+      this.roomPos.push(q.x - room.left, q.y - room.floor);
+      this.roomSize.push(...room.size);
+      this.roomInfo.push(...room.info);
+      this.winUv.push((q.x - x0) / Math.max(1e-3, x1 - x0), (q.y - y0) / Math.max(1e-3, y1 - y0));
+    }
+    const idx = geo.index;
+    if (idx) for (let i = 0; i < idx.count; i++) this.idx.push(base + idx.getX(i));
+    else for (let i = 0; i < pos.count; i++) this.idx.push(base + i);
+  }
   get empty() {
     return this.idx.length === 0;
   }
@@ -338,6 +411,41 @@ class GlassMesher {
 
 const WHITE = new THREE.Color(1, 1, 1);
 const col = (hex: number) => new THREE.Color(hex);
+/** 一楼墙根石台基的颜色 */
+const STONE = new THREE.Color(0xa59f95);
+const Y_UP = new THREE.Vector3(0, 1, 0);
+const X_POS = new THREE.Vector3(1, 0, 0);
+const X_NEG = new THREE.Vector3(-1, 0, 0);
+const Z_POS = new THREE.Vector3(0, 0, 1);
+const Z_NEG = new THREE.Vector3(0, 0, -1);
+
+/** 房子构件的规格（kit/kitSpec.json，Blender 的 building_kit.py 也读它） */
+interface KitModule {
+  floor: string;
+  hole: number[] | null;
+  room: string;
+  glow?: number[];
+}
+/** 格子编号 → 名字（构件按名字找） */
+const CELL_NAME = Object.fromEntries(Object.entries(F).map(([k, v]) => [v, k])) as Record<number, string>;
+/** 一格要拼的构件（模型到了再拼，见 bakeBuildings） */
+interface KitBay {
+  name: string;
+  lod: number;
+  /** 房子的变换、开间 → 房子、零件 → 开间（含按开间宽窄的缩放） */
+  M: THREE.Matrix4;
+  frame: THREE.Matrix4;
+  cell: THREE.Matrix4;
+  room: RoomParams | null;
+  rect: [number, number, number, number];
+  /** 她身边那家咖啡店的一楼：透明玻璃（后面是真的 3D 店内） */
+  clear: boolean;
+  glow: number[];
+  onAt: number;
+  lights: boolean;
+  /** 瓦的颜色（屋顶零件） */
+  tint?: THREE.Color;
+}
 
 export function createStreet(): Backdrop {
   const group = new THREE.Group();
@@ -463,6 +571,19 @@ export function createStreet(): Backdrop {
     if (at.length) kitPlace.push({ name, at, shadow });
   };
   const kitNight = { uLights: night.uLights, uGlowGain: { value: 2.2 }, uBoxGain: { value: 0.6 } };
+  /** 房子构件的拼装记录（building() 里记，模型到了 bakeBuildings 拼），和它们自己的随机数（不动布局用的 r()） */
+  const kitBays: KitBay[] = [];
+  const rk = rng(4242);
+  /** 没有现成房间的窗（侧墙的小窗、只有新构件的一层）：单独一间（开间的局部坐标），kind = null 是住家 */
+  const kitRoom = (w: number, ya: number, kind: string | null): RoomParams => {
+    const home = kind == null;
+    return {
+      left: -w / 2 + 0.1,
+      floor: ya + 0.05,
+      size: [Math.max(0.6, w - 0.2), home ? 2.6 : 3.0, home ? 3.2 : 4.5],
+      info: [ROOMS.indexOf((home ? (rk() < 0.55 ? 'home' : 'home2') : kind) as (typeof ROOMS)[number]), rk(), home ? (rk() < 0.2 ? 0.6 : 0.16 + rk() * 0.24) : 0.8, home && rk() < 0.75 ? 1 : 0],
+    };
+  };
   const clearGlassMat = clearGlassMaterial(keep);
   const roofMat = roofMaterial(keep);
   const woodMat = woodMaterial(keep);
@@ -496,6 +617,10 @@ export function createStreet(): Backdrop {
   const signs = new Mesher({ sway: true });
   const glassI = new GlassMesher();
   const glassC = new Mesher();
+  /** 不出几何体的"垃圾桶"（精建的那 8 栋走 building() 时，墙、屋顶、构件写进这里，最后扔掉） */
+  const sink = new Mesher({ uv1: true, sway: true });
+  /** 精建的那 8 栋：摆在哪、每层的房间（窗里看进去的） */
+  const heroPlace: Array<{ id: string; M: THREE.Matrix4; rooms: Array<RoomParams | null>; b: BuildingSpec; w: number; d: number }> = [];
   /** 木件的颜色（乘在木纹贴图上）：深棕的梁和檐口板、浅一点的檐底板 */
   const WOOD = col(0xb08a6e);
   const SOFFIT = col(0xd2b89e);
@@ -817,6 +942,15 @@ export function createStreet(): Backdrop {
     const y0 = b.y ?? -0.1;
     const M = new THREE.Matrix4().makeRotationY(Math.atan2(zAxis.x, zAxis.z)).setPosition(center.x, y0, center.z);
     for (const m of [facade, roof, trim, wood, metal, fabric, signs, glassI, glassC]) m.setTransform(M);
+    // 她身边那 8 栋是 Blender 整栋精建的：这里照常走一遍（随机数一个不少地用掉），墙、屋顶、构件都丢进 sink（不出几何体）；
+    // 招牌的字（signs）、旗子、碰撞体照常
+    const ghost = !!b.hero;
+    const fac = ghost ? sink : facade;
+    const rf = ghost ? sink : roof;
+    const tr = ghost ? sink : trim;
+    const wd = ghost ? sink : wood;
+    const mt = ghost ? sink : metal;
+    const fb = ghost ? sink : fabric;
     const tint = col(b.tint);
     const roofC = col(b.roofTint);
     const hw = w / 2;
@@ -827,20 +961,23 @@ export function createStreet(): Backdrop {
     const UH = 2.9;
     const floors = 1 + b.upper.length;
     const H = GH + UH * b.upper.length;
-    // 立面：一格一格（开间 × 楼层）；有玻璃的格子放窗的构件（同一层的窗共用一个房间）
+    // 立面：一格一格（开间 × 楼层），每一格交给 bay()：墙面在这里真的开洞（灰泥），洞里和墙外的东西是 Blender 的构件
+    // （kitSpec.json 的规格，模型到了再拼，见后面的 bakeBuildings）。同一层的窗共用一个房间
     const floorRooms = Array.from({ length: floors }, (_, f) => floorRoom(f));
+    // 远处（离她 60m 以外）和山坡上的房子用简化的构件；也不放瓦当、檐沟、落水管（远看分不出来）
+    const lod = b.y != null || center.length() > 60 ? 1 : 0;
+    const basis = (ox: number, oz: number, X: THREE.Vector3, Z: THREE.Vector3) => new THREE.Matrix4().makeBasis(X, Y_UP, Z).setPosition(ox, 0, oz);
     for (let f = 0; f < floors; f++) {
       const ya = f === 0 ? 0 : GH + UH * (f - 1);
       const yb = f === 0 ? GH : ya + UH;
       for (let i = 0; i < bays; i++) {
         const cell = f === 0 ? b.ground[i] : b.upper[f - 1][i % b.upper[f - 1].length];
-        const xa = -hw + i * bw;
-        facade.quad(v3(xa, ya, 0), v3(xa + bw, ya, 0), v3(xa + bw, yb, 0), v3(xa, yb, 0), cellUV(cell), tint);
-        if (WINDOWS[cell]) windowModule(cell, xa, bw, ya, yb, floorRooms[f]);
-        if (f === 0) cellLights(cell, xa, bw);
+        const cx = -hw + (i + 0.5) * bw;
+        const room = floorRooms[f];
+        bay(basis(cx, 0, X_POS, Z_POS), bw, ya, yb, cell, f, room ? { ...room, left: room.left - cx } : null);
       }
     }
-    // 侧墙、后墙：素墙为主，偶尔一扇小窗、一根落水管（windowModule、floorRoom 在下面，函数声明会提升）
+    // 侧墙、后墙：素墙为主，偶尔一扇小窗、一根落水管（随机数的用法和原来一样）
     const sideBays = Math.max(1, Math.round(d / 2.8));
     const sbw = d / sideBays;
     const pickSide = () => (r() < 0.55 ? F.SIDE : r() < 0.6 ? F.SIDE_WIN : F.SIDE_PIPE);
@@ -848,38 +985,77 @@ export function createStreet(): Backdrop {
       const ya = f === 0 ? 0 : GH + UH * (f - 1);
       const yb = f === 0 ? GH : ya + UH;
       for (let i = 0; i < sideBays; i++) {
-        const za = -i * sbw;
-        const zb = za - sbw;
-        facade.quad(v3(hw, ya, za), v3(hw, ya, zb), v3(hw, yb, zb), v3(hw, yb, za), cellUV(pickSide()), tint);
-        facade.quad(v3(-hw, ya, zb), v3(-hw, ya, za), v3(-hw, yb, za), v3(-hw, yb, zb), cellUV(pickSide()), tint);
+        const zc = -(i + 0.5) * sbw;
+        bay(basis(hw, zc, Z_NEG, X_POS), sbw, ya, yb, pickSide(), f, null);
+        bay(basis(-hw, zc, Z_POS, X_NEG), sbw, ya, yb, pickSide(), f, null);
       }
       const backBays = Math.max(1, Math.round(w / 2.8));
       const bbw = w / backBays;
-      for (let i = 0; i < backBays; i++) {
-        const xa = hw - i * bbw;
-        facade.quad(v3(xa, ya, -d), v3(xa - bbw, ya, -d), v3(xa - bbw, yb, -d), v3(xa, yb, -d), cellUV(pickSide()), tint);
-      }
+      for (let i = 0; i < backBays; i++) bay(basis(hw - (i + 0.5) * bbw, -d, X_NEG, Z_NEG), bbw, ya, yb, pickSide(), f, null);
     }
     /**
-     * 一楼这一格夜里的灯（登记成光源，见 streetLights.ts）：店的橱窗透出来的光（按营业时间）、暖帘里的光、
-     * 居酒屋的红灯笼、玄关的门灯。位置按立面图集里画的地方估的（第 3 期换成构件以后由模型里标的点给）
+     * 一个开间：frame = 开间的局部坐标（x 沿墙、原点在开间中心的墙根、z 朝外）→ 房子的局部坐标。
+     * 墙面挖掉构件的洞（四块灰泥围着洞）、洞口四周的窗套；一楼的墙根一道石台基；构件的拼装记下来（bakeBuildings）
      */
-    function cellLights(cell: Cell, xa: number, bw: number) {
-      const at3 = (x: number, y: number, z: number) => v3(x, y, z).applyMatrix4(M);
-      const cx = xa + bw / 2;
-      if (b.interior) return; // 她身边那家咖啡店单独登记（店里有真的灯）
-      if (cell === F.SHOP_WIN || cell === F.SOUVENIR || cell === F.GLASS_SHOP || cell === F.FLOWER) {
-        light({ pos: at3(cx, 1.4, 0.9), color: 0xfff0d8, intensity: 3.5, radius: 6, glow: 0, hours: [7, 22], onAt: 0.1 + rl() * 0.3 });
-      } else if (cell === F.CAFE_WIN || cell === F.CAFE_DOOR) {
-        light({ pos: at3(cx, 1.4, 0.9), color: 0xffd9a8, intensity: 3.5, radius: 6, glow: 0, hours: [7, 23], onAt: 0.1 + rl() * 0.3 });
-      } else if (cell === F.NOREN) {
-        light({ pos: at3(cx, 1.2, 0.7), color: 0xffd8a0, intensity: 3, radius: 5, glow: 0, hours: [11, 22], onAt: 0.1 + rl() * 0.3 });
-      } else if (cell === F.IZAKAYA) {
-        light({ pos: at3(xa + 0.86 * bw, 1.75, 0.35), color: 0xff5a3c, intensity: 2, radius: 4, glow: 0.55, glowGain: 1.3, hours: [17, 1], onAt: 0.05 });
-        light({ pos: at3(cx, 1.2, 0.7), color: 0xffc080, intensity: 3, radius: 5, glow: 0, hours: [17, 1], onAt: 0.05 });
-      } else if (cell === F.GENKAN) {
-        light({ pos: at3(xa + 0.867 * bw, 2.05, 0.22), color: 0xffe2b0, intensity: 1.4, radius: 4, glow: 0.35, hours: [17, 24], onAt: 0.2 + rl() * 0.5 });
+    function bay(frame: THREE.Matrix4, bwid: number, ya: number, yb: number, cell: Cell, f: number, room: RoomParams | null) {
+      const name = CELL_NAME[cell];
+      const spec = KIT.modules[name as keyof typeof KIT.modules] as KitModule | undefined;
+      const toB = (x: number, y: number, z = 0) => v3(x, y, z).applyMatrix4(frame);
+      const h2 = bwid / 2;
+      const su = cellUV(F.SIDE);
+      const rect: [number, number, number, number] | null = spec?.hole
+        ? [-h2 + spec.hole[0] * bwid, ya + spec.hole[1] * (yb - ya), -h2 + spec.hole[2] * bwid, ya + spec.hole[3] * (yb - ya)]
+        : null;
+      const wallQ = (x0: number, y0: number, x1: number, y1: number) => {
+        if (x1 - x0 < 1e-3 || y1 - y0 < 1e-3) return;
+        fac.quad(toB(x0, y0), toB(x1, y0), toB(x1, y1), toB(x0, y1), su, tint);
+      };
+      if (!rect) wallQ(-h2, ya, h2, yb);
+      else {
+        const [x0, y0, x1, y1] = rect;
+        wallQ(-h2, ya, x0, yb);
+        wallQ(x1, ya, h2, yb);
+        wallQ(x0, ya, x1, y0);
+        wallQ(x0, y1, x1, yb);
+        // 窗套：开口的四个内侧面（灰泥），18cm 深（窗框在 12cm，纸拉门在更里面一点）
+        const zg = -0.18;
+        if (y0 > ya + 0.01) fac.quad(toB(x0, y0), toB(x1, y0), toB(x1, y0, zg), toB(x0, y0, zg), su, tint);
+        fac.quad(toB(x0, y1, zg), toB(x1, y1, zg), toB(x1, y1), toB(x0, y1), su, tint.clone().multiplyScalar(0.85));
+        fac.quad(toB(x0, y0), toB(x0, y0, zg), toB(x0, y1, zg), toB(x0, y1), su, tint.clone().multiplyScalar(0.92));
+        fac.quad(toB(x1, y0, zg), toB(x1, y0), toB(x1, y1), toB(x1, y1, zg), su, tint.clone().multiplyScalar(0.92));
       }
+      // 一楼的墙根：一道比墙面凸出 3cm 的石台基（洞开到地面的地方断开）
+      if (f === 0) {
+        tr.setTransform(tmpM.copy(M).multiply(frame));
+        const plinth = (x0: number, x1: number) => x1 - x0 > 0.02 && tr.box(x0, 0, -0.01, x1, 0.3, 0.03, STONE);
+        if (rect && rect[1] < 0.3) {
+          plinth(-h2, rect[0]);
+          plinth(rect[2], h2);
+        } else plinth(-h2, h2);
+        tr.setTransform(M);
+      }
+      // 她身边那家咖啡店的门：玻璃后面挂一块 OPEN 的小木牌
+      if (b.interior && cell === F.CAFE_DOOR) {
+        const sy = 1.446;
+        signs.quad(toB(-0.22, sy, -0.15), toB(0.22, sy, -0.15), toB(0.22, sy + 0.11, -0.15), toB(-0.22, sy + 0.11, -0.15), signUV(6), WHITE);
+      }
+      if (!spec) return;
+      const H0 = spec.floor === 'ground' ? KIT.groundH : KIT.upperH;
+      const home = !room && spec.room === 'home';
+      if (!ghost)
+        kitBays.push({
+        name,
+        lod,
+        M,
+        frame,
+        cell: new THREE.Matrix4().makeTranslation(0, ya, 0).multiply(new THREE.Matrix4().makeScale(bwid / KIT.cellW, (yb - ya) / H0, 1)),
+        room: room ?? (spec.room !== 'none' ? kitRoom(bwid, ya, home || spec.room === 'home' ? null : spec.room) : null),
+        rect: rect ?? [-h2, ya, h2, yb],
+        clear: !!b.interior && f === 0,
+        glow: spec.glow ?? [0, 24],
+        onAt: 0.1 + rk() * 0.5,
+        lights: !b.interior,
+      });
     }
     /**
      * 这一层的房间（窗户里看进去的）：按整栋楼的宽度算，同一层几扇窗共用；一楼的店深一点。
@@ -900,56 +1076,6 @@ export function createStreet(): Backdrop {
         info: [ROOMS.indexOf(kind), r(), home ? (r() < 0.2 ? 0.6 : 0.16 + r() * 0.24) : 0.8, home && r() < 0.75 ? 1 : 0],
       };
     }
-    /**
-     * 一个开口（WINDOWS 里那一格的 hole）：墙在这里挖空；四周的窗套（灰泥）、往里缩 12cm 的窗框和窗棂、窗台、门把手；
-     * 玻璃一块（室内映射，或者她身边那家咖啡店一楼的透明玻璃）
-     */
-    function windowModule(cell: Cell, xa: number, bw: number, ya: number, yb: number, room: RoomParams | null) {
-      const spec = WINDOWS[cell]!;
-      // 格子的像素 → 局部坐标（cellUV 四边各缩了 3 像素，画面上的 250 像素对应这一格的宽 / 高）
-      const X = (px: number) => xa + ((px - 3) / 250) * bw;
-      const Y = (py: number) => yb - ((py - 3) / 250) * (yb - ya);
-      const [hx0, hy0, hx1, hy1] = spec.hole;
-      const x0 = X(hx0);
-      const x1 = X(hx1);
-      const yT = Y(hy0);
-      const yB = Y(hy1);
-      const zg = -0.12;
-      // 窗套：开口的四个内侧面（立面材质，取侧墙那一格：遮罩是 0，露出灰泥）
-      const su = cellUV(F.SIDE);
-      facade.quad(v3(x0, yB, 0), v3(x1, yB, 0), v3(x1, yB, zg), v3(x0, yB, zg), su, tint);
-      facade.quad(v3(x0, yT, zg), v3(x1, yT, zg), v3(x1, yT, 0), v3(x0, yT, 0), su, tint.clone().multiplyScalar(0.85));
-      facade.quad(v3(x0, yB, 0), v3(x0, yB, zg), v3(x0, yT, zg), v3(x0, yT, 0), su, tint.clone().multiplyScalar(0.92));
-      facade.quad(v3(x1, yB, zg), v3(x1, yB, 0), v3(x1, yT, 0), v3(x1, yT, zg), su, tint.clone().multiplyScalar(0.92));
-      // 窗框（贴着开口四边）+ 窗棂：木框进木头那一批（颜色调亮一点，乘在木纹上），铝框进铁件那一批
-      const fm = spec.metal ? metal : wood;
-      const fc = spec.metal ? col(spec.frame) : col(spec.frame).lerp(WHITE, 0.45);
-      const fw = 0.05;
-      const za = zg - 0.03;
-      const zb = zg + 0.045;
-      fm.box(x0, yB, za, x0 + fw, yT, zb, fc, 1);
-      fm.box(x1 - fw, yB, za, x1, yT, zb, fc, 1);
-      fm.box(x0 + fw, yT - fw, za, x1 - fw, yT, zb, fc, 1);
-      fm.box(x0 + fw, yB, za, x1 - fw, yB + fw, zb, fc, 1);
-      for (const [bx0, by0, bx1, by1] of spec.bars) fm.box(X(bx0), Y(by1), zg - 0.02, X(bx1), Y(by0), zg + 0.035, fc, 1);
-      if (spec.handle) {
-        const [hx, hy, hx2, hy2] = spec.handle;
-        metal.box(X(hx), Y(hy2), zg + 0.035, X(hx2), Y(hy), zg + 0.08, col(0xc9a050));
-      }
-      if (spec.sill) {
-        const [sx0, sy0, sx1, sy1] = spec.sill;
-        wood.box(X(sx0), Y(sy1), zg, X(sx1), Y(sy0), 0.06, WOOD, 1);
-      }
-      // 她身边那家咖啡店的门：玻璃后面挂一块 OPEN 的小木牌
-      if (b.interior && cell === F.CAFE_DOOR) {
-        const cx = (x0 + x1) / 2;
-        const sy = Y(140);
-        signs.quad(v3(cx - 0.22, sy, zg - 0.03), v3(cx + 0.22, sy, zg - 0.03), v3(cx + 0.22, sy + 0.11, zg - 0.03), v3(cx - 0.22, sy + 0.11, zg - 0.03), signUV(6), WHITE);
-      }
-      // 玻璃
-      if (b.interior && ya === 0) glassC.quad(v3(x0, yB, zg + 0.005), v3(x1, yB, zg + 0.005), v3(x1, yT, zg + 0.005), v3(x0, yT, zg + 0.005), [0, 0, 1, 1], WHITE);
-      else if (room) glassI.pane(x0, yB, x1, yT, zg + 0.005, room);
-    }
     // 屋顶
     const pitch = THREE.MathUtils.degToRad(b.pitch ?? 24);
     const tan = Math.tan(pitch);
@@ -962,14 +1088,14 @@ export function createStreet(): Backdrop {
         const q = p.clone().sub(pts[0]);
         return [q.dot(ua), q.dot(va)];
       };
-      roof.poly(pts, pts.map(inPlane), c);
+      rf.poly(pts, pts.map(inPlane), c);
       const low = pts.map((p) => p.clone().addScaledVector(n, -t));
       const lowR = [...low].reverse();
-      wood.poly(lowR, lowR.map(inPlane), SOFFIT);
+      wd.poly(lowR, lowR.map(inPlane), SOFFIT);
       for (let i = 0; i < pts.length; i++) {
         const j = (i + 1) % pts.length;
         const len = pts[i].distanceTo(pts[j]);
-        wood.poly(
+        wd.poly(
           [low[i], low[j], pts[j], pts[i]],
           [
             [0, 0],
@@ -982,12 +1108,40 @@ export function createStreet(): Backdrop {
       }
     };
     const gableTri = (p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3) => {
-      const [u0, v0, u1, v1] = cellUV(F.GABLE);
+      const [u0, v0, u1, v1] = cellUV(F.SIDE);
       const vh = (y: number) => v0 + ((y - H) / UH) * (v1 - v0);
-      facade.poly([p0, p1, p2], [[u0, v0], [u1, v0], [(u0 + u1) / 2, vh(p2.y)]], tint);
+      fac.poly([p0, p1, p2], [[u0, v0], [u1, v0], [(u0 + u1) / 2, vh(p2.y)]], tint);
     };
     const ov = 0.6;
     const so = 0.35;
+    // 屋顶的 Blender 零件（屋脊、鬼瓦、瓦当、檐沟、落水管）：和构件一起记下来，模型到了再拼；瓦乘这栋的瓦色
+    const part = (name: string, local: THREE.Matrix4) => {
+      if (!ghost) kitBays.push({ name, lod, M, frame: local, cell: new THREE.Matrix4(), room: null, rect: [0, 0, 0, 0], clear: false, glow: [0, 24], onAt: 0, lights: false, tint: roofC });
+    };
+    /** 沿一条线排一段段 1m 的零件：mid = 中点，out = 朝外的水平方向（零件的 +z），pitch = 往里抬的坡度 */
+    const runAlong = (name: string, mid: THREE.Vector3, len: number, out: THREE.Vector3, pitch = 0) => {
+      const X = new THREE.Vector3().crossVectors(Y_UP, out);
+      const n = Math.max(1, Math.round(len));
+      for (let k = 0; k < n; k++) {
+        const c = mid.clone().addScaledVector(X, -len / 2 + ((k + 0.5) * len) / n);
+        part(name, new THREE.Matrix4().makeBasis(X, Y_UP, out).setPosition(c).multiply(new THREE.Matrix4().makeRotationX(pitch)).multiply(new THREE.Matrix4().makeScale(len / n, 1, 1)));
+      }
+    };
+    /** 屋脊：一段段脊瓦，两头各一个鬼瓦 */
+    const ridgeRun = (mid: THREE.Vector3, len: number, out: THREE.Vector3) => {
+      runAlong('ridge', mid, len, out);
+      const X = new THREE.Vector3().crossVectors(Y_UP, out);
+      part('ridge_end', new THREE.Matrix4().makeBasis(X, Y_UP, out).setPosition(mid.clone().addScaledVector(X, len / 2)));
+      part('ridge_end', new THREE.Matrix4().makeBasis(X.clone().negate(), Y_UP, out.clone().negate()).setPosition(mid.clone().addScaledVector(X, -len / 2)));
+    };
+    /** 檐口：一排瓦当（顺着坡），檐下一道檐沟 */
+    const eaveRun = (mid: THREE.Vector3, len: number, out: THREE.Vector3, gutter = true) => {
+      if (lod) return;
+      runAlong('eave_tiles', mid, len, out, pitch);
+      if (gutter) runAlong('gutter', mid.clone().addScaledVector(out, 0.03).setY(mid.y - 0.15), len, out);
+    };
+    /** 落水管：檐沟到地面 */
+    const downpipe = (x: number, z: number, top: number) => lod || part('pipe', new THREE.Matrix4().makeTranslation(x, 0, z).multiply(new THREE.Matrix4().makeScale(1, top, 1)));
     if (b.roof === 'hira' || (b.roof === 'yose' && w < d)) {
       const rise = (d / 2) * tan;
       const ye = H - ov * tan;
@@ -996,7 +1150,10 @@ export function createStreet(): Backdrop {
       slab([v3(hw + so, ye, -d - ov), v3(-hw - so, ye, -d - ov), v3(-hw - so, yr, -d / 2), v3(hw + so, yr, -d / 2)]);
       gableTri(v3(hw, H, 0), v3(hw, H, -d), v3(hw, yr, -d / 2));
       gableTri(v3(-hw, H, -d), v3(-hw, H, 0), v3(-hw, yr, -d / 2));
-      trim.box(-hw - so - 0.05, yr - 0.02, -d / 2 - 0.14, hw + so + 0.05, yr + 0.2, -d / 2 + 0.14, roofC.clone().multiplyScalar(0.62));
+      ridgeRun(v3(0, yr - 0.04, -d / 2), w + 2 * so, Z_POS);
+      eaveRun(v3(0, ye, ov), w + 2 * so, Z_POS);
+      eaveRun(v3(0, ye, -d - ov), w + 2 * so, Z_NEG, lod === 0);
+      for (const x of [-hw + 0.12, hw - 0.12]) downpipe(x, 0.07, ye - 0.15);
     } else if (b.roof === 'tsuma') {
       const rise = hw * tan;
       const ye = H - ov * tan;
@@ -1005,20 +1162,22 @@ export function createStreet(): Backdrop {
       slab([v3(-hw - ov, ye, -d - so), v3(-hw - ov, ye, so), v3(0, yr, so), v3(0, yr, -d - so)]);
       gableTri(v3(-hw, H, 0), v3(hw, H, 0), v3(0, yr, 0));
       gableTri(v3(hw, H, -d), v3(-hw, H, -d), v3(0, yr, -d));
-      trim.box(-0.14, yr - 0.02, -d - so - 0.05, 0.14, yr + 0.2, so + 0.05, roofC.clone().multiplyScalar(0.62));
+      ridgeRun(v3(0, yr - 0.04, -d / 2), d + 2 * so, X_POS);
+      eaveRun(v3(hw + ov, ye, -d / 2), d + 2 * so, X_POS, lod === 0);
+      eaveRun(v3(-hw - ov, ye, -d / 2), d + 2 * so, X_NEG, lod === 0);
       // 山墙上的破风板（插画里山墙朝街的那栋，三角形的边是一道深色的木板）
       const len = Math.hypot(hw + ov, rise + ov * tan);
       const ang = Math.atan2(rise + ov * tan, hw + ov);
       for (const sx of [1, -1]) {
-        wood.setTransform(
+        wd.setTransform(
           tmpM
             .copy(M)
             .multiply(new THREE.Matrix4().makeTranslation((sx * (hw + ov)) / 2, (ye + yr) / 2 + 0.06, so + 0.03))
             .multiply(new THREE.Matrix4().makeRotationZ(sx > 0 ? -ang + Math.PI : ang - Math.PI)),
         );
-        wood.box(-len / 2, -0.12, -0.04, len / 2, 0.12, 0.04, WOOD, 1);
+        wd.box(-len / 2, -0.12, -0.04, len / 2, 0.12, 0.04, WOOD, 1);
       }
-      wood.setTransform(M);
+      wd.setTransform(M);
     } else if (b.roof === 'yose') {
       const rise = (d / 2) * tan;
       const ye = H - ov * tan;
@@ -1030,21 +1189,29 @@ export function createStreet(): Backdrop {
       slab([v3(Er, ye, -d - ov), v3(El, ye, -d - ov), v3(-xr, yr, -d / 2), v3(xr, yr, -d / 2)]);
       slab([v3(Er, ye, ov), v3(Er, ye, -d - ov), v3(xr, yr, -d / 2)]);
       slab([v3(El, ye, -d - ov), v3(El, ye, ov), v3(-xr, yr, -d / 2)]);
-      if (xr > 0.05) trim.box(-xr - 0.1, yr - 0.02, -d / 2 - 0.13, xr + 0.1, yr + 0.18, -d / 2 + 0.13, roofC.clone().multiplyScalar(0.62));
+      if (xr > 0.05) ridgeRun(v3(0, yr - 0.04, -d / 2), 2 * xr, Z_POS);
+      eaveRun(v3(0, ye, ov), Er - El, Z_POS);
+      eaveRun(v3(0, ye, -d - ov), Er - El, Z_NEG, false);
+      if (lod === 0) {
+        eaveRun(v3(Er, ye, -d / 2), d + 2 * ov, X_POS, false);
+        eaveRun(v3(El, ye, -d / 2), d + 2 * ov, X_NEG, false);
+      }
+      for (const x of [-hw + 0.12, hw - 0.12]) downpipe(x, 0.07, ye - 0.15);
     } else {
       // 平顶：女儿墙 + 顶面，上面一个水箱
       const pc = tint.clone().multiplyScalar(0.92);
-      trim.box(-hw, H, -d, hw, H + 0.02, 0, col(0xa9a69f));
-      trim.box(-hw - 0.05, H, -0.15, hw + 0.05, H + 0.55, 0.05, pc);
-      trim.box(-hw - 0.05, H, -d - 0.05, hw + 0.05, H + 0.55, -d + 0.15, pc);
-      trim.box(-hw - 0.05, H, -d, -hw + 0.15, H + 0.55, 0, pc);
-      trim.box(hw - 0.15, H, -d, hw + 0.05, H + 0.55, 0, pc);
-      trim.box(hw - 2.2, H, -d + 1.0, hw - 0.9, H + 1.2, -d + 2.2, col(0xd9dad6));
+      tr.box(-hw, H, -d, hw, H + 0.02, 0, col(0xa9a69f));
+      tr.box(-hw - 0.05, H, -0.15, hw + 0.05, H + 0.55, 0.05, pc);
+      tr.box(-hw - 0.05, H, -d - 0.05, hw + 0.05, H + 0.55, -d + 0.15, pc);
+      tr.box(-hw - 0.05, H, -d, -hw + 0.15, H + 0.55, 0, pc);
+      tr.box(hw - 0.15, H, -d, hw + 0.05, H + 0.55, 0, pc);
+      tr.box(hw - 2.2, H, -d + 1.0, hw - 0.9, H + 1.2, -d + 2.2, col(0xd9dad6));
     }
     // 一楼上面的小瓦檐（庇）
     if (b.hisashi) {
       const yb = GH - 0.05;
       slab([v3(-hw - 0.05, yb - 0.3, 0.95), v3(hw + 0.05, yb - 0.3, 0.95), v3(hw + 0.05, yb + 0.12, 0), v3(-hw - 0.05, yb + 0.12, 0)], 0.08);
+      if (!lod) runAlong('eave_tiles', v3(0, yb - 0.3, 0.95), w + 0.1, Z_POS, Math.atan2(0.42, 0.95));
     }
     // 二楼阳台：木地板 + 木栏杆（竖条）
     if (b.balcony) {
@@ -1053,11 +1220,11 @@ export function createStreet(): Backdrop {
       const xb = -hw + i1 * bw - 0.05;
       const yb = GH;
       const dd = 0.95;
-      wood.box(xa, yb - 0.12, 0, xb, yb, dd, WOOD, 1);
-      wood.box(xa, yb + 0.92, dd - 0.06, xb, yb + 1.0, dd, WOOD, 1);
-      wood.box(xa, yb + 0.05, dd - 0.05, xb, yb + 0.1, dd - 0.01, WOOD, 1);
-      for (const x of [xa, xb - 0.06]) wood.box(x, yb, 0, x + 0.06, yb + 1.0, dd, WOOD, 1);
-      for (let x = xa + 0.12; x < xb - 0.06; x += 0.13) wood.box(x, yb + 0.1, dd - 0.045, x + 0.035, yb + 0.92, dd - 0.015, WOOD, 1);
+      wd.box(xa, yb - 0.12, 0, xb, yb, dd, WOOD, 1);
+      wd.box(xa, yb + 0.92, dd - 0.06, xb, yb + 1.0, dd, WOOD, 1);
+      wd.box(xa, yb + 0.05, dd - 0.05, xb, yb + 0.1, dd - 0.01, WOOD, 1);
+      for (const x of [xa, xb - 0.06]) wd.box(x, yb, 0, x + 0.06, yb + 1.0, dd, WOOD, 1);
+      for (let x = xa + 0.12; x < xb - 0.06; x += 0.13) wd.box(x, yb + 0.1, dd - 0.045, x + 0.035, yb + 0.92, dd - 0.015, WOOD, 1);
     }
     // 布遮阳篷：从墙上斜着伸出来，前面一圈垂边，两头三角形的侧片
     if (b.awning != null) {
@@ -1067,16 +1234,16 @@ export function createStreet(): Backdrop {
       const out = 1.6;
       const xa = -hw + 0.15;
       const xb = hw - 0.15;
-      fabric.quad(v3(xa, low, out), v3(xb, low, out), v3(xb, top, 0), v3(xa, top, 0), [0, 0, 1, 1], ac);
-      fabric.quad(v3(xa, low - 0.28, out), v3(xb, low - 0.28, out), v3(xb, low, out), v3(xa, low, out), [0, 0, 1, 1], ac.clone().multiplyScalar(0.85));
-      fabric.poly([v3(xb, top, 0), v3(xb, low, out), v3(xb, low - 0.28, out), v3(xb, top - 0.2, 0)], [[0, 0], [0, 0], [0, 0], [0, 0]], ac.clone().multiplyScalar(0.8));
-      fabric.poly([v3(xa, top - 0.2, 0), v3(xa, low - 0.28, out), v3(xa, low, out), v3(xa, top, 0)], [[0, 0], [0, 0], [0, 0], [0, 0]], ac.clone().multiplyScalar(0.8));
+      fb.quad(v3(xa, low, out), v3(xb, low, out), v3(xb, top, 0), v3(xa, top, 0), [0, 0, 1, 1], ac);
+      fb.quad(v3(xa, low - 0.28, out), v3(xb, low - 0.28, out), v3(xb, low, out), v3(xa, low, out), [0, 0, 1, 1], ac.clone().multiplyScalar(0.85));
+      fb.poly([v3(xb, top, 0), v3(xb, low, out), v3(xb, low - 0.28, out), v3(xb, top - 0.2, 0)], [[0, 0], [0, 0], [0, 0], [0, 0]], ac.clone().multiplyScalar(0.8));
+      fb.poly([v3(xa, top - 0.2, 0), v3(xa, low - 0.28, out), v3(xa, low, out), v3(xa, top, 0)], [[0, 0], [0, 0], [0, 0], [0, 0]], ac.clone().multiplyScalar(0.8));
       // 支架（两根细铁杆）
       for (const x of [xa + 0.1, xb - 0.1]) {
-        metal.setTransform(tmpM.copy(M).multiply(new THREE.Matrix4().makeTranslation(x, (top + low) / 2 - 0.05, out / 2).multiply(new THREE.Matrix4().makeRotationX(Math.atan2(top - low, out)))));
-        metal.box(-0.015, -0.015, -out / 2, 0.015, 0.015, out / 2, IRON);
+        mt.setTransform(tmpM.copy(M).multiply(new THREE.Matrix4().makeTranslation(x, (top + low) / 2 - 0.05, out / 2).multiply(new THREE.Matrix4().makeRotationX(Math.atan2(top - low, out)))));
+        mt.box(-0.015, -0.015, -out / 2, 0.015, 0.015, out / 2, IRON);
       }
-      metal.setTransform(M);
+      mt.setTransform(M);
     }
     // 横招牌：一楼上方（有瓦檐的立在瓦檐后面，二楼窗台下面）
     if (b.sign != null) {
@@ -1085,7 +1252,7 @@ export function createStreet(): Backdrop {
       const sy = b.hisashi ? GH + 0.12 : GH - 0.72;
       const z = b.hisashi ? 0.06 : 0.04;
       signs.quad(v3(-sw / 2, sy, z), v3(sw / 2, sy, z), v3(sw / 2, sy + sw / 4, z), v3(-sw / 2, sy + sw / 4, z), [u0, v0, u1, v1], WHITE);
-      wood.box(-sw / 2 - 0.04, sy - 0.04, 0, sw / 2 + 0.04, sy + sw / 4 + 0.04, z - 0.01, WOOD, 1);
+      wd.box(-sw / 2 - 0.04, sy - 0.04, 0, sw / 2 + 0.04, sy + sw / 4 + 0.04, z - 0.01, WOOD, 1);
     }
     // 挂在墙上的竖旗：门脸一头伸出一根铁臂，旗子挂在下面，旗面朝着街的方向
     if (b.banner) {
@@ -1098,6 +1265,7 @@ export function createStreet(): Backdrop {
       g.translate(0, H / 2, -d / 2);
       collider(g, M.clone());
     }
+    if (b.hero) heroPlace.push({ id: b.hero, M, rooms: floorRooms, b, w, d });
     return { M, w, H, d };
   };
 
@@ -1142,119 +1310,32 @@ export function createStreet(): Backdrop {
   };
 
   // 近处这一排手摆（构图用），再往两头随机生成
-  const near: BuildingSpec[] = [
-    // 咖啡店（她身边，左边这一整栋）：一楼大玻璃窗 + 门，深蓝遮阳篷，二楼木框高窗和阳台，旗子挂在远处那头
-    {
-      s: S0 + 3.2,
-      w: 13,
-      depth: 10,
-      ground: [F.CAFE_WIN, F.CAFE_WIN, F.CAFE_DOOR, F.CAFE_WIN, F.CAFE_WIN],
-      upper: [[F.WIN_TALL, F.BALC_DOOR, F.BALC_DOOR, F.BALC_DOOR, F.WIN_TALL]],
-      tint: 0xfff3e0,
-      roof: 'hira',
-      roofTint: 0x5f6672,
-      balcony: [1, 4],
-      awning: 0x2c3350,
-      banner: [0, 1],
-      solid: true,
-      interior: true,
-    },
-    // 陶器店（山墙朝街，一楼小瓦檐、暖帘）
-    {
-      s: S0 + 13.8,
-      w: 7,
-      depth: 9,
-      ground: [F.SHOP_WIN, F.NOREN, F.SHOP_WIN],
-      upper: [[F.WIN_LATTICE, F.WIN_WOOD, F.WIN_LATTICE]],
-      tint: 0xf7efe2,
-      roof: 'tsuma',
-      roofTint: 0x8ea0bc,
-      pitch: 30,
-      hisashi: true,
-      sign: 1,
-      banner: [1, 1],
-      solid: true,
-    },
-    // 住家
-    {
-      s: S0 + 20.9,
-      w: 6.2,
-      depth: 8,
-      ground: [F.GENKAN, F.WALL_G],
-      upper: [[F.WIN_ALU, F.WALL_AC]],
-      tint: 0xe9eef2,
-      roof: 'hira',
-      roofTint: 0x7d8aa0,
-      solid: true,
-    },
-    // 土特产店（蓝色遮阳篷）
-    {
-      s: S0 + 29,
-      w: 8,
-      depth: 9,
-      ground: [F.SOUVENIR, F.CAFE_DOOR, F.SOUVENIR],
-      upper: [[F.WIN_WOOD, F.WIN_ALU, F.WIN_WOOD]],
-      tint: 0xfbf2e2,
-      roof: 'yose',
-      roofTint: 0x8ea0bc,
-      awning: 0x3d6fb4,
-      sign: 2,
-    },
-    // 三层的小楼（平顶，一楼卷帘门）
-    {
-      s: S0 + 36.6,
-      w: 6.2,
-      depth: 9,
-      ground: [F.SHUTTER, F.GENKAN],
-      upper: [
-        [F.WIN_ALU, F.WIN_ALU],
-        [F.WIN_SMALL, F.WALL_AC],
-      ],
-      tint: 0xeeeeec,
-      roof: 'flat',
-      roofTint: 0x7d8aa0,
-    },
-    // 居酒屋（小瓦檐、竖旗）
-    {
-      s: S0 + 43.4,
-      w: 6.4,
-      depth: 9,
-      ground: [F.IZAKAYA, F.IZAKAYA],
-      upper: [[F.WIN_LATTICE, F.WIN_LATTICE]],
-      tint: 0xf6e8d2,
-      roof: 'hira',
-      roofTint: 0x5f6672,
-      hisashi: true,
-      sign: 4,
-      banner: [6, 0],
-    },
-    // 身后（镜头转过去才看到）：花店、住家
-    {
-      s: S0 - 7.4,
-      w: 6.6,
-      depth: 9,
-      ground: [F.FLOWER, F.FLOWER],
-      upper: [[F.WIN_WOOD, F.WIN_WOOD]],
-      tint: 0xffffff,
-      roof: 'hira',
-      roofTint: 0x8ea0bc,
-      awning: 0x4e8a5c,
-      sign: 3,
-      solid: true,
-    },
-    {
-      s: S0 - 14.6,
-      w: 6.8,
-      depth: 8.5,
-      ground: [F.LATTICE, F.GENKAN],
-      upper: [[F.WIN_LATTICE, F.WIN_WOOD]],
-      tint: 0xf6e8d2,
-      roof: 'yose',
-      roofTint: 0x7d8aa0,
-      hisashi: true,
-      solid: true,
-    },
-  ];
+  // 她身边那 8 栋（咖啡店、陶器店、住家、土特产店、三层小楼、居酒屋、身后的花店和住家）：规格在 kit/heroSpecs.json
+  // （Blender 的 hero_buildings.py 照着整栋精建，这里照着摆；building() 还是走一遍：随机数的用法不能变，招牌的字、旗子、碰撞体也在那里）
+  const hex = (c: string | undefined) => (c == null ? undefined : parseInt(c.slice(1), 16));
+  const cellOf = (n: string) => F[n as keyof typeof F];
+  const near: BuildingSpec[] = HERO.buildings.map((h) => {
+    const x = h as typeof h & { pitch?: number; hisashi?: boolean; balcony?: number[]; awning?: string; sign?: number; banner?: number[]; solid?: boolean; interior?: boolean };
+    return {
+      s: S0 + x.s,
+      w: x.w,
+      depth: x.depth,
+      ground: x.ground.map(cellOf),
+      upper: x.upper.map((row) => row.map(cellOf)),
+      tint: hex(x.tint)!,
+      roof: x.roof as RoofType,
+      roofTint: hex(x.roofTint)!,
+      pitch: x.pitch,
+      hisashi: x.hisashi,
+      balcony: x.balcony as [number, number] | undefined,
+      awning: hex(x.awning),
+      sign: x.sign,
+      banner: x.banner as [number, number] | undefined,
+      solid: x.solid,
+      interior: x.interior,
+      hero: x.id,
+    };
+  });
   // 两头随机：宽 5.5~9m、间隔 0.3~1.2m（偶尔留一块空地种树），两三层，屋顶四种
   const shopsG: Cell[] = [F.SHUTTER, F.SHOP_WIN, F.SOUVENIR, F.GLASS_SHOP, F.FLOWER, F.NOREN, F.IZAKAYA, F.CAFE_WIN];
   const homeG: Cell[] = [F.GENKAN, F.WALL_G, F.LATTICE, F.GENKAN, F.WALL_G];
@@ -1641,6 +1722,79 @@ export function createStreet(): Backdrop {
       for (const mark of item.marks) if (mark.name.startsWith('light')) for (const m of list) nightLights.add(kitLight(mark, m));
     }
     buildWires(kit.get('pole'));
+  });
+  // ---- 房子的构件（scripts/blender/building_kit.py → models/building_kit/kit.glb）：模型到了按记录拼进几个大网格 ----
+  const buildingGlowMat = buildingGlowMaterial(keep, { uLights: night.uLights, uHour: night.uHour, uGlowGain: { value: 0.85 } });
+  const bakeBuildings = (kit: Map<string, KitItem>) => {
+    // 近处（精细的构件）、远处（简化的）各一套网格：远处的不投影 —— 合成一整块的网格，阴影那一趟会把整块再画一遍，
+    // 远处的房子本来也在阴影范围（±22m）外面
+    const meshers = () => ({
+      wood: new Mesher(),
+      metal: new Mesher(),
+      paint: new Mesher(),
+      fabric: new Mesher(),
+      tile: new Mesher(),
+      concrete: new Mesher(),
+      glow: new Mesher({ ext: true }),
+      clear: new Mesher(),
+    });
+    const sets = [meshers(), meshers()];
+    const panes = new GlassMesher();
+    const at = new THREE.Matrix4();
+    const world = new THREE.Matrix4();
+    for (const r of kitBays) {
+      const item = (r.lod ? kit.get(`${r.name}_lod1`) : undefined) ?? kit.get(r.name);
+      if (!item) continue;
+      world.multiplyMatrices(r.M, r.frame);
+      const ms = sets[r.lod];
+      for (const part of item.parts) {
+        at.multiplyMatrices(r.cell, part.local);
+        const slot = part.slot;
+        if (slot === 'pane') {
+          if (r.clear) ms.clear.setTransform(world).addGeometry(part.geo, at);
+          else if (r.room) panes.setTransform(r.M).addGeometry(part.geo, r.frame, at, r.room, r.rect);
+        } else if (slot === 'frost' || slot === 'glow') {
+          ms.glow.setTransform(world).addGeometry(part.geo, at, undefined, [r.onAt, r.glow[0], r.glow[1]]);
+        } else {
+          const m = ms[slot as keyof typeof ms] ?? ms.paint;
+          m.setTransform(world).addGeometry(part.geo, at, slot === 'tile' ? r.tint : undefined);
+        }
+      }
+      // 构件里标的光源（店里透出来的光、门灯、灯笼）：光源只标在精细那一档里
+      if (r.lights) {
+        const full = kit.get(r.name);
+        if (full) for (const mark of full.marks) if (mark.name.startsWith('light')) nightLights.add(kitLight(mark, world.clone().multiply(r.cell)));
+      }
+    }
+    const add = (m: Mesher, mat: THREE.Material, name: string, cast = true) => {
+      if (m.empty) return;
+      const mesh = new THREE.Mesh(keep(m.build()), mat);
+      mesh.castShadow = cast;
+      mesh.receiveShadow = true;
+      mesh.name = name;
+      group.add(mesh);
+    };
+    sets.forEach((ms, lodIdx) => {
+      const cast = lodIdx === 0;
+      const tag = lodIdx === 0 ? 'kit' : 'kit-far';
+      add(ms.wood, woodMat, `${tag}-wood`, cast);
+      add(ms.metal, metalMat, `${tag}-metal`, cast);
+      add(ms.paint, trimMat, `${tag}-paint`, cast);
+      add(ms.fabric, fabricMat, `${tag}-fabric`, cast);
+      add(ms.tile, roofMat, `${tag}-tiles`, cast);
+      add(ms.concrete, poleConcrete, `${tag}-concrete`, cast);
+      add(ms.glow, buildingGlowMat, `${tag}-glow`, cast);
+      add(ms.clear, clearGlassMat, `${tag}-glass-clear`, false);
+    });
+    if (!panes.empty) {
+      const gm = new THREE.Mesh(keep(panes.build()), interiorGlassMat);
+      gm.receiveShadow = true;
+      gm.name = 'kit-glass';
+      group.add(gm);
+    }
+  };
+  void loadKit(`${BASE}models/building_kit/kit.glb`, keep).then((kit) => {
+    if (!disposed) bakeBuildings(kit);
   });
   // 她身边那家咖啡店的店内（真的 3D，透过一楼的透明玻璃看得到）
   const ppCache = new Map<string, Promise<THREE.Object3D | null>>();

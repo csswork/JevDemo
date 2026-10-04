@@ -141,3 +141,34 @@ export function kitLight(mark: KitMark, at: THREE.Matrix4): LightAnchor {
     hours: p.hours,
   };
 }
+
+/**
+ * 房子构件里夜里发光的部分（毛玻璃门、纸拉门、门灯、灯笼）：合进房子的大网格里，每个顶点带 aGlow =
+ * (天黑到多少才亮, 几点开, 几点关)（构件的规格里写的营业时间，见 kitSpec.json）。白天是顶点色的样子，
+ * 亮的时候自发光 = 顶点色 × 倍数
+ */
+export function buildingGlowMaterial(keep: Keep, u: { uLights: { value: number }; uHour: { value: number }; uGlowGain: { value: number } }) {
+  const m = keep(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5 }));
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uLights = u.uLights;
+    shader.uniforms.uHour = u.uHour;
+    shader.uniforms.uGlowGain = u.uGlowGain;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aGlow;\nvarying vec3 vGlow;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = aGlow;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uLights;\nuniform float uHour;\nuniform float uGlowGain;\nvarying vec3 vGlow;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        {
+          float a = vGlow.y, b = vGlow.z;
+          float open = a <= b ? step( a, uHour ) * step( uHour, b ) : max( step( a, uHour ), step( uHour, b ) );
+          // 屋里是白炽灯的暖光：透过毛玻璃、纸拉门的颜色往暖里偏（灯笼、门灯本身是有颜色的，乘上去影响不大）
+          totalEmissiveRadiance = vColor.rgb * vec3( 1.0, 0.8, 0.55 ) * smoothstep( vGlow.x, vGlow.x + 0.03, uLights ) * open * uGlowGain;
+        }`,
+      );
+  };
+  m.customProgramCacheKey = () => 'street-building-glow';
+  return m;
+}
