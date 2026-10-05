@@ -34,3 +34,5 @@
 运行时导出：`scripts/blender/export_anime_cafe.py`。导出哈希、实际 GLB 验证和实机截图在 `runtime/`。本地构建及 lint 通过；尚未部署。预算为零，全部本地建模。技能通用验证器的强制 Meshy 预算字段与此方案冲突，如实保留校验失败，不将它标记为完整技能门禁通过。
 
 门口 A 字迎宾牌已增加双面中文今日推荐、咖啡杯与植物粉笔画及八枚黄铜固定件。`decorate_cafe_entrance.py` 从现有木板的实际变换定位装饰面，主建模脚本也调用此修订。实际运行时截图：`runtime/entrance-sign-preview.png`。
+
+靠垫与座位修订：`refine_cafe_seating.py` 生成鼓起的亚麻布靠垫及缝边，以实际网格测量坐垫、靠背接触；椅子按各自桌面定位和朝向。球形树冠和旧树干从 Blender 源文件移除，实际咖啡馆复用街景 `createTreeMaker` 与第三方 `@dgreenheck/ez-tree`（MIT）的 Ash/Oak 树种、树皮/叶片贴图和风动材质，在运行时添加三棵树；这三棵树不包含在房间 GLB 三角形/纹理预算统计中。实机截图：`runtime/seating-preview.png`、`runtime/street-trees-preview.png`。

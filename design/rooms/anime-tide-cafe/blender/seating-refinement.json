@@ -1,0 +1,182 @@
+{
+  "chairs": [
+    {
+      "chair": "authored chair",
+      "seat": [
+        -3.98,
+        -4.7
+      ],
+      "table": [
+        -3.98,
+        -4
+      ],
+      "forward": [
+        -0.0,
+        1.0
+      ],
+      "measuredFacingDot": 0.9999999999925084
+    },
+    {
+      "chair": "authored chair.001",
+      "seat": [
+        -3.05,
+        -4
+      ],
+      "table": [
+        -3.98,
+        -4
+      ],
+      "forward": [
+        -1.0,
+        -0.0
+      ],
+      "measuredFacingDot": 1.0
+    },
+    {
+      "chair": "authored chair.002",
+      "seat": [
+        -3.98,
+        -0.72
+      ],
+      "table": [
+        -3.98,
+        -0.02
+      ],
+      "forward": [
+        -0.0,
+        1.0
+      ],
+      "measuredFacingDot": 1.0
+    },
+    {
+      "chair": "authored chair.003",
+      "seat": [
+        -3.05,
+        -0.02
+      ],
+      "table": [
+        -3.98,
+        -0.02
+      ],
+      "forward": [
+        -1.0,
+        -0.0
+      ],
+      "measuredFacingDot": 1.0000000000005236
+    },
+    {
+      "chair": "authored chair.004",
+      "seat": [
+        2.7,
+        -3.55
+      ],
+      "table": [
+        3.65,
+        -3.55
+      ],
+      "forward": [
+        1.0,
+        -0.0
+      ],
+      "measuredFacingDot": 1.0
+    },
+    {
+      "chair": "authored chair.005",
+      "seat": [
+        3.65,
+        -4.3
+      ],
+      "table": [
+        3.65,
+        -3.55
+      ],
+      "forward": [
+        -0.0,
+        1.0
+      ],
+      "measuredFacingDot": 1.0
+    },
+    {
+      "chair": "authored chair.006",
+      "seat": [
+        2.7,
+        -0.2
+      ],
+      "table": [
+        3.65,
+        -0.2
+      ],
+      "forward": [
+        1.0,
+        -0.0
+      ],
+      "measuredFacingDot": 0.999999999999818
+    },
+    {
+      "chair": "authored chair.007",
+      "seat": [
+        3.65,
+        0.55
+      ],
+      "table": [
+        3.65,
+        -0.2
+      ],
+      "forward": [
+        -0.0,
+        -1.0
+      ],
+      "measuredFacingDot": 1.0
+    },
+    {
+      "chair": "authored chair.008",
+      "seat": [
+        4,
+        5.75
+      ],
+      "table": [
+        4,
+        6.5
+      ],
+      "forward": [
+        -0.0,
+        1.0
+      ],
+      "measuredFacingDot": 1.000000000019228
+    },
+    {
+      "chair": "authored chair.009",
+      "seat": [
+        4,
+        7.25
+      ],
+      "table": [
+        4,
+        6.5
+      ],
+      "forward": [
+        -0.0,
+        -1.0
+      ],
+      "measuredFacingDot": 1.0
+    }
+  ],
+  "pillows": [
+    {
+      "id": "bench linen pillow 0",
+      "bottomZ": 0.5589999556541443,
+      "backContactX": 5.2789998054504395
+    },
+    {
+      "id": "bench linen pillow 1",
+      "bottomZ": 0.5589999556541443,
+      "backContactX": 5.2789998054504395
+    },
+    {
+      "id": "bench linen pillow 2",
+      "bottomZ": 0.5589999556541443,
+      "backContactX": 5.2789998054504395
+    }
+  ],
+  "removedBallTrees": true
+}

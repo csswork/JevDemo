@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { canvasTexture, type Backdrop } from './common';
 import { clearGlassMaterial, frostedGlassMaterial } from './glass';
+import { createTreeMaker } from './foliage';
 
 const BASE = `${import.meta.env.BASE_URL}scene/models/anime_cafe/`;
 /** Authored porcelain top is 26 mm above Blender's slab origin; the avatar stands at y=0. */
@@ -34,6 +35,37 @@ export function createAnimeCafe(): Backdrop {
     own(material);
     for (const value of Object.values(material)) if (value instanceof THREE.Texture) own(value);
   };
+  const wind = { uTime: { value: 0 } };
+  const trees = import('@dgreenheck/ez-tree').then(({ Tree }) => {
+    if (disposed) return;
+    const make = createTreeMaker(Tree, {
+      wind, sunDir: new THREE.Vector3(-10, 6.2, 4).normalize(), keep: own,
+      leafTint: new THREE.Color(1.3, 1.38, 0.92),
+    });
+    const variants = [
+      { preset: 'Ash Medium', seed: 37, height: 5.8, z: 3.8 },
+      { preset: 'Oak Medium', seed: 41, height: 5.3, z: -1.1 },
+      { preset: 'Oak Medium', seed: 53, height: 5.6, z: -6 },
+    ];
+    for (const [i, spec] of variants.entries()) {
+      const variant = make(spec.preset, spec.seed, spec.height, null, 1.4);
+      const tree = variant.tree;
+      tree.name = `cafe-street-tree-${i}`;
+      tree.scale.setScalar(variant.scale);
+      tree.position.set(-10.2, 0.44 + FLOOR_OFFSET, spec.z);
+      tree.rotation.y = i * 1.3;
+      tree.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) ownMaterial(material);
+      });
+      tree.leavesMesh.customDepthMaterial = variant.depth;
+      group.add(tree);
+    }
+    group.userData.exteriorTreeCount = variants.length;
+  });
 
   // Physical transmission samples rendered scenery, so it needs actual sky
   // behind the windows rather than the page's CSS background or a black clear.
@@ -81,7 +113,7 @@ export function createAnimeCafe(): Backdrop {
     });
   }).catch(() => undefined);
 
-  void Promise.all([model, fixtureManifest]).then(([gltf, manifest]) => {
+  void Promise.all([model, fixtureManifest, trees]).then(([gltf, manifest]) => {
     if (disposed) return;
     const root = gltf.scene;
     root.position.y += FLOOR_OFFSET;
@@ -152,6 +184,7 @@ export function createAnimeCafe(): Backdrop {
     sun: { color: 0xffefd9, intensity: 1.6, bounds: 9, position: [-10, 6.2, 4], fill: 0.35, rim: 0.45 },
     far: 100,
     ambience: `${import.meta.env.BASE_URL}audio/cafe.ogg`,
+    update(dt) { wind.uTime.value += dt; },
     dispose() {
       disposed = true;
       for (const resource of owned) resource.dispose();

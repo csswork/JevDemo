@@ -1,20 +1,20 @@
 {
-  "sourceSha256": "a719bc6c45c2fdaea11791c5b45662b6859498eba74e29c4247fb22d202568b4",
+  "sourceSha256": "3f653e1a379dd12883671444a540558b8f0d8499c18b977d22d76caab252dec0",
   "method": "reusable PBR material textures, per-object UV projection, preserved artwork and vertex colors; runtime lights",
-  "triangles": 195398,
-  "lowTriangles": 88401,
-  "renderBatches": 36,
+  "triangles": 192614,
+  "lowTriangles": 87146,
+  "renderBatches": 37,
   "colliders": 20,
   "tiers": {
     "room.glb": {
       "file": "room.glb",
-      "bytes": 11587280,
-      "sha256": "a67d25fe335b769904d633ebc8eb50d8d16a70709a1ffa32863b41659dd45a5e"
+      "bytes": 11530212,
+      "sha256": "3b6806df41e9791e08de0f062469fb45150face1ed9108ffec5a7c525869d9f2"
     },
     "room-low.glb": {
       "file": "room-low.glb",
-      "bytes": 7015364,
-      "sha256": "9731a7d9d937e94838176c302d36c1ce976b03cf0eedb702a6c71e35bf71ee37"
+      "bytes": 7089520,
+      "sha256": "3488459000295955f3216f65c201f0becf9fc7baa250e534d5560e2562e642fc"
     }
   },
   "fixturesSha256": "49637c44775175449a9860f35ac172c89a316cee2cc7efc089908a6a15f3bdb2",

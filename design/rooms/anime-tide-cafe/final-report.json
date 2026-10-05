@@ -64,7 +64,10 @@
       "Separate exterior privacy glazing from clear display-case glass.",
       "Replace random exterior leaf cards and scattered boxes with coherent tree crowns and supported, aligned houses.",
       "Replace independent post/beam positions that bisected apertures with a single solid-pier grid; verify actual evaluated posts against the Boolean wall by ray casts.",
-      "Decorate the empty entrance A-frame with mounted double-sided Chinese daily-special chalk artwork and eight brass fixings; remove duplicate blank inserts."
+      "Decorate the empty entrance A-frame with mounted double-sided Chinese daily-special chalk artwork and eight brass fixings; remove duplicate blank inserts.",
+      "Replace ceramic floating cushions with bulged linen meshes, piping and measured seat/back contacts.",
+      "Place seats around each table, using measured backrest geometry to set facing rather than a single repeated chair direction.",
+      "Remove solid ball crowns from Blender and reuse the street ez-tree tree presets, bark/leaf textures and wind shader at runtime."
     ],
     "remainingRisks": [
       "Runtime revision is available for local review; no deployment requested.",
@@ -149,5 +152,29 @@
     "glbValidation": "runtime/glb-validation.json",
     "browserErrors": [],
     "spend": 0
+  },
+  "seatingAndTreeRefinement": {
+    "source": "scripts/blender/refine_cafe_seating.py",
+    "evidence": "blender/seating-refinement.json",
+    "captures": [
+      "runtime/seating-preview.png",
+      "runtime/street-trees-preview.png"
+    ],
+    "trees": {
+      "provider": "existing @dgreenheck/ez-tree dependency",
+      "presets": [
+        "Ash Medium seed 37",
+        "Oak Medium seed 41",
+        "Oak Medium seed 53"
+      ],
+      "materialPipeline": "existing street createTreeMaker; packaged bark/leaf textures; wind and matching leaf depth shader",
+      "runtime": "src/vrm/scenes/animeCafe.ts"
+    },
+    "validation": {
+      "build": true,
+      "lint": true,
+      "glbBudget": true,
+      "browserErrors": []
+    }
   }
 }
