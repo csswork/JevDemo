@@ -16,9 +16,11 @@ button.onclick=async()=>{
  const results:unknown[]=[];
  try{
  for(const mode of ['baseline','balanced','high','low'] as const){
-  const sky:ReturnType<typeof baseline> & Partial<Pick<ReturnType<typeof optimized>,'setQuality'|'renderClouds'>>=mode==='baseline'?baseline():optimized();const scene=new THREE.Scene();scene.add(sky.group);
+  const sky:ReturnType<typeof baseline> & Partial<Pick<ReturnType<typeof optimized>,'setQuality'|'renderClouds'|'setCirrusCoverage'>>=mode==='baseline'?baseline():optimized();const scene=new THREE.Scene();scene.add(sky.group);
   if(sky.setQuality)sky.setQuality(mode==='low'?'low':mode==='high'?'high':'balanced');
-  for(const scenario of [{name:'day-clouds',hours:15,coverage:.32},{name:'sunset-clouds',hours:18.8,coverage:.22},{name:'night-clouds',hours:22,coverage:.32},{name:'clear-night',hours:22,coverage:0}]){
+  for(const scenario of [{name:'day-clouds',hours:15,coverage:.32,cirrus:0},{name:'sunset-clouds',hours:18.8,coverage:.22,cirrus:0},{name:'night-clouds',hours:22,coverage:.32,cirrus:0},{name:'clear-night',hours:22,coverage:0,cirrus:0},{name:'day-layered-clouds',hours:15,coverage:.32,cirrus:.65},{name:'day-cirrus-only',hours:15,coverage:0,cirrus:.65}]){
+   if(mode==='baseline'&&scenario.cirrus>0)continue;
+   sky.setCirrusCoverage?.(scenario.cirrus);
    progress.textContent=`运行中：${mode} / ${scenario.name}`;
    clock.setMode(scenario.hours,true);
    sky.update(clock.state,0,camera,scenario.coverage,.5);
@@ -39,7 +41,7 @@ button.onclick=async()=>{
    }
    for(let i=0;i<20&&pending.length;i++){await nextFrame();collect();}
    for(const q of pending)gl.deleteQuery(q);
-   results.push({mode,scenario:scenario.name,cpuSubmissionMs:stats(cpu),frameIntervalMs:stats(interval),gpuMs:stats(gpu),drawCalls:calls,triangles});
+   results.push({mode,scenario:scenario.name,coverage:scenario.coverage,cirrusCoverage:scenario.cirrus,cpuSubmissionMs:stats(cpu),frameIntervalMs:stats(interval),gpuMs:stats(gpu),drawCalls:calls,triangles});
    result.results=results;report.textContent=JSON.stringify(result,null,2);
   }
   sky.dispose();scene.clear();

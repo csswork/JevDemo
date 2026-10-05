@@ -57,7 +57,7 @@ export function createSkyRenderer() {
     zenith:{value:new THREE.Color()}, mid:{value:new THREE.Color()}, horizon:{value:new THREE.Color()},
     glow:{value:new THREE.Color()}, sunColor:{value:new THREE.Color()}, sunDir:{value:sunDir}, moonDir:{value:moonDir},
     noiseMap:{value:noiseMap}, windOffset:{value:new THREE.Vector2()}, steps:{value:32}, night:{value:0}, time:{value:0}, coverage:{value:.48}, weatherThreshold:{value:weatherThreshold(.48)}, cloudLight:{value:new THREE.Color()},
-    cloudShade:{value:new THREE.Color()}, glowAmount:{value:0}, phase:{value:.38}, moonOn:{value:0},
+    cloudShade:{value:new THREE.Color()}, glowAmount:{value:0}, phase:{value:.38}, moonOn:{value:0}, cirrusCoverage:{value:0},
   };
   const dome = keep(new THREE.SphereGeometry(1000,32,20));
   const skyMat = keep(new THREE.ShaderMaterial({uniforms:u,vertexShader:vertex,side:THREE.BackSide,depthWrite:false,depthTest:false,
@@ -93,6 +93,28 @@ export function createSkyRenderer() {
     float halo=exp(-r*9.)*.12*(1.-smoothstep(.8,1.,r));gl_FragColor=vec4(mix(vec3(.4,.55,.82),c,disc),max(disc,halo)*moonOn);${output}}` }));
   const moon=new THREE.Mesh(discGeo,moonMat);moon.name='moon-disc';moon.scale.setScalar(70);moon.renderOrder=-20;group.add(moon);
 
+  // High, optically thin ice-cloud layer: aligned anisotropic filaments, no volume march.
+  const cirrusMat=keep(new THREE.ShaderMaterial({uniforms:u,vertexShader:vertex,side:THREE.BackSide,transparent:true,depthTest:false,depthWrite:false,
+    fragmentShader:`varying vec3 vDir;uniform float cirrusCoverage,night;uniform vec2 windOffset;uniform vec3 cloudLight,cloudShade,sunDir,moonDir;${cloudNoise}
+    void main(){vec3 d=normalize(vDir);if(d.y<.035||cirrusCoverage<.001)discard;
+      vec2 p=d.xz/max(d.y,.035)*1.5-windOffset/1800.;
+      vec2 s=vec2(dot(p,vec2(.94,.342)),dot(p,vec2(-.342,.94)));
+      // Gentle, low-frequency shear keeps fibres aligned rather than curling each strand.
+      s.y+=(noise3(vec3(s.x*.22,0.,17.))-.5)*.06;
+      vec3 wp=vec3(s.x*1.3,s.y*3.,8.);
+      float weather=fbm(wp);
+      float threshold=mix(.68,.30,cirrusCoverage);
+      float plume=smoothstep(threshold-.045,threshold+.045,weather);
+      if(plume<.001)discard;
+      float fibres=fbm(vec3(s.x*1.4,s.y*28.,13.));
+      float aa=max(fwidth(fibres),.008);
+      float strand=smoothstep(.34-aa,.66+aa,fibres);
+      float taper=smoothstep(.22,.62,noise3(vec3(s.x*2.3,s.y*6.,23.)));
+      float alpha=plume*strand*taper*.27*smoothstep(.06,.23,d.y)*smoothstep(0.,.08,cirrusCoverage);
+      vec3 light=normalize(mix(sunDir,moonDir,night));
+      vec3 color=mix(cloudShade,cloudLight,.82)+cloudLight*pow(max(dot(d,light),0.),10.)*.12;
+      gl_FragColor=vec4(color,alpha);${output}}`}));
+  const cirrus=new THREE.Mesh(dome,cirrusMat);cirrus.name='high-cirrus-layer';cirrus.renderOrder=-15;group.add(cirrus);
   const cloudMat=keep(new THREE.ShaderMaterial({uniforms:u,vertexShader:vertex,side:THREE.BackSide,transparent:true,depthTest:false,depthWrite:false,
     fragmentShader:`varying vec3 vDir;uniform vec3 sunDir,moonDir,cloudLight,cloudShade;uniform vec2 windOffset;uniform int steps;uniform float coverage,weatherThreshold,time,night;${cloudNoise}
     float density(vec3 p){float h=(p.y-120.)/135.;float layer=smoothstep(0.,.15,h)*(1.-smoothstep(.65,1.,h));p.xz-=windOffset;
@@ -126,6 +148,8 @@ export function createSkyRenderer() {
   const dimensions=new THREE.Vector2(), savedClear=new THREE.Color();
   // Geometry-only sky for PMREM and the street's mirror camera. No screen-space composite.
   const environmentScene=new THREE.Scene();
+  const envCirrusMat=keep(cirrusMat.clone());envCirrusMat.uniforms=u;envCirrusMat.depthTest=true;
+  const envCirrus=new THREE.Mesh(dome,envCirrusMat);envCirrus.scale.setScalar(2.98);envCirrus.renderOrder=-15;
   const envSky=new THREE.Mesh(dome,skyMat);envSky.scale.setScalar(3);envSky.renderOrder=-30;
   const envCloudMat=keep(cloudMat.clone());envCloudMat.uniforms=u;envCloudMat.transparent=true;
   envCloudMat.blending=THREE.NormalBlending;envCloudMat.toneMapped=true;envCloudMat.depthTest=true;
@@ -135,7 +159,7 @@ export function createSkyRenderer() {
   const envSunMat=keep(sunMat.clone()),envMoonMat=keep(moonMat.clone());
   envSunMat.uniforms=u;envMoonMat.uniforms=u;envSunMat.depthTest=envMoonMat.depthTest=true;
   envSun.material=envSunMat;envMoon.material=envMoonMat;
-  environmentScene.add(envSky,envCloud,envSun,envMoon);
+  environmentScene.add(envSky,envCloud,envSun,envMoon,envCirrus);
   let resolution=.5;
   function renderClouds(renderer:THREE.WebGLRenderer,camera:THREE.Camera){
     composite.visible=u.coverage.value>.001;if(!composite.visible)return;
@@ -151,6 +175,7 @@ export function createSkyRenderer() {
   let elapsed=0;const windVelocity=new THREE.Vector2(1.768,.884);
   const lighting={sunDirection:sunDir,moonDirection:moonDir,palette};
   return {group,environmentScene,lighting,sunDir,moonDir,windOffset:u.windOffset.value,renderClouds,
+    setCirrusCoverage(amount:number){u.cirrusCoverage.value=THREE.MathUtils.clamp(amount,0,1);},
     setQuality(quality:'low'|'balanced'|'high'){resolution=quality==='low'?.35:quality==='high'?.75:.5;u.steps.value=quality==='low'?20:quality==='high'?48:32;},
     setWind(degrees:number,speed:number){const a=THREE.MathUtils.degToRad(degrees);windVelocity.set(Math.cos(a),Math.sin(a)).multiplyScalar(Math.max(0,speed));},
     setAnimationTime(seconds:number){elapsed=Math.max(0,seconds);u.windOffset.value.copy(windVelocity).multiplyScalar(elapsed);},
@@ -169,6 +194,7 @@ export function createSkyRenderer() {
       envSun.position.copy(sunDir).multiplyScalar(2800);envMoon.position.copy(moonDir).multiplyScalar(2800);
       envSun.scale.copy(sun.scale).multiplyScalar(4);envMoon.scale.copy(moon.scale).multiplyScalar(4);
       envSun.lookAt(0,0,0);envMoon.lookAt(0,0,0);envSun.visible=sun.visible;envMoon.visible=moon.visible;envCloud.visible=coverage>.001;
+      cirrus.visible=envCirrus.visible=u.cirrusCoverage.value>.001;
     },dispose(){for(const resource of resources)resource.dispose();group.clear();},
   };
 }

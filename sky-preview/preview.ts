@@ -25,6 +25,9 @@ key.castShadow=true;key.shadow.mapSize.set(2048,2048);key.shadow.normalBias=.04;
 Object.assign(key.shadow.camera,{left:-22,right:22,top:22,bottom:-22,near:-40,far:40});key.shadow.camera.updateProjectionMatrix();
 world.add(key,key.target,fill,rim,hemi);
 const hour=el<HTMLInputElement>('hour'),coverage=el<HTMLInputElement>('coverage'),phase=el<HTMLInputElement>('phase');
+const cirrus=el<HTMLInputElement>('cirrus');
+function applyCirrus(){sky.setCirrusCoverage(Number(cirrus.value));el('cirrus-value').textContent=Math.round(Number(cirrus.value)*100)+'%';}
+cirrus.oninput=applyCirrus;applyCirrus();
 const follow=el<HTMLInputElement>('follow'),visible=el<HTMLInputElement>('street-visible');
 const status=el('status'),loadState=el('load-state'),play=el<HTMLButtonElement>('play');
 const windDirection=el<HTMLInputElement>('wind-direction'),windSpeed=el<HTMLInputElement>('wind-speed');
@@ -82,7 +85,7 @@ function frame(now:number){const dt=Math.min((now-last)/1000,.1);last=now;
  fill.color.copy(L.fill.color);fill.intensity=L.fill.intensity;rim.color.copy(L.rim.color);rim.intensity=L.rim.intensity;
  hemi.color.copy(L.hemisphere.sky);hemi.groundColor.copy(L.hemisphere.ground);hemi.intensity=L.hemisphere.intensity;world.environmentIntensity=L.environmentIntensity;
  reflectedSky.children.forEach((child,i)=>{const source=sky.environmentScene.children[i];child.position.copy(source.position);child.quaternion.copy(source.quaternion);child.scale.copy(source.scale);child.visible=source.visible;});
- const signature=`${Math.round(time.state.sunElev*2)}|${Math.round(Number(coverage.value)*100)}|${phase.value}`;
+ const signature=`${Math.round(time.state.sunElev*2)}|${Math.round(Number(coverage.value)*100)}|${cirrus.value}|${phase.value}`;
  // Bake on a control/time change at most once per second, never every wind frame.
  if(signature!==envSignature&&now-lastBake>1000){const previous=renderer.getRenderTarget();
   const next=pmrem.fromScene(sky.environmentScene,0,.1,4000,{size:128});renderer.setRenderTarget(previous);
