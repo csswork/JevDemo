@@ -1,4 +1,4 @@
-import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION } from './farFacade';
+import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION, FAR_WINDOW_HASH } from './farFacade';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -622,7 +622,7 @@ function farWindows(mat: THREE.MeshLambertMaterial, lights: { value: number }) {
       .replace('#include <project_vertex>',`#include <project_vertex>
         vWin=abs(vBoxN.y)<.5?vec3(abs(vBoxN.x)>.5?vBox.z:vBox.x,vBox.y,vSeed*.618):vec3(0.,0.,-1.);`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vWin;')
+      .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vWin;\n'+FAR_WINDOW_HASH)
       .replace('#include <color_fragment>', '#include <color_fragment>\n'+FAR_FACADE_COLOR)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n'+FAR_FACADE_EMISSION);
   };

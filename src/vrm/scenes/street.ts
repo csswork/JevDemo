@@ -1,4 +1,4 @@
-import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION } from './farFacade';
+import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION, FAR_WINDOW_HASH } from './farFacade';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
@@ -2038,7 +2038,7 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
       .replace('#include <common>', '#include <common>\nattribute vec3 aGlow;\nvarying vec3 vWin;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aGlow;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vWin;')
+      .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vWin;\n'+FAR_WINDOW_HASH)
       .replace('#include <color_fragment>', '#include <color_fragment>\n'+FAR_FACADE_COLOR)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n'+FAR_FACADE_EMISSION);
   };
