@@ -291,18 +291,66 @@ export function farShore(a: number) {
  * 对岸的山：极坐标的高度场（方位角 from..to，从海岸线往里 0..depth 米）。
  * 岸边先是一条平地（小镇），往里两道山脊：近的绿，远的偏蓝（插画里的空气透视，比只靠雾冲淡更蓝）
  */
+// One small repeating surface atlas; no per-frame procedural noise or extra draw calls.
+let mountainSurfaceData:Uint8Array|undefined;
+function mountainSurfaceTexture(){
+ const size=512;
+ if(!mountainSurfaceData){
+  mountainSurfaceData=new Uint8Array(size*size*4);
+  // Periodic blending avoids seams at the 1km tile boundary.
+  const periodic=(x:number,y:number,scale:number,offset:number)=>{
+   const u=x/size,v=y/size;
+   const sample=(a:number,b:number)=>fbm(a*scale+offset,b*scale-offset,3);
+   return THREE.MathUtils.lerp(THREE.MathUtils.lerp(sample(u,v),sample(u-1,v),u),THREE.MathUtils.lerp(sample(u,v-1),sample(u-1,v-1),u),v);
+  };
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+   const i=(y*size+x)*4;
+   mountainSurfaceData[i]=Math.round(periodic(x,y,12,71)*255);
+   mountainSurfaceData[i+1]=Math.round(periodic(x,y,90,39)*255);
+   mountainSurfaceData[i+2]=Math.round(periodic(x,y,28,17)*255);
+   mountainSurfaceData[i+3]=128;
+  }
+  // Overlapping rounded crowns, baked once. Periodic stamping keeps tile edges seamless.
+  // A directional highlight and dark crown rim read as foliage rather than mottled grass.
+  const random=rng(4817);
+  const canopy=new Float32Array(size*size).fill(.5);
+  for(let tree=0;tree<4200;tree++){
+   const cx=random()*size,cy=random()*size;
+   const radius=2.2+random()*4.2,aspect=.72+random()*.45;
+   for(let dy=-Math.ceil(radius);dy<=Math.ceil(radius);dy++){
+    for(let dx=-Math.ceil(radius);dx<=Math.ceil(radius);dx++){
+     const qx=dx/radius,qy=dy/(radius*aspect),r2=qx*qx+qy*qy;
+     if(r2>1)continue;
+     const x=(Math.floor(cx)+dx+size)%size,y=(Math.floor(cy)+dy+size)%size;
+     const dome=Math.sqrt(1-r2);
+     const value=.25+.42*dome-.17*qx-.12*qy;
+     const weight=smoothstep(1,.72,r2);
+     const at=y*size+x;
+     canopy[at]=THREE.MathUtils.lerp(canopy[at],value,weight);
+    }
+   }
+  }
+  for(let i=0;i<canopy.length;i++)mountainSurfaceData[i*4+3]=Math.round(canopy[i]*255);
+ }
+ const texture=new THREE.DataTexture(mountainSurfaceData,size,size,THREE.RGBAFormat);
+ texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.minFilter=THREE.LinearMipmapLinearFilter;
+ texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=true;texture.needsUpdate=true;
+ return texture;
+}
+
 export function createFarLand(keep: Keep, from: number, to: number) {
-  const NA = 300;
-  const NR = 46;
+  const NA = 440;
+  const NR = 68;
   const depth = 950;
   const pos: number[] = [];
   const col: number[] = [];
+  const depths: number[] = [];
   const idx: number[] = [];
   const c = new THREE.Color();
   const shoreCol = new THREE.Color(0x9fb39a);
-  const nearCol = new THREE.Color(0x3f8044);
-  const nearDark = new THREE.Color(0x2c6439);
-  const farCol = new THREE.Color(0x5b86b0);
+  const nearCol = new THREE.Color(0x56894e);
+  const nearDark = new THREE.Color(0x315f47);
+  const farCol = new THREE.Color(0x7594ae);
   for (let i = 0; i <= NA; i++) {
     const a = from + ((to - from) * i) / NA;
     const r0 = farShore(a);
@@ -318,13 +366,23 @@ export function createFarLand(keep: Keep, from: number, to: number) {
       const ridge1 = smoothstep(50, 220, u) * (1 - 0.55 * smoothstep(330, 520, u)) * (30 + 80 * n1 * n1 * 1.6);
       const ridge2 = smoothstep(330, 680, u) * (70 + 130 * n2 * n2 * 1.8);
       let y = -4 + 6.5 * smoothstep(0, 14, u) + Math.max(ridge1, ridge2) + 6 * (n1 - 0.5);
+      // Coherent foothill folds and tributary valleys follow a common geological direction.
+      // Keep the coastal town's flat strip intact.
+      const rx=x*.82+z*.57,rz=-x*.57+z*.82;
+      const warp=(noise2(rx*.0028+21,rz*.0031-9)-.5)*1.4;
+      const folds=1-Math.abs(2*noise2(rx*.009+warp,rz*.0038+17)-1);
+      const tributaries=1-Math.abs(2*noise2(rx*.017-7,rz*.011+warp)-1);
+      const relief=smoothstep(60,155,u)*(1-.35*smoothstep(650,950,u));
+      // Keep the original low skyline; irregular folds are shallow, not new peaks.
+      y+=relief*((folds-.52)*9+(tributaries-.5)*3);
       // 方位角两头往下收（山脉的尽头没进海里）
       const edge = Math.min(i, NA - i) / NA;
       y = THREE.MathUtils.lerp(-6, y, smoothstep(0, 0.06, edge));
       pos.push(x, y, z);
+      depths.push(u/depth);
       // 颜色：岸边灰绿（小镇的地面）→ 山坡绿（一块块深浅）→ 远处的山偏蓝
       const forest = smoothstep(0.45, 0.6, fbm(x * 0.02, z * 0.02, 3));
-      c.copy(nearCol).lerp(nearDark, forest * 0.7);
+      c.copy(nearCol).lerp(nearDark, forest * 0.38);
       c.lerp(shoreCol, 1 - smoothstep(10, 60, u));
       c.lerp(farCol, smoothstep(300, 680, u) * 0.85);
       col.push(c.r, c.g, c.b);
@@ -340,6 +398,7 @@ export function createFarLand(keep: Keep, from: number, to: number) {
   const g = keep(new THREE.BufferGeometry());
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('landDepth',new THREE.Float32BufferAttribute(depths,1));
   g.setIndex(idx);
   g.computeVertexNormals();
   // 法线朝下就翻绕序（方位角递增的方向决定左右手）
@@ -347,8 +406,77 @@ export function createFarLand(keep: Keep, from: number, to: number) {
     g.setIndex(idx.map((_, k) => idx[k - (k % 3) + 2 - (k % 3)]));
     g.computeVertexNormals();
   }
-  const mesh = new THREE.Mesh(g, keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
+  const texture=keep(mountainSurfaceTexture());
+  const material=keep(new THREE.MeshLambertMaterial({vertexColors:true}));
+  material.onBeforeCompile=shader=>{
+    shader.uniforms.landSurface={value:texture};
+    shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>
+      attribute float landDepth;varying vec3 vLandWorld;varying float vLandDepth;`);
+    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+      vLandWorld=(modelMatrix*vec4(position,1.)).xyz;vLandDepth=landDepth;`);
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
+      uniform sampler2D landSurface;varying vec3 vLandWorld;varying float vLandDepth;`);
+    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+      vec4 surface=texture2D(landSurface,vLandWorld.xz/512.);
+      vec3 terrain=surface.rgb;
+      float inland=smoothstep(.055,.16,vLandDepth);
+      // Painted forest masses and small canopy clusters, softened automatically by mipmaps.
+      float forest=smoothstep(.38,.62,terrain.r*.72+terrain.g*.28);
+      vec3 tint=mix(vec3(.67,.81,.79),vec3(1.12,1.10,.92),forest);
+      float distanceFade=1.-smoothstep(.38,1.,vLandDepth)*.6;
+      diffuseColor.rgb*=mix(vec3(1.),tint,inland*distanceFade);
+      // Crown clusters follow forest coverage; distant ridges dissolve into aerial haze.
+      float canopyDetail=surface.a-.5;
+      float forestCover=mix(.45,1.,forest);
+      float canopyFade=1.-smoothstep(.3,.85,vLandDepth);
+      diffuseColor.rgb*=1.+canopyDetail*1.35*forestCover*inland*canopyFade;
+      vec3 terrainNormal=normalize(cross(dFdx(vLandWorld),dFdy(vLandWorld)));
+      float steep=1.-abs(terrainNormal.y);
+      float rock=smoothstep(.14,.38,steep)*smoothstep(50.,145.,vLandWorld.y)*smoothstep(.42,.68,terrain.b);
+      diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(1.10,.98,.85),rock*.55);
+    `);
+  };
+  material.customProgramCacheKey=()=> 'far-land-canopy-low-ridges-v2';
+  const mesh = new THREE.Mesh(g,material);
   mesh.name = 'far-land';
+  // Distant groves need a real canopy outline, not only color noise on the slope.
+  // One instanced batch: 20 triangles per crown, no trunks or shadow-map work at 1km.
+  const treeGeometry=keep(new THREE.IcosahedronGeometry(1,0));
+  const treeMaterial=keep(new THREE.MeshLambertMaterial({color:0xffffff}));
+  const trees=keep(new THREE.InstancedMesh(treeGeometry,treeMaterial,28000));
+  const random=rng(7261),matrix=new THREE.Matrix4(),rotation=new THREE.Quaternion();
+  const point=new THREE.Vector3(),scale=new THREE.Vector3(),color=new THREE.Color();
+  const treeDark=new THREE.Color(0x4c7547),treeLight=new THREE.Color(0x759b59);
+  let count=0;
+  for(let attempt=0;attempt<280000&&count<28000;attempt++){
+    const face=Math.floor(random()*idx.length/3)*3;
+    const ia=idx[face],ib=idx[face+1],ic=idx[face+2];
+    const u=Math.sqrt(random()),v=random();
+    const wa=1-u,wb=u*(1-v),wc=u*v;
+    const inland=depths[ia]*wa+depths[ib]*wb+depths[ic]*wc;
+    if(inland<.075||inland>.44)continue;
+    const forestEdge=smoothstep(.075,.105,inland)*(1-smoothstep(.30,.44,inland));
+    if(random()>forestEdge)continue;
+    point.set(pos[ia*3]*wa+pos[ib*3]*wb+pos[ic*3]*wc,
+      pos[ia*3+1]*wa+pos[ib*3+1]*wb+pos[ic*3+1]*wc,
+      pos[ia*3+2]*wa+pos[ib*3+2]*wb+pos[ic*3+2]*wc);
+    if(point.y<12||fbm(point.x*.008+61,point.z*.008-22,3)<.38)continue;
+    const radius=2.8+random()*2.0;
+    point.y+=radius*.6;
+    scale.set(radius,radius*(.8+random()*.3),radius*(.8+random()*.3));
+    rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP,random()*Math.PI*2);
+    matrix.compose(point,rotation,scale);
+    trees.setMatrixAt(count,matrix);
+    color.copy(treeDark).lerp(treeLight,random()*.85);
+    trees.setColorAt(count,color);
+    count++;
+  }
+  trees.count=count;
+  trees.instanceMatrix.needsUpdate=true;
+  if(trees.instanceColor)trees.instanceColor.needsUpdate=true;
+  trees.computeBoundingSphere();
+  trees.name='far-land-canopy';
+  mesh.add(trees);
   return mesh;
 }
 
