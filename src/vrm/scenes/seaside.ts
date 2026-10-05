@@ -220,7 +220,7 @@ const SKY_FRAG = /* glsl */ `
           vec3 L = vec3( sin( th ), 0.0, -cos( th ) );
           float lit = smoothstep( -0.04, 0.12, dot( n, L ) );
           vec3 tex = texture2D( uMoonTex, uv * 0.5 + 0.5 ).rgb;
-          vec3 moon = tex * ( lit * 1.25 + 0.035 ) * vec3( 1.0, 0.97, 0.9 );
+          vec3 moon = tex * ( lit * 1.65 + 0.035 ) * vec3( 1.0, 0.97, 0.9 );
           float edge = smoothstep( 1.0, 0.92, r2 );
           c = mix( c, moon + c * ( 1.0 - lit ) * 0.6, edge * uMoon );
         }
@@ -440,13 +440,43 @@ export function createFarLand(keep: Keep, from: number, to: number) {
   const mesh = new THREE.Mesh(g,material);
   mesh.name = 'far-land';
   // Distant groves need a real canopy outline, not only color noise on the slope.
-  // One instanced batch: 20 triangles per crown, no trunks or shadow-map work at 1km.
-  const treeGeometry=keep(new THREE.IcosahedronGeometry(1,0));
-  const treeMaterial=keep(new THREE.MeshLambertMaterial({color:0xffffff}));
+  // Four triangles per crown, one atlas and one batch; no distant shadow-map work.
+  const treeGeometry=keep(new THREE.BufferGeometry());
+  treeGeometry.setAttribute('position',new THREE.Float32BufferAttribute([
+    -1.65,-1.65,0, 1.65,-1.65,0, 1.65,1.65,0, -1.65,1.65,0,
+    0,-1.65,-1.65, 0,-1.65,1.65, 0,1.65,1.65, 0,1.65,-1.65,
+  ],3));
+  treeGeometry.setAttribute('uv',new THREE.Float32BufferAttribute([
+    0,0, 1,0, 1,1, 0,1, 0,0, 1,0, 1,1, 0,1,
+  ],2));
+  // Canopy volume is baked into the atlas. A shared up normal avoids flat-card lighting seams.
+  treeGeometry.setAttribute('normal',new THREE.Float32BufferAttribute([
+    0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0, 0,1,0,
+  ],3));
+  treeGeometry.setIndex([0,1,2,0,2,3,4,5,6,4,6,7]);
+  const atlas=keep(new THREE.TextureLoader().load('/scene/eztree/far-canopy.png'));
+  atlas.colorSpace=THREE.SRGBColorSpace;
+  atlas.minFilter=THREE.LinearMipmapLinearFilter;
+  atlas.magFilter=THREE.LinearFilter;
+  const treeMaterial=keep(new THREE.MeshLambertMaterial({
+    map:atlas,alphaTest:.35,alphaToCoverage:true,side:THREE.DoubleSide,
+  }));
+  const variants=new Float32Array(28000);
+  treeGeometry.setAttribute('crownVariant',new THREE.InstancedBufferAttribute(variants,1));
+  treeMaterial.onBeforeCompile=shader=>{
+    shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>
+      attribute float crownVariant;`);
+    shader.vertexShader=shader.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>
+      vMapUv=vMapUv*.5+vec2(mod(crownVariant,2.),floor(crownVariant/2.))*.5;`);
+    // Both sides represent the same rounded canopy; don't darken the card's back face.
+    shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+      normal*=faceDirection;`);
+  };
+  treeMaterial.customProgramCacheKey=()=> 'far-canopy-atlas-v1';
   const trees=keep(new THREE.InstancedMesh(treeGeometry,treeMaterial,28000));
   const random=rng(7261),matrix=new THREE.Matrix4(),rotation=new THREE.Quaternion();
   const point=new THREE.Vector3(),scale=new THREE.Vector3(),color=new THREE.Color();
-  const treeDark=new THREE.Color(0x4c7547),treeLight=new THREE.Color(0x759b59);
+  const treeDark=new THREE.Color(0xb6c3b3),treeLight=new THREE.Color(0xffffff);
   let count=0;
   for(let attempt=0;attempt<280000&&count<28000;attempt++){
     const face=Math.floor(random()*idx.length/3)*3;
@@ -467,6 +497,7 @@ export function createFarLand(keep: Keep, from: number, to: number) {
     rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP,random()*Math.PI*2);
     matrix.compose(point,rotation,scale);
     trees.setMatrixAt(count,matrix);
+    variants[count]=Math.floor(random()*4);
     color.copy(treeDark).lerp(treeLight,random()*.85);
     trees.setColorAt(count,color);
     count++;

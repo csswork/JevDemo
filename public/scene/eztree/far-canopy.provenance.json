@@ -1,0 +1,16 @@
+{
+  "license": "MIT",
+  "copyright": "2024 Daniel Greenheck",
+  "license_file": "LICENSE",
+  "generator": "scripts/bake-far-canopy.py",
+  "sources": {
+    "oak_color.png": "24451223cf396d22910a4932b8bb996a7274e63d81e24128c96a430ab67822b1",
+    "ash_color.png": "5ec987db3829a839856c32c79b18a33a78f209e911cad55c65abfb77f30e2d29"
+  },
+  "size": [
+    512,
+    512
+  ],
+  "variants": 4,
+  "output_sha256": "23a58b39c196b29791bbbad8d3f1fac8f6535e86a79b685579cf424bceb85882"
+}
