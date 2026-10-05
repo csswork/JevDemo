@@ -22,6 +22,7 @@ import { presetHours, TIME_MODES } from './vrm/timeOfDay';
 import { Picker, type PickerItem } from './ui/Picker';
 import { TimeSlider } from './ui/TimeSlider';
 import { SpeechBubble } from './ui/SpeechBubble';
+import { HoverDock } from './ui/HoverDock';
 import { EMOTION_LABEL, emotionLabel } from './ui/labels';
 import {
   IconBlank,
@@ -36,7 +37,6 @@ import {
   IconReset,
   IconSend,
   IconSliders,
-  IconSwap,
   IconTree,
   IconVolume,
 } from './ui/icons';
@@ -228,8 +228,6 @@ export default function App() {
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // 界面：左上的角色设定展开着没有、聊天记录开着没有、调试面板开着没有（面板的开合记在浏览器里）
-  // 窄屏（手机）上先收着，不然会挡住脸
-  const [dockOpen, setDockOpen] = useState(() => window.innerWidth >= 720);
   const [chatOpen, setChatOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(() => {
     try {
@@ -935,14 +933,6 @@ export default function App() {
 
 
   const currentModel = MODELS.find((m) => m.id === modelId);
-  const modelItems: PickerItem[] = VISIBLE_MODELS.map((m) => ({
-    id: m.id,
-    label: m.name,
-    desc: m.desc,
-    disabled: !modelAvail[m.id],
-    note: modelAvail[m.id] ? undefined : '未下载',
-    lead: <Avatar id={m.id} name={m.name} size={36} />,
-  }));
   const voiceItems: PickerItem[] = groups.flatMap((g) =>
     voices
       .filter((v) => v.group === g)
@@ -978,29 +968,25 @@ export default function App() {
         )}
       </div>
 
-      {/* ---------- 左上：角色，和挂在她名下的音色 / 背景 ---------- */}
-      <section className={`dock glass ${dockOpen ? '' : 'folded'}`} data-bubble-avoid>
-        <div className="dock-head">
-          <Picker
-            className="model-picker"
-            value={modelId}
-            items={modelItems}
-            onPick={(id) => void pickModel(id)}
-            disabled={loading || busy}
-            title="换角色（会记住，下次打开默认是她）"
-            icon={false}
-          >
-            <Avatar id={modelId ?? '?'} name={currentModel?.name ?? '?'} size={38} />
-            <span className="who">
-              <b>{currentModel?.name ?? '地址栏指定的模型'}</b>
-              <small>{currentModel?.desc ?? '（?model= 参数）'}</small>
-            </span>
-            {/* 整块都能点；右边写明这是干什么的，不只放一个箭头 */}
-            <span className="switch-pill">
-              <IconSwap size={13} />
-              换角色
-            </span>
-          </Picker>
+      {/* ---------- 左上：角色（换谁）+ 她的声音（给她设定）。平时收成胶囊 ---------- */}
+      <HoverDock
+        className="dock-char"
+        label="角色：换角色、她的声音"
+        pill={
+          <>
+            <Avatar id={modelId ?? '?'} name={currentModel?.name ?? '?'} size={26} />
+            <span className="dock-pill-label">{modelLoading != null ? `载入 ${Math.round((modelLoading ?? 0) * 100)}%` : '换角色'}</span>
+            <IconChevron size={13} />
+          </>
+        }
+      >
+        {/* 现在是谁 */}
+        <div className="dock-who">
+          <Avatar id={modelId ?? '?'} name={currentModel?.name ?? '?'} size={40} />
+          <span className="who">
+            <b>{currentModel?.name ?? '地址栏指定的模型'}</b>
+            <small>{currentModel?.desc ?? '（?model= 参数）'}</small>
+          </span>
         </div>
 
         {(modelLoading != null || modelError) && (
@@ -1016,95 +1002,114 @@ export default function App() {
           </div>
         )}
 
-        <div className="dock-tree" aria-hidden={!dockOpen}>
-          <div className="dock-tree-inner">
-            <div className="leaf">
-              <div className="leaf-head">
-                <IconMic size={15} />
-                <span>音色</span>
-                <Switch
-                  checked={tts}
-                  onChange={(v) => {
-                    ttsTouched.current = true;
-                    setTts(v);
-                  }}
-                  label={tts ? '开口' : '静音'}
-                  title={voice.ready ? `语音合成：${voiceBackend}` : '本地语音没就绪时用系统内置语音'}
-                />
-              </div>
-              {voice.ready && voices.length > 0 ? (
-                <Picker
-                  value={activeSpeaker}
-                  items={voiceItems}
-                  onPick={(id) => void pickSpeaker(id)}
-                  disabled={!tts}
-                  title="换了马上试听一句；按角色记住"
-                >
-                  <span className="voice-name">{activeName}</span>
-                  <span className="voice-desc">{activeVoice?.desc ?? voiceBackend}</span>
-                </Picker>
-              ) : (
-                <div className="leaf-hint">
-                  {voice.disabled || voice.error ? '系统内置语音' : (
-                    <>
-                      <span className="spinner" /> 本地语音加载中…
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="leaf">
-              <div className="leaf-head">
-                <IconImage size={15} />
-                <span>背景</span>
-                <button
-                  className={`chip-toggle ${ambient ? 'on' : ''}`}
-                  onClick={() => pickAmbient(!ambient)}
-                  title="场景的环境音：咖啡店的人声 / 公园的鸟鸣 / 街上的声音（说话时自动压低）"
-                  aria-pressed={ambient}
-                >
-                  <IconVolume size={14} off={!ambient} />
-                  环境音
-                </button>
-              </div>
-              <div className="seg" role="radiogroup" aria-label="背景">
-                {BACKDROPS.map((b) => (
-                  <button
-                    key={b.id}
-                    role="radio"
-                    aria-label={b.label}
-                    aria-checked={backdrop === b.id}
-                    className={backdrop === b.id ? 'on' : ''}
-                    onClick={() => pickBackdrop(b.id)}
-                  >
-                    {b.icon}
-                    <span>{b.label}</span>
-                  </button>
-                ))}
-              </div>
-
-            </div>
+        {/* 换谁：头像一格一格摆开，点一下就换（选择会记住） */}
+        <div className="dock-sec">
+          <div className="dock-sec-head">换角色</div>
+          <div className="char-grid" role="radiogroup" aria-label="换角色">
+            {VISIBLE_MODELS.map((m) => (
+              <button
+                key={m.id}
+                role="radio"
+                aria-checked={m.id === modelId}
+                className={`char-cell${m.id === modelId ? ' on' : ''}${modelAvail[m.id] ? '' : ' na'}`}
+                disabled={loading || busy || !modelAvail[m.id]}
+                title={`${m.name} · ${m.desc}${modelAvail[m.id] ? '' : '（未下载）'}`}
+                onClick={() => void pickModel(m.id)}
+              >
+                <Avatar id={m.id} name={m.name} size={42} />
+                <span>{m.name}</span>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* 展开 / 收起她的设定：收着的时候这一行就是设定的摘要，点一下展开 */}
-        <button className="dock-toggle" onClick={() => setDockOpen((o) => !o)} aria-expanded={dockOpen}>
-          {dockOpen ? (
-            <span>收起设定</span>
+        {/* 给她设定：只属于当前这个角色（按角色记住） */}
+        <div className="dock-sec">
+          <div className="dock-sec-head">
+            <IconMic size={14} />
+            她的声音
+            <Switch
+              checked={tts}
+              onChange={(v) => {
+                ttsTouched.current = true;
+                setTts(v);
+              }}
+              label={tts ? '开口' : '静音'}
+              title={voice.ready ? `语音合成：${voiceBackend}` : '本地语音没就绪时用系统内置语音'}
+            />
+          </div>
+          {voice.ready && voices.length > 0 ? (
+            <Picker
+              value={activeSpeaker}
+              items={voiceItems}
+              onPick={(id) => void pickSpeaker(id)}
+              disabled={!tts}
+              title="换了马上试听一句；按角色记住"
+            >
+              <span className="voice-name">{activeName}</span>
+              <span className="voice-desc">{activeVoice?.desc ?? voiceBackend}</span>
+            </Picker>
           ) : (
-            <span className="dock-summary">
-              <IconMic size={13} />
-              <span>{tts ? activeName : '静音'}</span>
-              <i />
-              <IconImage size={13} />
-              <span>{BACKDROPS.find((b) => b.id === backdrop)?.label}</span>
-              <em>展开</em>
-            </span>
+            <div className="leaf-hint">
+              {voice.disabled || voice.error ? (
+                '系统内置语音'
+              ) : (
+                <>
+                  <span className="spinner" /> 本地语音加载中…
+                </>
+              )}
+            </div>
           )}
-          <IconChevron size={14} />
+        </div>
+      </HoverDock>
+
+      {/* ---------- 左下：场景（胶囊，往上展开换背景）+ 环境音开关（单独一个图标按钮） ---------- */}
+      <div className="corner-bl" data-bubble-avoid>
+        <HoverDock
+          className="dock-scene"
+          from="bottom"
+          label="场景：换背景、环境音"
+          pill={
+            <>
+              <span className="dock-pill-icon">{BACKDROPS.find((b) => b.id === backdrop)?.icon}</span>
+              <span className="dock-pill-label">{BACKDROPS.find((b) => b.id === backdrop)?.label ?? '场景'}</span>
+              <IconChevron size={13} />
+            </>
+          }
+        >
+          <div className="dock-sec">
+            <div className="dock-sec-head">
+              <IconImage size={14} />
+              场景
+            </div>
+            <div className="seg" role="radiogroup" aria-label="背景">
+              {BACKDROPS.map((b) => (
+                <button
+                  key={b.id}
+                  role="radio"
+                  aria-label={b.label}
+                  aria-checked={backdrop === b.id}
+                  className={backdrop === b.id ? 'on' : ''}
+                  onClick={() => pickBackdrop(b.id)}
+                >
+                  {b.icon}
+                  <span>{b.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </HoverDock>
+        {/* 环境音：只有图标（有声 / 静音），鼠标放上去提示点一下会怎样 */}
+        <button
+          className={`ambient-btn glass ${ambient ? 'on' : 'off'}`}
+          onClick={() => pickAmbient(!ambient)}
+          aria-pressed={ambient}
+          aria-label={ambient ? '关闭环境音' : '打开环境音'}
+          data-tip={ambient ? '环境音开着 · 点一下静音' : '环境音关了 · 点一下打开'}
+        >
+          <IconVolume size={17} off={!ambient} />
         </button>
-      </section>
+      </div>
 
       {jevError && (
         <div className="degraded" title={jevError}>

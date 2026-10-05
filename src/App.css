@@ -336,32 +336,165 @@ button { font: inherit; }
 }
 .picker-item.on .picker-desc { color: color-mix(in srgb, var(--accent) 70%, transparent); }
 
-/* ---------- 左上：角色，和她名下的音色 / 背景 / 时间 ---------- */
+/* ---------- 左上：角色（换谁 + 她的声音）；左下：场景。平时都收成胶囊，见 ui/HoverDock.tsx ---------- */
 
 .dock {
   position: absolute;
-  /* 层级：面板 10 < 气泡 11 < 输入框 / 聊天记录 12 < 左上的设定（下拉菜单要盖住聊天记录）13 */
+  /* 层级：面板 10 < 气泡 11 < 输入框 / 聊天记录 12 < 左上 / 左下的卡片（下拉菜单要盖住聊天记录）13 */
   z-index: 13;
-  top: 16px;
+  /* 胶囊的大小（HoverDock 量好写进来）：卡片从这么大开始长 */
+  --pill-w: 120px;
+  --pill-h: 36px;
+}
+.dock-char { top: 16px; left: 16px; }
+
+/* 左下一排：场景胶囊 + 环境音按钮 */
+.corner-bl {
+  position: absolute;
+  z-index: 13;
+  bottom: 14px;
   left: 16px;
-  width: min(312px, calc(100% - 32px));
-  padding: 8px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+/* 场景卡片展开时盖在环境音按钮上面 */
+.corner-bl .dock { position: relative; z-index: 2; }
+
+/* 平时：一颗小胶囊，和右上角「调试」一样高 */
+.dock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px 4px 4px;
+  border-radius: 999px;
+  color: var(--fg);
+  font-size: 12.5px;
+  cursor: pointer;
+  /* 收回来的最后一刻才重新出现（卡片缩到胶囊大小时两者一模一样，换过来看不出来） */
+  transition: opacity 0.08s linear 0.26s, transform 0.25s var(--ease-spring), background 0.3s, box-shadow 0.3s;
+}
+.dock-pill .avatar { box-shadow: none; }
+.dock-pill .avatar::after { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.8); }
+.dock-pill > svg { color: var(--dim); }
+.dock-pill:hover { transform: scale(1.03); }
+.dock-pill-label { white-space: nowrap; }
+/* 场景胶囊：左边是场景的小图标（和头像一样大的圆） */
+.dock-pill-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--glass-fill);
+  color: var(--dim);
+}
+.dock-pill-icon svg { width: 15px; height: 15px; }
+.dock.open .dock-pill { opacity: 0; transform: none; pointer-events: none; transition: opacity 0.12s ease, background 0.3s, box-shadow 0.3s; }
+
+/*
+ * 展开：一整块玻璃从胶囊里"长"出来 ——
+ *   卡片一开始就是不透明的、裁成胶囊那么大（和胶囊一模一样，换过来看不出来），然后 clip-path 铺开到整张
+ *   （起步快、尾巴很长的减速）；铺到一截里面的内容才依次淡入、往下落一点。
+ *   不加缩放：卡片一缩放，换过来那一下就比胶囊小几个像素，会"跳"一下。
+ * 收：内容先淡掉，玻璃再缩回胶囊，缩到了再换回胶囊。
+ */
+.dock-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(312px, calc(100vw - 32px));
+  padding: 10px;
+  opacity: 0;
+  pointer-events: none;
+  clip-path: inset(0 calc(100% - var(--pill-w)) calc(100% - var(--pill-h)) 0 round calc(var(--pill-h) / 2));
+  transition:
+    clip-path 0.3s cubic-bezier(0.4, 0, 0.2, 1) 0.05s,
+    opacity 0s linear 0.34s,
+    background 0.3s,
+    box-shadow 0.3s;
+}
+/* 往上长：卡片的底边贴着胶囊的底边，从左下角那一块铺开 */
+.dock[data-from='bottom'] .dock-card {
+  top: auto;
+  bottom: 0;
+  clip-path: inset(calc(100% - var(--pill-h)) calc(100% - var(--pill-w)) 0 0 round calc(var(--pill-h) / 2));
+}
+.dock-scene .dock-card { width: min(268px, calc(100vw - 32px)); }
+.dock.open .dock-card {
+  opacity: 1;
+  pointer-events: auto;
+  clip-path: inset(0 0 0 0 round 18px);
+  transition:
+    clip-path 0.48s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0s,
+    background 0.3s,
+    box-shadow 0.3s;
+}
+/* 铺开之后不再裁：卡片里的下拉菜单要伸到卡片外面 */
+.dock.open.settled .dock-card { clip-path: none; }
+
+/* 内容：收的时候先淡掉；开的时候等玻璃铺开一截再依次淡入。
+   只填 backwards：动画走完就不留 transform —— 留着的话每一块都自成一层，
+   排在后面的那块会盖住前面那块弹出来的下拉菜单 */
+.dock-card > * { opacity: 0; transition: opacity 0.1s ease; }
+.dock.open .dock-card > * { opacity: 1; animation: dock-rise 0.34s var(--ease-out) backwards; }
+.dock.open .dock-card > :nth-child(1) { animation-delay: 0.1s; }
+.dock.open .dock-card > :nth-child(2) { animation-delay: 0.14s; }
+.dock.open .dock-card > :nth-child(3) { animation-delay: 0.18s; }
+.dock.open .dock-card > :nth-child(4) { animation-delay: 0.22s; }
+.dock[data-from='bottom'].open .dock-card > * { animation-name: dock-rise-up; }
+@keyframes dock-rise {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+@keyframes dock-rise-up {
+  from { opacity: 0; transform: translateY(4px); }
 }
 
-.dock-head { display: flex; align-items: center; gap: 4px; }
-
-.model-picker { flex: 1; }
-.model-picker > .picker-btn {
-  padding: 6px 8px;
-  border-color: transparent;
-  background: transparent;
-  border-radius: 13px;
+/* 环境音：一个圆的图标按钮（有声 / 静音），和胶囊一样高；鼠标放上去冒一个提示 */
+.ambient-btn {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--fg);
+  cursor: pointer;
+  transition: transform 0.25s var(--ease-spring), color 0.2s, background 0.3s, box-shadow 0.3s;
 }
-.model-picker > .picker-btn:hover:not(:disabled) { background: var(--glass-hover); }
-.model-picker .picker-pop { min-width: 290px; }
-.model-picker.open > .picker-btn { border-color: transparent; background: var(--glass-hover); }
-.model-picker.open > .picker-btn > svg { transform: none; color: var(--accent); }
+.ambient-btn.off { color: var(--faint); }
+.ambient-btn:hover { transform: scale(1.08); }
+.ambient-btn:active { transform: scale(0.94); }
+.ambient-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ambient-btn::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(29, 29, 31, 0.9);
+  color: #fff;
+  font-size: 11.5px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.15s ease, transform 0.2s var(--ease-out);
+}
+.ambient-btn:hover::after,
+.ambient-btn:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 0.25s; }
 
+/* 现在是谁 */
+.dock-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px 10px;
+}
 .who { min-width: 0; display: flex; flex-direction: column; line-height: 1.35; }
 .who b { font-size: 15.5px; font-weight: 650; letter-spacing: 0.02em; }
 .who small {
@@ -369,74 +502,14 @@ button { font: inherit; }
   color: var(--dim);
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* 头部整块是"换角色"的按钮，右边的小胶囊写明用途 */
-.switch-pill {
-  flex-shrink: 0;
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px 3px 8px;
-  border: 1px solid var(--glass-line);
-  border-radius: 999px;
-  background: var(--glass-fill);
-  color: var(--dim);
-  font-size: 11.5px;
-  font-weight: 500;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-.model-picker > .picker-btn:hover:not(:disabled) .switch-pill,
-.model-picker.open .switch-pill {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-.model-picker > .picker-btn:disabled .switch-pill { opacity: 0.5; }
-
-/* 展开 / 收起设定：卡片最下面一整行。收着的时候显示设定摘要 */
-.dock-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 4px;
-  padding: 6px 10px;
-  border: none;
-  border-top: 1px solid var(--glass-line);
-  border-radius: 0 0 12px 12px;
-  background: transparent;
-  color: var(--faint);
-  font-size: 11.5px;
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s;
-}
-.dock-toggle:hover { color: var(--accent); background: var(--glass-fill); }
-.dock-toggle > svg { flex-shrink: 0; transform: rotate(180deg); transition: transform 0.25s var(--ease-out); }
-.dock.folded .dock-toggle > svg { transform: none; }
-.dock.folded .dock-toggle { justify-content: flex-start; }
-.dock-summary {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--dim);
   white-space: nowrap;
 }
-.dock-summary > span { overflow: hidden; text-overflow: ellipsis; }
-.dock-summary > i { width: 1px; height: 10px; margin: 0 4px; background: var(--glass-line); }
-.dock-summary > svg { flex-shrink: 0; color: var(--faint); }
-.dock-summary em { margin-left: auto; font-style: normal; color: var(--faint); }
-.dock-toggle:hover .dock-summary em { color: var(--accent); }
 
 .dock-note {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 2px 8px 4px 54px;
+  margin: -4px 4px 8px 54px;
   font-size: 11.5px;
   color: var(--dim);
 }
@@ -450,44 +523,56 @@ button { font: inherit; }
 }
 .mini-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
 
-.dock.folded .dock-tree { display: none; }
-.dock-tree-inner {
-  /* 竖线对齐头像的中心：子项从角色身上长出来 */
-  margin: 2px 4px 4px 27px;
-  animation: tree-in 0.3s var(--ease-out);
-}
-@keyframes tree-in {
-  from { opacity: 0; transform: translateY(-6px); }
-}
-
-/* 树状连线：每一项一根横线，竖线到最后一项为止 */
-.leaf {
-  position: relative;
-  padding: 10px 2px 4px 18px;
-}
-.leaf::before,
-.leaf::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  background: rgba(0, 0, 0, 0.14);
-}
-.leaf::before { top: 21px; width: 12px; height: 1px; }
-.leaf::after { top: 0; bottom: 0; width: 1px; }
-.leaf:last-child::after { bottom: auto; height: 21px; }
-
-.leaf-head {
+/* 一块（换角色 / 她的声音 / 场景）：上面一条细线隔开，小标题 + 内容 */
+.dock-sec { position: relative; padding: 10px 2px 4px; border-top: 1px solid var(--glass-line); }
+.dock-scene .dock-sec { border-top: none; padding-top: 2px; }
+.dock-sec-head {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   height: 22px;
-  margin-bottom: 7px;
+  margin-bottom: 8px;
   font-size: 12px;
   letter-spacing: 0.06em;
   color: var(--dim);
 }
-.leaf-head > svg { color: var(--faint); }
-.leaf-head > :last-child:not(span):not(svg) { margin-left: auto; }
+.dock-sec-head > svg { color: var(--faint); }
+.dock-sec-head > :last-child:not(svg) { margin-left: auto; }
+
+/* 换角色：头像一格一格 */
+.char-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px 2px;
+  max-height: 232px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
+}
+.char-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 0 4px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.char-cell > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.char-cell .avatar { transition: transform 0.25s var(--ease-spring), box-shadow 0.2s; }
+.char-cell:hover:not(:disabled) { background: var(--glass-hover); color: var(--fg); }
+.char-cell:hover:not(:disabled) .avatar { transform: scale(1.06); }
+/* 现在是她：头像外一圈黑色的环 */
+.char-cell.on { color: var(--fg); font-weight: 600; }
+.char-cell.on .avatar { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent); }
+.char-cell:disabled { cursor: default; }
+/* 没下载的模型才变淡（说话中暂时不能换，不用每次都把整排头像变灰） */
+.char-cell.na { opacity: 0.4; }
 
 .leaf-hint {
   display: flex;
@@ -546,6 +631,7 @@ button { font: inherit; }
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.2s var(--ease-spring);
 }
+.seg button > span { white-space: nowrap; letter-spacing: -0.02em; }
 .seg button:hover { background: var(--glass-hover); color: var(--fg); }
 .seg button:active { transform: scale(0.95); }
 .seg button.on {
@@ -701,7 +787,8 @@ button { font: inherit; }
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
-  width: min(680px, calc(100% - 32px));
+  /* 左下有场景的胶囊：两边各让出它的位置 */
+  width: min(680px, calc(100% - 300px));
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1539,12 +1626,15 @@ input[type='range']::-webkit-slider-thumb {
 /* ---------- 窄屏 ---------- */
 
 @media (max-width: 720px) {
-  .dock { top: 10px; left: 10px; width: min(300px, calc(100% - 20px)); }
+  .dock-char { top: 10px; left: 10px; }
+  .dock-card { width: min(300px, calc(100vw - 20px)); }
   .panel, .panel-fab { top: auto; bottom: 86px; right: 10px; }
   .panel { max-height: 60%; }
   .chatbar,
   .app.has-time .chatbar { bottom: 10px; width: calc(100% - 20px); }
-  .time-card { left: 10px; right: 10px; bottom: 76px; width: auto; }
+  /* 手机：场景胶囊在输入框上面靠左，时间卡片在它右边 */
+  .corner-bl { bottom: 72px; left: 10px; }
+  .time-card { right: 10px; bottom: 72px; width: min(212px, calc(100% - 150px)); }
   .app.has-time .panel,
   .app.has-time .panel-fab { bottom: 182px; }
   .bubble-body { font-size: 14.5px; }
