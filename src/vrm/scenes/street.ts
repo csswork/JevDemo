@@ -1,3 +1,4 @@
+import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION } from './farFacade';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
@@ -1633,6 +1634,36 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
     scale: number;
     ry: number;
   }
+  // Decorative pots use the same real leaf cards, wind and lighting as the street trees.
+  const pottedPlants:Spot[]=[];
+  if(heroCafe){
+    const center=(heroCafe.door[0]+heroCafe.door[1])*.5;
+    const preview=new THREE.Object3D();preview.name='street-potted-preview';
+    preview.position.copy(v3(center,1.05,.45).applyMatrix4(heroCafe.M));
+    preview.userData.camera=v3(center,1.8,5.8).applyMatrix4(heroCafe.M).toArray();
+    group.add(preview);
+    for(const x of [heroCafe.door[0]-.45,heroCafe.door[1]+.45]){
+      const p=v3(x,.5,.45).applyMatrix4(heroCafe.M);
+      pottedPlants.push({x:p.x,z:p.z,y:p.y,variant:5,scale:1,ry:r()*Math.PI*2});
+    }
+  }
+  const pottedContainers:THREE.Matrix4[]=[];
+  let potGeometry:THREE.LatheGeometry,soilGeometry:THREE.CylinderGeometry;
+  let potMaterial:THREE.MeshStandardMaterial,soilMaterial:THREE.MeshStandardMaterial;
+  {
+    const p=pt(S0+17.2,FRONT-.3,KERB_H);
+    const potGeo=keep(new THREE.LatheGeometry([
+      new THREE.Vector2(.10,0),new THREE.Vector2(.13,.02),new THREE.Vector2(.17,.24),
+      new THREE.Vector2(.18,.25),new THREE.Vector2(.18,.28),new THREE.Vector2(.15,.28),
+      new THREE.Vector2(.14,.24),
+    ],16));
+    const potMat=keep(new THREE.MeshStandardMaterial({color:0xb98b6b,roughness:.9}));
+    potGeometry=potGeo;potMaterial=potMat;
+    soilGeometry=keep(new THREE.CylinderGeometry(.14,.14,.015,16));soilGeometry.translate(0,.24,0);
+    soilMaterial=keep(new THREE.MeshStandardMaterial({color:0x3b3024,roughness:1}));
+    pottedContainers.push(new THREE.Matrix4().makeTranslation(p.x,p.y,p.z));
+    pottedPlants.push({x:p.x,z:p.z,y:p.y+.25,variant:4,scale:.5,ry:1.3});
+  }
   const trees: Spot[] = [];
   const bushes: Spot[] = [];
   const lampSpots: Array<{ s: number; p: THREE.Vector3; l: THREE.Vector3 }> = [];
@@ -1691,6 +1722,7 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
     { preset: 'Oak Medium', seed: 53, height: 6.5, leaves: 1.2 },
     { preset: 'Bush 1', seed: 61, height: 1.0, leaves: 1 },
     { preset: 'Bush 1', seed: 67, height: 0.85, leaves: 1 },
+    { preset: 'Ash Small', seed: 83, height: 1.35, leaves: .75 },
   ] as const;
   void import('@dgreenheck/ez-tree').then(({ Tree }) => {
     if (disposed) return;
@@ -1714,7 +1746,7 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
       batch(l.geometry, l.material as THREE.Material, matrices, { depth: v.depth });
     };
     // 灌木的 spot.variant 是 2/3（加了 1 的偏移，和树分开），这里换成灌木变体 3/4
-    const all = [...trees, ...bushes.map((b) => ({ ...b, variant: b.variant + 1 }))];
+    const all = [...trees, ...bushes.map((b) => ({ ...b, variant: b.variant + 1 })),...pottedPlants];
     TREE_VARIANTS.forEach((tv, i) => {
       const v = make(tv.preset, tv.seed, tv.height, null, tv.leaves);
       plant(
@@ -1907,7 +1939,14 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
           ms.plaster.setTransform(M).addGeometry(part.geo, part.local, undefined, undefined, side);
         } else {
           const m = ms[slot as keyof typeof ms] ?? ms.paint;
-          m.setTransform(M).addGeometry(part.geo, part.local);
+          if(h.id==='cafe'){
+            const doorCenter=-w/2+2.5*bw;
+            const potX=[doorCenter-bw/2-.45,doorCenter+bw/2+.45];
+            const trimmed=trianglesWhere(part.geo,part.local,q=>!(q.y>.52&&q.y<2.15
+              &&Math.abs(q.z-.45)<.5&&potX.some(x=>Math.abs(q.x-x)<.5)));
+            m.setTransform(M).addGeometry(trimmed,part.local);
+            trimmed.dispose();
+          }else m.setTransform(M).addGeometry(part.geo, part.local);
         }
       }
       for (const mark of item.marks) if (mark.name.startsWith('light')) nightLights.add(kitLight(mark, M));
@@ -1926,22 +1965,10 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWin = aGlow;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vWin;')
-      .replace(
-        '#include <emissivemap_fragment>',
-        `#include <emissivemap_fragment>
-        if ( uLights > 0.0 && vWin.z >= 0.0 ) {
-          vec2 g = vec2( vWin.x / 2.6, ( vWin.y - 0.7 ) / 2.8 );
-          vec2 cell = floor( g );
-          vec2 f = fract( g );
-          float h = fract( sin( dot( vec3( cell, vWin.z * 97.31 ), vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
-          float win = step( 0.28, f.x ) * step( f.x, 0.72 ) * step( 0.3, f.y ) * step( f.y, 0.78 ) * step( 0.0, cell.y ) * step( h, 0.36 );
-          float fw = max( fwidth( g.x ), fwidth( g.y ) );
-          win = mix( win, 0.08, smoothstep( 0.35, 1.0, fw ) );
-          totalEmissiveRadiance += vec3( 1.0, 0.72, 0.38 ) * win * uLights * 1.6;
-        }`,
-      );
+      .replace('#include <color_fragment>', '#include <color_fragment>\n'+FAR_FACADE_COLOR)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n'+FAR_FACADE_EMISSION);
   };
-  farSolidMat.customProgramCacheKey = () => 'street-far-solid';
+  farSolidMat.customProgramCacheKey = () => 'street-far-facade-v2';
   const farGlowMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true }));
   farGlowMat.onBeforeCompile = (shader) => {
     shader.uniforms.uLights = farUniforms.uLights;
@@ -1957,12 +1984,18 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
     const put = (name: string, M: THREE.Matrix4, opts: { wall?: THREE.Color; roof?: THREE.Color; seed?: number } = {}) => {
       const item = kit.get(name);
       if (!item) return;
+      const inverse=M.clone().invert(),wallPoint=new THREE.Vector3();
       for (const part of item.parts) {
         const at = M.clone().multiply(part.local);
         if (part.slot === 'glow') glowM.addGeometry(part.geo, at);
         else if (part.slot === 'wall') {
           const seed = opts.seed ?? -1;
-          solid.addGeometry(part.geo, at, opts.wall, (q, n) => (Math.abs(n.y) > 0.5 || seed < 0 ? NO_WIN : [Math.abs(n.x) > 0.5 ? q.z : q.x, q.y, seed]));
+          solid.addGeometry(part.geo, at, opts.wall, (q, n) => {
+            if(Math.abs(n.y)>.5||seed<0)return NO_WIN;
+            // addGeometry supplies transformed positions; restore each house's own frame.
+            wallPoint.copy(q).applyMatrix4(inverse);
+            return [Math.abs(n.x)>.5?wallPoint.z:wallPoint.x,wallPoint.y,seed];
+          });
         } else solid.addGeometry(part.geo, at, part.slot === 'roof' ? opts.roof : undefined, NO_WIN);
       }
       for (const mark of item.marks) if (mark.name.startsWith('light')) nightLights.add(kitLight(mark, M));
@@ -2064,31 +2097,34 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
   /** 店里的材质和它们白天的颜色（夜里调亮） */
   const interiorMats: Array<[THREE.MeshStandardMaterial, THREE.Color]> = [];
   if (heroCafe) {
-    const { lights, materials } = buildCafeInterior({ group, keep, M: heroCafe.M, w: heroCafe.w, d: heroCafe.d, floorY: 0.25, ceilY: 3.12, load: loadPP, door: heroCafe.door });
+    const { lights, materials } = buildCafeInterior({ group, keep, M: heroCafe.M, w: heroCafe.w, d: heroCafe.d, floorY: 0.25, ceilY: 3.12, load: loadPP, door: heroCafe.door,
+      plant:(x,y,z,height)=>{
+        const scale=height/.9;
+        const M=heroCafe!.M.clone().multiply(new THREE.Matrix4().makeTranslation(x,y,z))
+          .multiply(new THREE.Matrix4().makeScale(scale,scale,scale));
+        pottedContainers.push(M);
+        const p=v3(x,y+.25*scale,z).applyMatrix4(heroCafe!.M);
+        pottedPlants.push({x:p.x,z:p.z,y:p.y,variant:4,scale:(height-.25*scale)/.85,ry:x*1.7});
+      },
+    });
     interiorLights.push(...lights);
     for (const m of materials) interiorMats.push([m, m.color.clone()]);
   }
-  // 门口的盆栽（Poly Pizza 的低多边形绿植，咖啡店场景里那几盆）。咖啡店门两边不放：那里是咖啡店模型自带的两盆橄榄树
-  for (const [file, s, d, h] of [['houseplant_2', S0 + 17.2, FRONT - 0.3, 0.7]] as const) {
-    loader.load(`${BASE}polypizza/${file}.glb`, (gltf) => {
-      own(gltf.scene);
-      if (disposed) return;
-      const o = gltf.scene;
-      o.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(o);
-      o.scale.setScalar(h / Math.max(1e-6, box.max.y - box.min.y));
-      const p = pt(s, d, KERB_H);
-      o.position.set(p.x, KERB_H - box.min.y * o.scale.y, p.z);
-      o.traverse((c) => {
-        if ((c as THREE.Mesh).isMesh) {
-          c.castShadow = true;
-          c.receiveShadow = true;
-        }
-      });
-      group.add(o);
-    });
-  }
 
+  // Pots and soil share two draws even when shelf plants add more instances.
+  const pottedSoil=[...pottedContainers];
+  if(heroCafe)for(const x of [heroCafe.door[0]-.45,heroCafe.door[1]+.45]){
+    const scale=.235/.14;
+    pottedSoil.push(heroCafe.M.clone().multiply(new THREE.Matrix4().makeTranslation(x,.505-.24*scale,.45))
+      .multiply(new THREE.Matrix4().makeScale(scale,scale,scale)));
+  }
+  for(const [geo,mat,name,matrices] of [[potGeometry!,potMaterial!,'street-potted-containers',pottedContainers],
+    [soilGeometry!,soilMaterial!,'street-potted-soil',pottedSoil]] as const){
+    const pots=keep(new THREE.InstancedMesh(geo,mat,matrices.length));
+    matrices.forEach((M,i)=>pots.setMatrixAt(i,M));
+    pots.instanceMatrix.needsUpdate=true;pots.computeBoundingSphere();
+    pots.receiveShadow=true;pots.name=name;group.add(pots);
+  }
   const facadeMesh = finish(facade, facadeMat, 'facades');
   // 墙挖了洞（窗、店门）：投影也要挖，阳光才照得进店里
   if (facadeMesh) facadeMesh.customDepthMaterial = facadeDepthMaterial(keep, holes);

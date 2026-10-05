@@ -1,16 +1,16 @@
 {
-  "coverage": 0.32,
-  "cirrus": 0.4,
+  "coverage": 0.15,
+  "cirrus": 0.09,
   "moonPhase": null,
-  "windDirection": 27,
-  "windSpeed": 2,
+  "windDirection": 55,
+  "windSpeed": 8.9,
   "quality": "balanced",
   "ocean": {
-    "waves": 0.55,
-    "roughness": 0.28,
-    "foam": 0.32,
+    "waves": 0.83,
+    "roughness": 0.21,
+    "foam": 0.27,
     "reflection": 0.88,
-    "glitter": 0.6,
+    "glitter": 1.39,
     "resolution": 128,
     "quality": "balanced"
   }

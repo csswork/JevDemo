@@ -1,3 +1,4 @@
+import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION } from './farFacade';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -220,7 +221,7 @@ const SKY_FRAG = /* glsl */ `
           vec3 L = vec3( sin( th ), 0.0, -cos( th ) );
           float lit = smoothstep( -0.04, 0.12, dot( n, L ) );
           vec3 tex = texture2D( uMoonTex, uv * 0.5 + 0.5 ).rgb;
-          vec3 moon = tex * ( lit * 1.65 + 0.035 ) * vec3( 1.0, 0.97, 0.9 );
+          vec3 moon = tex * ( lit * 1.25 + 0.035 ) * vec3( 1.0, 0.97, 0.9 );
           float edge = smoothstep( 1.0, 0.92, r2 );
           c = mix( c, moon + c * ( 1.0 - lit ) * 0.6, edge * uMoon );
         }
@@ -530,9 +531,11 @@ export interface TownSpot {
 }
 export function farTownSpots(from: number, to: number, count = 900): TownSpot[] {
   const r = rng(404);
-  const palette = [0xffffff, 0xfbf6ec, 0xf1f3f5, 0xfdf8f0, 0xeaf0f5, 0xf5ebdd, 0xffffff, 0xe6eaee, 0xf3e4d4];
+  const palette = [0xe7dfd1, 0xddd0bb, 0xcdd7dc, 0xf0e5d4, 0xd7dfdc, 0xe4cfb9, 0xebdfcc, 0xc8d1d4, 0xd4b8a5];
   const out: TownSpot[] = [];
-  for (let k = 0; k < count * 3 && out.length < count; k++) {
+  // Spatial rejection avoids intersecting houses while keeping a seeded, varied skyline.
+  const blocks=new Map<string,Array<{x:number;z:number;radius:number}>>();
+  for (let k = 0; k < count * 16 && out.length < count; k++) {
     const a = from + r() * (to - from);
     const u = r() < 0.85 ? 8 + r() * 52 : 50 + r() * 60;
     const rr = farShore(a) + u;
@@ -542,6 +545,17 @@ export function farTownSpots(from: number, to: number, count = 900): TownSpot[] 
     const w = 7 + r() * 9;
     const h = tall ? 12 + r() * 8 : 4 + r() * 5;
     const d = 7 + r() * 8;
+    const radius=Math.max(w,d)*.42+1.5;
+    const gx=Math.floor(x/24),gz=Math.floor(z/24);
+    let blocked=false;
+    for(let ix=gx-1;ix<=gx+1;ix++)for(let iz=gz-1;iz<=gz+1;iz++){
+      for(const house of blocks.get(`${ix}:${iz}`)??[]){
+        if(Math.hypot(x-house.x,z-house.z)<radius+house.radius){blocked=true;break;}
+      }
+    }
+    if(blocked)continue;
+    const key=`${gx}:${gz}`,block=blocks.get(key)??[];
+    block.push({x,z,radius});blocks.set(key,block);
     const y = -4 + 6.5 * smoothstep(0, 14, u) + 0.08 * Math.max(0, u - 45);
     const rotY = -a + (r() - 0.5) * 0.4;
     const color = palette[Math.floor(r() * palette.length)];
@@ -603,26 +617,16 @@ function farWindows(mat: THREE.MeshLambertMaterial, lights: { value: number }) {
           vSeed = float( gl_InstanceID );
         }`,
       );
+    shader.vertexShader=shader.vertexShader
+      .replace('#include <common>','#include <common>\nvarying vec3 vWin;')
+      .replace('#include <project_vertex>',`#include <project_vertex>
+        vWin=abs(vBoxN.y)<.5?vec3(abs(vBoxN.x)>.5?vBox.z:vBox.x,vBox.y,vSeed*.618):vec3(0.,0.,-1.);`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vBox;\nvarying vec3 vBoxN;\nvarying float vSeed;')
-      .replace(
-        '#include <emissivemap_fragment>',
-        `#include <emissivemap_fragment>
-        if ( uLights > 0.0 && abs( vBoxN.y ) < 0.5 ) {
-          float u = abs( vBoxN.x ) > 0.5 ? vBox.z : vBox.x;
-          float face = vBoxN.x + vBoxN.z * 2.0;
-          vec2 g = vec2( u / 2.6, ( vBox.y - 0.7 ) / 2.8 );
-          vec2 cell = floor( g );
-          vec2 f = fract( g );
-          float h = fract( sin( dot( vec3( cell, vSeed * 0.731 + face * 3.1 ), vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
-          float win = step( 0.28, f.x ) * step( f.x, 0.72 ) * step( 0.3, f.y ) * step( f.y, 0.78 ) * step( 0.0, cell.y ) * step( h, 0.34 );
-          float fw = max( fwidth( g.x ), fwidth( g.y ) );
-          win = mix( win, 0.07, smoothstep( 0.35, 1.0, fw ) );
-          totalEmissiveRadiance += vec3( 1.0, 0.72, 0.38 ) * win * uLights * 1.6;
-        }`,
-      );
+      .replace('#include <common>', '#include <common>\nuniform float uLights;\nvarying vec3 vWin;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n'+FAR_FACADE_COLOR)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n'+FAR_FACADE_EMISSION);
   };
-  mat.customProgramCacheKey = () => 'far-town-windows';
+  mat.customProgramCacheKey = () => 'far-town-facade-v2';
 }
 
 /** 远处的跨海桥：一条长的桥面 + 一排桥墩，白灰色 */

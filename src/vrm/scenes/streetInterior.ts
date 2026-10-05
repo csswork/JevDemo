@@ -33,6 +33,8 @@ export interface CafeInteriorOptions {
   load: (file: string) => Promise<THREE.Object3D | null>;
   /** 门在哪（局部 x 的范围）：门口留出通道 */
   door: [number, number];
+  /** Shared outdoor/indoor foliage renderer, in house-local coordinates. */
+  plant?: (x:number,y:number,z:number,height:number)=>void;
 }
 
 /** 椅子模型默认面朝 +Z（Blender 做的，正面朝 -Y 导出），转到面朝桌子不用补 */
@@ -175,7 +177,9 @@ export function buildCafeInterior(o: CafeInteriorOptions) {
         void place('cup', x, F0 + y + 0.02, back + 0.14, 0.075, r() * 6);
         x += 0.13;
       } else {
-        void place(r() < 0.5 ? 'houseplant_3' : 'houseplant_2', x, F0 + y + 0.02, back + 0.14, 0.2, r() * 6);
+        const plantFile=r()<.5?'houseplant_3':'houseplant_2',rotation=r()*6;
+        if(o.plant)o.plant(x,F0+y+.02,back+.14,.2);
+        else void place(plantFile, x, F0 + y + 0.02, back + 0.14, 0.2, rotation);
         x += 0.2;
       }
     }
@@ -210,7 +214,8 @@ export function buildCafeInterior(o: CafeInteriorOptions) {
     [o.door[0] - 0.35, front - 0.45, 'houseplant_3', 0.9],
     [o.door[1] + 0.35, front - 0.45, 'houseplant_1', 1.0],
   ] as const)
-    void place(file, x, F0, z, h, x);
+    if(o.plant)o.plant(x,F0,z,h);
+    else void place(file, x, F0, z, h, x);
 
   // ---- 吊灯：吧台上方三盏、桌子上方两盏（模型里的灯泡营业时间亮，见 street.ts）；一盏暖色点光源照亮店里 ----
   for (const [lx, lz] of [
