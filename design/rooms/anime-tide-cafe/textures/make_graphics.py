@@ -33,3 +33,28 @@ d.text((310,235),'一杯咖啡 · 一段慢时光',font=f(37),fill='#756753')
 d.arc((100,190,265,365),0,180,fill='#526855',width=9);d.line((101,275,101,302),fill='#526855',width=8);d.line((264,275,264,302),fill='#526855',width=8);d.arc((252,270,310,330),270,90,fill='#526855',width=8);d.line((90,375,280,375),fill='#9d8866',width=6)
 for x in [145,182,219]:d.arc((x,155,x+22,225),90,270,fill='#9d8866',width=4)
 d.text((305,375),'欢迎坐坐，今天也辛苦了。',font=f(33),fill='#756753');im.save(P/'welcome.png')
+
+# A small double-sided chalkboard: legible Chinese lettering and drawn ornament.
+im=Image.new('RGB',(512,768),'#293c39');d=ImageDraw.Draw(im)
+cream='#e7dfc4';sage='#a8c5a0';gold='#d6bd86'
+d.rounded_rectangle((22,22,490,746),radius=15,outline=sage,width=3)
+def centered(y,text,size,color=cream):
+ box=d.textbbox((0,0),text,font=f(size));d.text(((512-(box[2]-box[0]))/2,y),text,font=f(size),fill=color)
+centered(54,'潮汐咖啡馆',46);centered(125,'欢迎坐坐',28,sage)
+# Cup, saucer, steam and a restrained botanical sprig, drawn as chalk strokes.
+d.line((163,223,172,302,191,320,294,320,312,302,321,223,163,223),fill=cream,width=6)
+d.arc((300,235,355,296),270,90,fill=cream,width=6)
+d.arc((144,305,343,348),0,180,fill=gold,width=5)
+for x in (199,241,283):d.arc((x,165,x+25,217),90,270,fill=sage,width=4)
+centered(379,'今日推荐',38,gold)
+d.line((90,437,422,437),fill=sage,width=2)
+centered(459,'拿铁 + 黄油可颂',31);centered(521,'下午茶 · 慢时光',28,sage)
+centered(594,'让咖啡和海风陪你',24)
+for y in (680,694):
+ pts=[(x,y+math.sin((x-110)/32)*5) for x in range(110,403,3)];d.line(pts,fill=gold,width=3)
+for mirror in (-1,1):
+ x=256+mirror*181;d.line((x,305,x-mirror*9,194),fill=sage,width=3)
+ for j in range(4):
+  yy=218+j*22;xx=x-mirror*(7-j*2)
+  d.ellipse((xx-12,yy-7,xx+12,yy+7),outline=sage,width=3)
+im.save(P/'entrance-chalkboard.png')

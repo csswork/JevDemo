@@ -63,7 +63,8 @@
       "Replace entire-room baked atlas with reusable per-object PBR textures to prevent dirty seams and lost source vertex colors.",
       "Separate exterior privacy glazing from clear display-case glass.",
       "Replace random exterior leaf cards and scattered boxes with coherent tree crowns and supported, aligned houses.",
-      "Replace independent post/beam positions that bisected apertures with a single solid-pier grid; verify actual evaluated posts against the Boolean wall by ray casts."
+      "Replace independent post/beam positions that bisected apertures with a single solid-pier grid; verify actual evaluated posts against the Boolean wall by ray casts.",
+      "Decorate the empty entrance A-frame with mounted double-sided Chinese daily-special chalk artwork and eight brass fixings; remove duplicate blank inserts."
     ],
     "remainingRisks": [
       "Runtime revision is available for local review; no deployment requested.",
@@ -139,5 +140,14 @@
       "runtime/structure-interior-preview.png",
       "runtime/structure-exterior-preview.png"
     ]
+  },
+  "entranceDecoration": {
+    "request": "门口那块空板子怪怪的，加点装饰物",
+    "sourceScript": "scripts/blender/decorate_cafe_entrance.py",
+    "artwork": "textures/entrance-chalkboard.png",
+    "capture": "runtime/entrance-sign-preview.png",
+    "glbValidation": "runtime/glb-validation.json",
+    "browserErrors": [],
+    "spend": 0
   }
 }

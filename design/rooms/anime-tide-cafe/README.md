@@ -32,3 +32,5 @@
 `refine_cafe_exterior.py` 将窗外整理为三组完整树冠、带海岸地面的六栋有门窗和坡屋顶的建筑。主建模脚本调用这些修订，重建不会恢复散乱叶片或遮挡窗洞的旧柱位。
 
 运行时导出：`scripts/blender/export_anime_cafe.py`。导出哈希、实际 GLB 验证和实机截图在 `runtime/`。本地构建及 lint 通过；尚未部署。预算为零，全部本地建模。技能通用验证器的强制 Meshy 预算字段与此方案冲突，如实保留校验失败，不将它标记为完整技能门禁通过。
+
+门口 A 字迎宾牌已增加双面中文今日推荐、咖啡杯与植物粉笔画及八枚黄铜固定件。`decorate_cafe_entrance.py` 从现有木板的实际变换定位装饰面，主建模脚本也调用此修订。实际运行时截图：`runtime/entrance-sign-preview.png`。
