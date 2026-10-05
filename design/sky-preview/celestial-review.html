@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>太阳与月亮 · 材质检查</title>
+<style>body{margin:0;background:#101722;color:#e6ebf2;font:15px system-ui;padding:28px}h1{font-size:23px;margin:0 0 8px}p{color:#9faec1;margin:0 0 24px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}section{border:1px solid #344052;border-radius:14px;overflow:hidden;background:#172130}canvas{display:block;width:100%;height:360px}header{padding:16px}h2{font-size:17px;margin:0 0 6px}small{color:#a5b2c4}footer{padding:16px;display:flex;align-items:center;gap:12px}button{background:#253245;color:#e8edf5;border:1px solid #4b5970;border-radius:7px;padding:7px 12px;cursor:pointer}input{flex:1;accent-color:#e9c68e}a{color:#9ec7ef}label{white-space:nowrap}</style></head>
+<body><h1>太阳与月亮 · 材质检查</h1><p>使用街景同一组件，放大检查边缘与表面；街景中的日月尺寸保持原样。<a href="/sky-preview/">返回街景预览</a></p>
+<div class="cards"><section><header><h2>太阳</h2><small>柔和日轮 · 连续光晕 · 随高度变化的暖色</small></header><canvas id="sun"></canvas><footer><button id="day">白天</button><button id="sunset">低空暖色</button></footer></section>
+<section><header><h2>月亮</h2><small>固定月海与环形山 · 球面月相 · 淡月晕</small></header><canvas id="moon"></canvas><footer><label for="phase">月相</label><input id="phase" type="range" min="0" max="1" step=".01" value=".5"><button id="full">满月</button><button id="quarter">上弦</button></footer></section></div>
+<script type="module" src="./celestial-review.ts"></script></body></html>
