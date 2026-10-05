@@ -15,6 +15,7 @@ import { devSave } from './server/devSave.ts';
 export default defineConfig({
   plugins: [react(), jevProxy(), ttsProxy(), devSave()],
   server: {
-    port: process.env.PORT ? Number(process.env.PORT) : 5173,
+    port: process.env.PORT ? Number(process.env.PORT) : 5678,
+    strictPort: true,
   },
 });

@@ -1,0 +1,33 @@
+{
+  "method": "Actual preview DOM telemetry after UI controls, not shader source-only assertions",
+  "zeroWind": {
+    "speed": 0,
+    "firstXZ": [
+      780.467,
+      0.241
+    ],
+    "laterXZ": [
+      780.467,
+      0.241
+    ],
+    "stopped": true
+  },
+  "singleAxisWind": {
+    "directionDegrees": 360,
+    "speedMetersPerSecond": 12,
+    "startXZ": [
+      0.473,
+      0.241
+    ],
+    "laterXZ": [
+      5.474,
+      0.241
+    ],
+    "zUnchanged": true
+  },
+  "qualitySwitches": [
+    "high",
+    "balanced"
+  ],
+  "browserErrors": []
+}

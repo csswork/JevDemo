@@ -1,0 +1,350 @@
+{
+  "viewport": [
+    1280,
+    720
+  ],
+  "dpr": 1,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "gpu": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Max, Unspecified Version)",
+  "gpuTimer": true,
+  "warmup": 16,
+  "samplesPerScenario": 48,
+  "results": [
+    {
+      "mode": "baseline",
+      "scenario": "day-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.1,
+        "p95": 0.2,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 33.4,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 19.828,
+        "p95": 23.135,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2434
+    },
+    {
+      "mode": "baseline",
+      "scenario": "sunset-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.1,
+        "p95": 0.2,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.4,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 12.555,
+        "p95": 14.557,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2434
+    },
+    {
+      "mode": "baseline",
+      "scenario": "night-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.1,
+        "p95": 0.2,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 33.7,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 19.48,
+        "p95": 22.012,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2434
+    },
+    {
+      "mode": "baseline",
+      "scenario": "clear-night",
+      "cpuSubmissionMs": {
+        "median": 0,
+        "p95": 0.1,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 17.7,
+        "p95": 33.9,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 22.509,
+        "p95": 24.353,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2434
+    },
+    {
+      "mode": "balanced",
+      "scenario": "day-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.4,
+        "p95": 0.5,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.4,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 1.196,
+        "p95": 1.944,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2436
+    },
+    {
+      "mode": "balanced",
+      "scenario": "sunset-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.3,
+        "p95": 0.5,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.4,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 1.003,
+        "p95": 1.574,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2436
+    },
+    {
+      "mode": "balanced",
+      "scenario": "night-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.3,
+        "p95": 0.4,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.4,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 2.169,
+        "p95": 3.252,
+        "samples": 48
+      },
+      "drawCalls": 5,
+      "triangles": 2436
+    },
+    {
+      "mode": "balanced",
+      "scenario": "clear-night",
+      "cpuSubmissionMs": {
+        "median": 0.2,
+        "p95": 0.3,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.4,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 0.39,
+        "p95": 0.594,
+        "samples": 48
+      },
+      "drawCalls": 3,
+      "triangles": 1218
+    },
+    {
+      "mode": "high",
+      "scenario": "day-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.2,
+        "p95": 0.6,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.6,
+        "p95": 17.6,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 2.45,
+        "p95": 3.76,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2436
+    },
+    {
+      "mode": "high",
+      "scenario": "sunset-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.2,
+        "p95": 0.5,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.6,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 1.904,
+        "p95": 3.072,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2436
+    },
+    {
+      "mode": "high",
+      "scenario": "night-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.3,
+        "p95": 0.6,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.4,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 3.545,
+        "p95": 5.332,
+        "samples": 48
+      },
+      "drawCalls": 5,
+      "triangles": 2436
+    },
+    {
+      "mode": "high",
+      "scenario": "clear-night",
+      "cpuSubmissionMs": {
+        "median": 0.2,
+        "p95": 0.4,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.6,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 0.399,
+        "p95": 0.481,
+        "samples": 48
+      },
+      "drawCalls": 3,
+      "triangles": 1218
+    },
+    {
+      "mode": "low",
+      "scenario": "day-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.1,
+        "p95": 0.4,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.5,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 0.625,
+        "p95": 1.071,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2436
+    },
+    {
+      "mode": "low",
+      "scenario": "sunset-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.2,
+        "p95": 0.5,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.5,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 0.675,
+        "p95": 0.915,
+        "samples": 48
+      },
+      "drawCalls": 4,
+      "triangles": 2436
+    },
+    {
+      "mode": "low",
+      "scenario": "night-clouds",
+      "cpuSubmissionMs": {
+        "median": 0.3,
+        "p95": 0.4,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.6,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 1.314,
+        "p95": 2.131,
+        "samples": 48
+      },
+      "drawCalls": 5,
+      "triangles": 2436
+    },
+    {
+      "mode": "low",
+      "scenario": "clear-night",
+      "cpuSubmissionMs": {
+        "median": 0.2,
+        "p95": 0.4,
+        "samples": 48
+      },
+      "frameIntervalMs": {
+        "median": 16.7,
+        "p95": 17.3,
+        "samples": 48
+      },
+      "gpuMs": {
+        "median": 0.339,
+        "p95": 0.617,
+        "samples": 48
+      },
+      "drawCalls": 3,
+      "triangles": 1218
+    }
+  ]
+}
