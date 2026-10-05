@@ -491,7 +491,7 @@ interface KitBay {
   tint?: THREE.Color;
 }
 
-export function createStreet(): Backdrop {
+export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
   const group = new THREE.Group();
   group.name = 'street';
   const disposables: Array<{ dispose(): void }> = [];
@@ -681,10 +681,10 @@ export function createStreet(): Backdrop {
   // 转 20°：让它里面的太阳和舞台主光在同一个方位），玻璃、铁件反射的云和太阳和加时间之前一样
   const skyU = skyUniforms();
   skyU.uHdriRot.value = THREE.MathUtils.degToRad(20);
-  far(createSky(keep, SKY_R, skyU));
-  const envScene = createSkyEnv(keep, skyU);
+  if(options.legacySky!==false)far(createSky(keep, SKY_R, skyU));
+  const envScene = options.legacySky===false?null:createSkyEnv(keep, skyU);
   let hdriReady = false;
-  new HDRLoader().load(`${BASE}hdri/furry_clouds_1k.hdr`, (hdr) => {
+  if(options.legacySky!==false)new HDRLoader().load(`${BASE}hdri/furry_clouds_1k.hdr`, (hdr) => {
     keep(hdr);
     if (disposed) return;
     skyU.uHdri.value = hdr;
@@ -695,7 +695,7 @@ export function createStreet(): Backdrop {
   const SEA_TO = THREE.MathUtils.degToRad(80);
   // 高空的卷云（clouds.ts）：一缕缕顺着风拉长的细丝，随风慢慢移动
   const cirrus = createCirrus(keep, { dist: SKY_R * 0.97, opacity: 0.6 });
-  far(cirrus.mesh);
+  if(options.legacySky!==false)far(cirrus.mesh);
   const cu = cirrus.uniforms;
   far(createFarLand(keep, SEA_FROM, SEA_TO));
   const TOWN_FROM = THREE.MathUtils.degToRad(-128);

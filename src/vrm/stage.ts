@@ -6,6 +6,7 @@ import { createCafe } from './scenes/cafe';
 import { createAnimeCafe } from './scenes/animeCafe';
 import { createPark } from './scenes/park';
 import { createStreet } from './scenes/street';
+import {createStreetSky,DEFAULT_SKY_SETTINGS,updateSkySettings,type SkySettings} from './sky/streetSky';
 import { TimeOfDay, type TimeMode } from './timeOfDay';
 
 /**
@@ -20,7 +21,7 @@ export interface CameraView {
   polar: number;
   distance: number;
 }
-const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, animeCafe: createAnimeCafe, park: createPark, street: createStreet };
+const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, animeCafe: createAnimeCafe, park: createPark, street: () => createStreet({legacySky:false}) };
 /** 相机默认看多远（室内够了；室外场景自己给，见 Backdrop.far） */
 const FAR = 20;
 /** 像素比的上限：再高肉眼分不出，GPU 白干活 */
@@ -156,6 +157,9 @@ export function createStage(canvas: HTMLCanvasElement) {
   let baked: { rt: THREE.WebGLRenderTarget; version: number; at: number } | null = null;
   /** 一天里的时间（只有街景用：太阳、月亮、灯，见 timeOfDay.ts） */
   const time = new TimeOfDay();
+  let skySettings={...DEFAULT_SKY_SETTINGS};
+  let streetSky:ReturnType<typeof createStreetSky>|null=null;
+  function effectiveTime(){return skySettings.moonPhase===null?time.state:{...time.state,moonPhase:skySettings.moonPhase};}
   /**
    * 换背景。场景里的灯一起加进来；半球光换成场景的色调，角色的环境光和背景一致；
    * 场景的 HDRI（或者场景给的天空小场景）转成环境光（IBL，只影响场景里的 PBR 材质，角色的 MToon 不吃环境贴图）；
@@ -163,6 +167,7 @@ export function createStage(canvas: HTMLCanvasElement) {
    */
   function setBackdrop(id: BackdropId) {
     if (id === backdropId) return;
+    streetSky?.dispose();streetSky=null;
     if (backdrop) {
       scene.remove(backdrop.group, ...backdrop.lights);
       backdrop.dispose();
@@ -179,6 +184,7 @@ export function createStage(canvas: HTMLCanvasElement) {
       const b = BACKDROPS[id]();
       backdrop = b;
       scene.add(b.group, ...b.lights);
+      if(id==='street')streetSky=createStreetSky(scene,skySettings);
       const env = b.environment;
       if (!env) {
         // 场景按时间自己给（lighting.envScene），第一帧就烘
@@ -215,6 +221,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     fill.intensity = sun?.fill ?? fillDefault.intensity;
     rim.color.setHex(rimDefault.color);
     rim.intensity = sun?.rim ?? rimDefault.intensity;
+    streetSky?.update(effectiveTime(),0,camera);
     applyLighting();
     if (backdrop) {
       // 当太阳用时阴影范围大：灯离目标只有 2.8m，近平面要放到灯"身后"，远处的树冠才进得了阴影
@@ -337,10 +344,12 @@ export function createStage(canvas: HTMLCanvasElement) {
     hemi.groundColor.copy(L.hemisphere.ground);
     hemi.intensity = L.hemisphere.intensity;
     scene.environmentIntensity = L.environmentIntensity;
-    if (L.envScene && (!baked || (baked.version !== L.envVersion && performance.now() - baked.at > 100))) {
-      const rt = pmrem.fromScene(L.envScene, 0, 0.1, 1000, { size: 256 });
+    const envScene=streetSky?.environmentScene??L.envScene;
+    const version=streetSky?.environmentVersion??L.envVersion;
+    if (envScene && (!baked || (baked.version !== version && performance.now() - baked.at > (streetSky?1000:100)))) {
+      const rt = pmrem.fromScene(envScene, 0, 0.1, 4000, { size: streetSky?128:256 });
       baked?.rt.dispose();
-      baked = { rt, version: L.envVersion, at: performance.now() };
+      baked = { rt, version, at: performance.now() };
       scene.environment = rt.texture;
     }
   }
@@ -349,14 +358,21 @@ export function createStage(canvas: HTMLCanvasElement) {
   function render() {
     const dt = Math.min(clock.getDelta(), 0.1);
     time.update(dt);
-    backdrop?.update?.(dt, time.state);
+    const state=effectiveTime();
+    backdrop?.update?.(dt, state);
+    controls.update();followZoom();
+    const cam=renderCamera();
+    streetSky?.update(state,dt,cam);
     applyLighting();
-    controls.update();
-    followZoom();
-    renderer.render(scene, renderCamera());
+    if(streetSky){
+      const auto=renderer.autoClear;
+      try{streetSky.render(renderer,cam);renderer.autoClear=false;renderer.clearDepth();renderer.render(scene,cam);}
+      finally{renderer.autoClear=auto;}
+    }else renderer.render(scene,cam);
   }
 
   function dispose() {
+    streetSky?.dispose();
     backdrop?.dispose();
     envMap?.dispose();
     baked?.rt.dispose();
@@ -379,6 +395,8 @@ export function createStage(canvas: HTMLCanvasElement) {
     render,
     dispose,
     setBackdrop,
+    setSkySettings(values:Partial<SkySettings>){skySettings=updateSkySettings(skySettings,values);streetSky?.configure(skySettings);},
+    get skySettings(){return {...skySettings};},
     get backdrop() {
       return backdropId;
     },
@@ -391,7 +409,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     },
     /** 现在几点、太阳在哪（调试看） */
     get time() {
-      return time.state;
+      return effectiveTime();
     },
     /** 当前背景要播的环境音（CC0 循环音频）。没配或纯色背景就是 null */
     get ambience(): string | null {

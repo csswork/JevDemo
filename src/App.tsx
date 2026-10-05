@@ -1,3 +1,4 @@
+import {DEFAULT_SKY_SETTINGS,type SkySettings} from './vrm/sky/streetSky';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Runtime, type LiveState } from './runtime';
 import { MockDecider } from './jev/mockDecider';
@@ -290,6 +291,8 @@ export default function App() {
   // 背景音（场景的环境音）：按角色记，默认开。第一次发送消息时才真正出声（浏览器要求用户手势）
   const [ambient, setAmbient] = useState(true);
   const [timeMode, setTimeMode] = useState<TimeValue>('now');
+  const [skySettings,setSkySettings]=useState<SkySettings>({...DEFAULT_SKY_SETTINGS});
+  const changeSky=(values:Partial<SkySettings>)=>{setSkySettings(previous=>({...previous,...values}));runtimeRef.current?.setSkySettings(values);};
   // 音色：按角色记在浏览器里（见 ModelPrefs），角色加载时换成她的；没选过就用服务端的默认音色（TTS_SPEAKER）
   const [speaker, setSpeaker] = useState<string | null>(null);
   // 偏好按角色存：存的时候要用最新的角色 id（闭包里的可能是旧的）。换角色时在事件里直接改，这里兜底同步
@@ -918,7 +921,7 @@ export default function App() {
   const voiceBackend = voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS';
 
   return (
-    <div className={`app${backdrop === 'street' ? ' has-time' : ''}`}>
+    <div className="app">
       <div className="stage">
         <canvas ref={canvasRef} />
 
@@ -1079,13 +1082,6 @@ export default function App() {
         </div>
       )}
 
-      {/* ---------- 右下：时间（只有街景有昼夜） ---------- */}
-      {backdrop === 'street' && (
-        <section className="time-card glass" data-bubble-avoid>
-          <TimeSlider value={timeMode} onChange={dragTime} onCommit={pickTime} />
-        </section>
-      )}
-
       {/* ---------- 正下方：输入框 + 聊天记录 ---------- */}
       <div className="chatbar" data-bubble-avoid>
         {chatOpen && (
@@ -1192,6 +1188,32 @@ export default function App() {
           </header>
 
           <div className="panel-scroll">
+            {backdrop==='street'&&(
+              <details className="section" open>
+                <summary>天空与时间 <span className="count">街景</span></summary>
+                <div className="sky-time"><TimeSlider value={timeMode} onChange={dragTime} onCommit={pickTime}/></div>
+                <div className="sliders sky-sliders">
+                  {([
+                    ['coverage','积云云量',0,1,.01,'%'],
+                    ['cirrus','卷云云量',0,1,.01,'%'],
+                    ['windDirection','风向',0,360,1,'°'],
+                    ['windSpeed','风速',0,12,.1,'m/s'],
+                  ] as const).map(([key,label,min,max,step,unit])=>(
+                    <label className="on" key={key}>
+                      <span className="n">{label}</span>
+                      <input type="range" aria-label={label} min={min} max={max} step={step} value={skySettings[key]} onChange={e=>changeSky({[key]:Number(e.target.value)})}/>
+                      <span className="w">{unit==='%'?Math.round(skySettings[key]*100):unit==='m/s'?skySettings[key].toFixed(1):skySettings[key]}{unit}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="sky-options">
+                  <label className="live-chip"><input type="checkbox" checked={skySettings.moonPhase===null} onChange={e=>changeSky({moonPhase:e.target.checked?null:.5})}/><i className="dot"/>自动月相</label>
+                  <label>质量 <select aria-label="天空质量" value={skySettings.quality} onChange={e=>changeSky({quality:e.target.value as SkySettings['quality']})}><option value="low">节能</option><option value="balanced">均衡</option><option value="high">精细</option></select></label>
+                </div>
+                {skySettings.moonPhase!==null&&<div className="sliders sky-sliders"><label className="on"><span className="n">月相</span><input aria-label="月相" type="range" min="0" max="1" step=".01" value={skySettings.moonPhase} onChange={e=>changeSky({moonPhase:Number(e.target.value)})}/><span className="w">{Math.round(skySettings.moonPhase*100)}%</span></label></div>}
+              </details>
+            )}
+
             {/*
               这里刻意没有任何表演参数的控件。
               情绪、强度、视线、姿态全部由 Jev 判断，前端不提供竞争性的手动通道 ——

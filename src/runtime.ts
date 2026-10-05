@@ -1,3 +1,4 @@
+import {DEFAULT_SKY_SETTINGS,updateSkySettings,type SkySettings} from './vrm/sky/streetSky';
 import * as THREE from 'three';
 import { VRMUtils } from '@pixiv/three-vrm';
 import { createStage, type BackdropId, type CameraView } from './vrm/stage';
@@ -90,6 +91,7 @@ export class Runtime {
     const stage = createStage(canvas);
     this.stage = stage;
     stage.resize();
+    stage.setSkySettings(this.skySettings);
     stage.setBackdrop(this.backdrop);
     stage.setTimeOfDay(this.timeMode, true);
     this.applyAmbience();
@@ -549,6 +551,8 @@ export class Runtime {
   private backdrop: BackdropId = 'none';
   private ambienceTimer = 0;
   private timeMode: TimeMode | number = 'now';
+  private skySettings={...DEFAULT_SKY_SETTINGS};
+  setSkySettings(values:Partial<SkySettings>){this.skySettings=updateSkySettings(this.skySettings,values);this.stage?.setSkySettings(this.skySettings);}
 
   /** 背景场景（mount 前后调用都行） */
   setBackdrop(id: BackdropId) {
