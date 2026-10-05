@@ -131,6 +131,7 @@ world.onBeforeRender=(_renderer,_scene,cam)=>{
 function setView(kind:string){follow.checked=false;
  if(kind==='glints'){camera.position.set(14,2.4,-12);const light=time.state.sunElev>-3?directions.sun:directions.moon;controls.target.set(camera.position.x+light.x*110,-1.2,camera.position.z+light.z*110);}
  else if(kind==='shore'){camera.position.set(14,2,0);controls.target.set(6,-1.2,-10);}
+ else if(kind==='flowers'){const anchor=world.getObjectByName('street-flower-preview');if(anchor){controls.target.copy(anchor.position);camera.position.fromArray(anchor.userData.camera);}}
  else if(kind==='plants'){const anchor=world.getObjectByName('street-potted-preview');if(anchor){controls.target.copy(anchor.position);camera.position.fromArray(anchor.userData.camera);}}
  else if(kind==='town'){camera.position.set(145,22,-700);controls.target.set(270,8,-1050);}
  else if(kind==='ocean'){camera.position.set(20,2,4);controls.target.set(85,-.2,-85);}
@@ -139,7 +140,7 @@ function setView(kind:string){follow.checked=false;
  else{camera.position.set(0,2.4,12);controls.target.set(-4,6,-45);}
  controls.update();}
 setView('street');el('street-view').onclick=()=>setView('street');el('sea-view').onclick=()=>setView('sea');el('wide-view').onclick=()=>setView('wide');
-el('plant-view').onclick=()=>setView('plants');el('town-view').onclick=()=>setView('town');el('ocean-view').onclick=()=>setView('ocean');el('shore-view').onclick=()=>setView('shore');el('glint-view').onclick=()=>setView('glints');
+el('flower-view').onclick=()=>setView('flowers');el('plant-view').onclick=()=>setView('plants');el('town-view').onclick=()=>setView('town');el('ocean-view').onclick=()=>setView('ocean');el('shore-view').onclick=()=>setView('shore');el('glint-view').onclick=()=>setView('glints');
 el('toggle-controls').onclick=()=>{const panel=el('sky-controls');panel.hidden=!panel.hidden;el('toggle-controls').textContent=panel.hidden?'展开天空控制':'收起天空控制';if(!panel.hidden){el('ocean-controls').hidden=true;el('toggle-ocean').textContent='海洋控制';}};
 controls.addEventListener('start',()=>follow.checked=false);
 let playing=false,last=performance.now(),frameId=0;

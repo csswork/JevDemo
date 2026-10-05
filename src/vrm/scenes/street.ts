@@ -5,6 +5,7 @@ import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { canvasTexture, rng, type Backdrop, type LiveLighting } from './common';
 import { createCirrus } from './clouds';
 import { createBatcher, createTreeMaker, type TreeVariant } from './foliage';
+import { loadStreetFlowers, type FlowerSpot } from './streetFlowers';
 import {
   HAZE,
   SEA_Y,
@@ -1635,6 +1636,56 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
     ry: number;
   }
   // Decorative pots use the same real leaf cards, wind and lighting as the street trees.
+  const flowerSpots:FlowerSpot[]=[];
+  const flowerContainers:Array<{matrix:THREE.Matrix4;color:number}>=[];
+  const flowerBuckets:THREE.Matrix4[]=[];
+  const flowerRandom=rng(5123);
+  const addFlowers=(M:THREE.Matrix4,x:number,y:number,z:number,height:number,type:number,count=1,spread=.035)=>{
+    for(let i=0;i<count;i++){
+      const h=height*(.85+flowerRandom()*.3);
+      const local=new THREE.Matrix4().compose(v3(x+(flowerRandom()-.5)*spread,y,z+(flowerRandom()-.5)*spread),
+        new THREE.Quaternion().setFromAxisAngle(THREE.Object3D.DEFAULT_UP,flowerRandom()*Math.PI*2),v3(h,h,h));
+      flowerSpots.push({matrix:M.clone().multiply(local),type:(type+i)%3});
+    }
+  };
+  const rackFlowers=(M:THREE.Matrix4)=>{
+    const spec=KIT.modules.FLOWER.hole;
+    const x0=(-.5+spec[0])*KIT.cellW,x1=(-.5+spec[2])*KIT.cellW;
+    for(let row=0;row<2;row++)for(let i=0;i<7;i++){
+      const x=x0+.25+i*(x1-x0-.5)/6;
+      const y=row===0?.32:.62,z=row===0?.725:.375;
+      flowerContainers.push({matrix:M.clone().multiply(new THREE.Matrix4().makeTranslation(x,y,z))
+        .multiply(new THREE.Matrix4().makeScale(.5,.5,.5)),color:[0xd9d0bc,0xb97b57,0x7e9984][(i+row)%3]});
+      addFlowers(M,x,y+.115,z,.22+.045*((i+row)%3),(i+row)%3);
+    }
+  };
+  // Hero shops and ordinary nearby FLOWER bays use the same shelf dimensions.
+  for(const hero of heroPlace){
+    const bw=hero.w/hero.b.ground.length;
+    hero.b.ground.forEach((cell,i)=>{
+      if(cell!==F.FLOWER)return;
+      const M=hero.M.clone().multiply(new THREE.Matrix4().makeTranslation(-hero.w/2+(i+.5)*bw,0,0))
+        .multiply(new THREE.Matrix4().makeScale(bw/KIT.cellW,1,1));
+      rackFlowers(M);
+    });
+    if(hero.id==='flower'){
+      for(let k=0;k<6;k++){
+        const x=-hero.w/2+.6+k*.45;
+        flowerBuckets.push(hero.M.clone().multiply(new THREE.Matrix4().makeTranslation(x,KERB_H,1.25)));
+        addFlowers(hero.M,x,KERB_H+.30,1.25,.43+.05*(k%3),k%3,3,.12);
+      }
+      const preview=new THREE.Object3D();preview.name='street-flower-preview';
+      preview.position.copy(v3(0,.8,.7).applyMatrix4(hero.M));
+      preview.userData.camera=v3(0,1.4,4.7).applyMatrix4(hero.M).toArray();group.add(preview);
+    }
+  }
+  for(const bay of kitBays)if(bay.name==='FLOWER'&&!bay.lod){
+    rackFlowers(bay.M.clone().multiply(bay.frame).multiply(bay.cell));
+  }
+  for(const [i,spot] of plantSpots.entries()){
+    const M=frameAt(spot.s,spot.d);
+    for(const x of [-.38,0,.38])addFlowers(M,x,.46,-.05,.46,i%3,2,.09);
+  }
   const pottedPlants:Spot[]=[];
   if(heroCafe){
     const center=(heroCafe.door[0]+heroCafe.door[1])*.5;
@@ -1657,12 +1708,12 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
       new THREE.Vector2(.18,.25),new THREE.Vector2(.18,.28),new THREE.Vector2(.15,.28),
       new THREE.Vector2(.14,.24),
     ],16));
-    const potMat=keep(new THREE.MeshStandardMaterial({color:0xb98b6b,roughness:.9}));
+    const potMat=keep(new THREE.MeshStandardMaterial({color:0xffffff,roughness:.9}));
     potGeometry=potGeo;potMaterial=potMat;
     soilGeometry=keep(new THREE.CylinderGeometry(.14,.14,.015,16));soilGeometry.translate(0,.24,0);
     soilMaterial=keep(new THREE.MeshStandardMaterial({color:0x3b3024,roughness:1}));
     pottedContainers.push(new THREE.Matrix4().makeTranslation(p.x,p.y,p.z));
-    pottedPlants.push({x:p.x,z:p.z,y:p.y+.25,variant:4,scale:.5,ry:1.3});
+    addFlowers(new THREE.Matrix4().makeTranslation(p.x,p.y,p.z),0,.25,0,.43,2,3,.10);
   }
   const trees: Spot[] = [];
   const bushes: Spot[] = [];
@@ -1710,7 +1761,7 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
     // 花箱里的灌木
     for (const sp of plantSpots) {
       const p = pt(sp.s, sp.d);
-      bushes.push({ x: p.x, z: p.z, y: KERB_H + 0.4, variant: 2 + sp.variant, scale: sp.h, ry: r() * Math.PI * 2 });
+      bushes.push({ x: p.x, z: p.z, y: KERB_H + 0.4, variant: 2 + sp.variant, scale: sp.h*.55, ry: r() * Math.PI * 2 });
     }
   }
   /** 树叶透光乘多少（太阳的亮度）、树叶的材质（按时间调自发光） */
@@ -1835,7 +1886,10 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
           ms.glow.setTransform(world).addGeometry(part.geo, at, undefined, [r.onAt, r.glow[0], r.glow[1]]);
         } else {
           const m = ms[slot as keyof typeof ms] ?? ms.paint;
-          m.setTransform(world).addGeometry(part.geo, at, slot === 'tile' ? r.tint : undefined);
+          if(r.name==='FLOWER'&&!r.lod){
+            const trimmed=stripFlowerGeometry(part.geo,part.local);
+            m.setTransform(world).addGeometry(trimmed,at);trimmed.dispose();
+          }else m.setTransform(world).addGeometry(part.geo, at, slot === 'tile' ? r.tint : undefined);
         }
       }
       // 构件里标的光源（店里透出来的光、门灯、灯笼）：光源只标在精细那一档里
@@ -1895,6 +1949,23 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
     g.setIndex(out);
     return g;
   };
+  const oldFlowerColors=[0x4f8a3a,0x36662b,0xe88aa8,0xf2d14a,0xf6f2ea,0xd8433a,0x8a5a3c,0x9aa3ab].map(hex=>new THREE.Color(hex));
+  function stripFlowerGeometry(geo:THREE.BufferGeometry,local:THREE.Matrix4){
+    const colors=geo.attributes.color,pos=geo.attributes.position,idx=geo.index;
+    const q=new THREE.Vector3(),c=new THREE.Color(),out:number[]=[];
+    const isPlant=(i:number)=>{
+      if(!colors)return false;
+      q.fromBufferAttribute(pos,i).applyMatrix4(local);
+      if(q.y>1.2||q.z<.12)return false;
+      c.setRGB(colors.getX(i),colors.getY(i),colors.getZ(i));
+      return oldFlowerColors.some(color=>Math.abs(c.r-color.r)+Math.abs(c.g-color.g)+Math.abs(c.b-color.b)<.015);
+    };
+    for(let k=0;k<(idx?.count??pos.count);k+=3){
+      const tri=[0,1,2].map(j=>idx?idx.getX(k+j):k+j);
+      if(!tri.every(isPlant))out.push(...tri);
+    }
+    const trimmed=geo.clone();trimmed.setIndex(out);return trimmed;
+  }
   type KitMeshers = Record<'plaster' | 'wood' | 'metal' | 'paint' | 'fabric' | 'tile' | 'concrete' | 'glow' | 'clear', Mesher>;
   function addHeroes(kit: Map<string, KitItem>, ms: KitMeshers, panes: GlassMesher) {
     const side = cellUV(F.SIDE);
@@ -1946,6 +2017,9 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
               &&Math.abs(q.z-.45)<.5&&potX.some(x=>Math.abs(q.x-x)<.5)));
             m.setTransform(M).addGeometry(trimmed,part.local);
             trimmed.dispose();
+          }else if(h.id==='flower'){
+            const trimmed=stripFlowerGeometry(part.geo,part.local);
+            m.setTransform(M).addGeometry(trimmed,part.local);trimmed.dispose();
           }else m.setTransform(M).addGeometry(part.geo, part.local);
         }
       }
@@ -2104,7 +2178,9 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
           .multiply(new THREE.Matrix4().makeScale(scale,scale,scale));
         pottedContainers.push(M);
         const p=v3(x,y+.25*scale,z).applyMatrix4(heroCafe!.M);
-        pottedPlants.push({x:p.x,z:p.z,y:p.y,variant:4,scale:(height-.25*scale)/.85,ry:x*1.7});
+        if(height<.35||pottedContainers.length%3===0){
+          addFlowers(heroCafe!.M,x,y+.25*scale,z,(height-.25*scale),pottedContainers.length%3);
+        }else pottedPlants.push({x:p.x,z:p.z,y:p.y,variant:4,scale:(height-.25*scale)/.85,ry:x*1.7});
       },
     });
     interiorLights.push(...lights);
@@ -2112,6 +2188,8 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
   }
 
   // Pots and soil share two draws even when shelf plants add more instances.
+  const containerColors=pottedContainers.map(()=>0xb98b6b);
+  for(const pot of flowerContainers){pottedContainers.push(pot.matrix);containerColors.push(pot.color);}
   const pottedSoil=[...pottedContainers];
   if(heroCafe)for(const x of [heroCafe.door[0]-.45,heroCafe.door[1]+.45]){
     const scale=.235/.14;
@@ -2121,10 +2199,30 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
   for(const [geo,mat,name,matrices] of [[potGeometry!,potMaterial!,'street-potted-containers',pottedContainers],
     [soilGeometry!,soilMaterial!,'street-potted-soil',pottedSoil]] as const){
     const pots=keep(new THREE.InstancedMesh(geo,mat,matrices.length));
-    matrices.forEach((M,i)=>pots.setMatrixAt(i,M));
+    matrices.forEach((M,i)=>{
+      pots.setMatrixAt(i,M);
+      if(name==='street-potted-containers')pots.setColorAt(i,new THREE.Color(containerColors[i]));
+    });
     pots.instanceMatrix.needsUpdate=true;pots.computeBoundingSphere();
     pots.receiveShadow=true;pots.name=name;group.add(pots);
   }
+  if(flowerBuckets.length){
+    const bucketGeometry=keep(new THREE.LatheGeometry([
+      new THREE.Vector2(0,0),new THREE.Vector2(.13,0),new THREE.Vector2(.14,.015),
+      new THREE.Vector2(.17,.30),new THREE.Vector2(.18,.305),new THREE.Vector2(.18,.325),
+      new THREE.Vector2(.16,.325),new THREE.Vector2(.16,.30),
+    ],20));
+    const bucketMaterial=keep(new THREE.MeshStandardMaterial({color:0x748c87,metalness:.25,roughness:.68}));
+    const buckets=keep(new THREE.InstancedMesh(bucketGeometry,bucketMaterial,flowerBuckets.length));
+    flowerBuckets.forEach((M,i)=>buckets.setMatrixAt(i,M));buckets.instanceMatrix.needsUpdate=true;
+    buckets.computeBoundingSphere();buckets.castShadow=buckets.receiveShadow=true;
+    buckets.name='street-flower-buckets';group.add(buckets);
+    const soil=keep(new THREE.InstancedMesh(soilGeometry!,soilMaterial!,flowerBuckets.length));
+    flowerBuckets.forEach((M,i)=>soil.setMatrixAt(i,M.clone().multiply(new THREE.Matrix4().makeTranslation(0,.06,0))));
+    soil.instanceMatrix.needsUpdate=true;soil.computeBoundingSphere();soil.receiveShadow=true;group.add(soil);
+  }
+  loadStreetFlowers({keep,wind,spots:flowerSpots,alive:()=>!disposed,
+    batch:(geometry,material,matrices,depth)=>batch(geometry,material,matrices,{depth})});
   const facadeMesh = finish(facade, facadeMat, 'facades');
   // 墙挖了洞（窗、店门）：投影也要挖，阳光才照得进店里
   if (facadeMesh) facadeMesh.customDepthMaterial = facadeDepthMaterial(keep, holes);
