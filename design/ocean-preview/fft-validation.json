@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "maxHeightError": 0.00048549683062681925,
+  "maxSlopeError": 0.000022092779259859363,
+  "samples": 20,
+  "resolutions": [
+    128,
+    256
+  ],
+  "skippedPaused": true,
+  "zeroHeight": 0,
+  "propagation": "toward -X (shore)"
+}

@@ -1,0 +1,54 @@
+{
+  "viewport": [
+    1280,
+    720
+  ],
+  "samples": 48,
+  "settings": {
+    "hour": 15,
+    "camera": [
+      14,
+      2.3999999999999932,
+      -11.999999999999993
+    ],
+    "reflectionQuality": "balanced",
+    "parameters": {
+      "waves": 0.55,
+      "roughness": 0.28,
+      "foam": 0.32,
+      "reflection": 0.88,
+      "glitter": 0.6
+    }
+  },
+  "results": [
+    {
+      "variant": "analytic",
+      "cpuSubmissionMedianMs": 1.9000000953674316,
+      "gpuFrameMedianMs": 3.066375,
+      "gpuSamples": 48,
+      "simulation": null
+    },
+    {
+      "variant": "128",
+      "cpuSubmissionMedianMs": 2.3000000715255737,
+      "gpuFrameMedianMs": 3.799916,
+      "gpuSamples": 48,
+      "simulation": {
+        "resolution": 128,
+        "memoryBytes": 3684352,
+        "drawCalls": 34
+      }
+    },
+    {
+      "variant": "256",
+      "cpuSubmissionMedianMs": 3,
+      "gpuFrameMedianMs": 3.738291,
+      "gpuSamples": 48,
+      "simulation": {
+        "resolution": 256,
+        "memoryBytes": 14712832,
+        "drawCalls": 38
+      }
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "viewport": [
+    1280,
+    720
+  ],
+  "samples": 48,
+  "results": [
+    {
+      "variant": "analytic",
+      "cpuSubmissionMedianMs": 1.899999976158142,
+      "gpuFrameMedianMs": 2.990291,
+      "gpuSamples": 48,
+      "simulation": null
+    },
+    {
+      "variant": "128",
+      "cpuSubmissionMedianMs": 2.5,
+      "gpuFrameMedianMs": 4.016124,
+      "gpuSamples": 48,
+      "simulation": {
+        "resolution": 128,
+        "memoryBytes": 3684352,
+        "drawCalls": 34
+      }
+    },
+    {
+      "variant": "256",
+      "cpuSubmissionMedianMs": 2.600000023841858,
+      "gpuFrameMedianMs": 3.187916,
+      "gpuSamples": 48,
+      "simulation": {
+        "resolution": 256,
+        "memoryBytes": 14712832,
+        "drawCalls": 38
+      }
+    }
+  ]
+}
