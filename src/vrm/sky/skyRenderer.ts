@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createCelestialBodies } from './celestialBodies';
 import { sunPosition, type TimeState } from '../timeOfDay';
 import { createPalette, samplePalette, morningTint, dirOf } from '../scenes/streetTime';
 
@@ -79,19 +80,8 @@ export function createSkyRenderer() {
     fragmentShader:`uniform float night,time;varying float t,p,h;void main(){float r=length(gl_PointCoord-.5)*2.;float a=exp(-r*r*4.)*(1.-smoothstep(.5,1.,r))*night*smoothstep(0.,.13,h)*(.88+.12*sin(time*.7+p));vec3 c=mix(vec3(.66,.79,1.),vec3(1.,.87,.69),t);gl_FragColor=vec4(c*1.4,a);${output}}` }));
   const stars=new THREE.Points(starsGeo,starsMat);stars.renderOrder=-25;group.add(stars);
 
-  // Independent celestial discs: separate geometry, phase, halo and cloud occlusion.
-  const discGeo=keep(new THREE.PlaneGeometry(1,1));
-  const sunMat=keep(new THREE.ShaderMaterial({uniforms:u,transparent:true,depthTest:false,depthWrite:false,
-    vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-    fragmentShader:`varying vec2 vUv;uniform vec3 glow,sunColor;void main(){float r=length(vUv-.5)*2.;float disc=1.-smoothstep(.145,.16,r);float halo=exp(-r*8.)*.35*(1.-smoothstep(.8,1.,r));gl_FragColor=vec4(mix(glow,sunColor,disc)*1.5,max(disc,halo));${output}}` }));
-  const sun=new THREE.Mesh(discGeo,sunMat);sun.name='sun-disc';sun.scale.setScalar(150);sun.renderOrder=-20;group.add(sun);
-  const moonMat=keep(new THREE.ShaderMaterial({uniforms:u,transparent:true,depthTest:false,depthWrite:false,
-    vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-    fragmentShader:`varying vec2 vUv;uniform float phase,moonOn;${noise}
-    void main(){vec2 q=(vUv-.5)*2.;float r=length(q);float disc=1.-smoothstep(.31,.33,r);vec2 xy=q/.32;float z=sqrt(max(0.,1.-dot(xy,xy)));vec3 n=vec3(xy,z);float a=phase*6.2831853;vec3 light=vec3(sin(a),.12,-cos(a));float lit=smoothstep(-.045,.075,dot(n,normalize(light)));
-    float maria=fbm(vec3(xy*9.,2.));float craters=noise3(vec3(xy*37.,4.));vec3 c=vec3(.74,.81,.94)*(.68+.24*maria+.08*craters)*(lit*.95+.045);
-    float halo=exp(-r*9.)*.12*(1.-smoothstep(.8,1.,r));gl_FragColor=vec4(mix(vec3(.4,.55,.82),c,disc),max(disc,halo)*moonOn);${output}}` }));
-  const moon=new THREE.Mesh(discGeo,moonMat);moon.name='moon-disc';moon.scale.setScalar(70);moon.renderOrder=-20;group.add(moon);
+  const {sun,moon,sunMaterial:sunMat,moonMaterial:moonMat,moonUniforms}=createCelestialBodies(keep,u);
+  group.add(sun,moon);
 
   // High, optically thin ice-cloud layer: aligned anisotropic filaments, no volume march.
   const cirrusMat=keep(new THREE.ShaderMaterial({uniforms:u,vertexShader:vertex,side:THREE.BackSide,transparent:true,depthTest:false,depthWrite:false,
@@ -157,7 +147,7 @@ export function createSkyRenderer() {
   const envCloud=new THREE.Mesh(dome,envCloudMat);envCloud.scale.setScalar(2.95);envCloud.renderOrder=-10;
   const envSun=sun.clone(),envMoon=moon.clone();
   const envSunMat=keep(sunMat.clone()),envMoonMat=keep(moonMat.clone());
-  envSunMat.uniforms=u;envMoonMat.uniforms=u;envSunMat.depthTest=envMoonMat.depthTest=true;
+  envSunMat.uniforms=u;envMoonMat.uniforms=moonUniforms;envSunMat.depthTest=envMoonMat.depthTest=true;
   envSun.material=envSunMat;envMoon.material=envMoonMat;
   environmentScene.add(envSky,envCloud,envSun,envMoon,envCirrus);
   let resolution=.5;
