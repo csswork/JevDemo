@@ -4,5 +4,14 @@
   "moonPhase": null,
   "windDirection": 27,
   "windSpeed": 2,
-  "quality": "balanced"
+  "quality": "balanced",
+  "ocean": {
+    "waves": 0.55,
+    "roughness": 0.28,
+    "foam": 0.32,
+    "reflection": 0.88,
+    "glitter": 0.6,
+    "resolution": 128,
+    "quality": "balanced"
+  }
 }

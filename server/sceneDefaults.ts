@@ -1,20 +1,32 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type {Connect,Plugin} from 'vite';
-import {DEFAULT_SKY_SETTINGS,type SkySettings} from '../src/vrm/sky/skySettings.ts';
+import {DEFAULT_SCENE_SETTINGS,normalizeSceneSettings,type SceneSettings} from '../src/vrm/sky/sceneSettings.ts';
+import {DEFAULT_OCEAN_SETTINGS,OCEAN_RANGES} from '../src/vrm/ocean/oceanSettings.ts';
 
 const scenes=new Set(['none','cafe','animeCafe','park','street']);
 const ranges={coverage:[0,1],cirrus:[0,1],windDirection:[0,360],windSpeed:[0,12]} as const;
-function validate(value:unknown):SkySettings{
+function validate(value:unknown):SceneSettings{
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('参数格式不正确');
  const data=value as Record<string,unknown>;
- if(Object.keys(data).length!==6||Object.keys(data).some(key=>!(key in DEFAULT_SKY_SETTINGS)))throw new Error('参数字段不正确');
+ if(![6,7].includes(Object.keys(data).length)||Object.keys(data).some(key=>!(key in DEFAULT_SCENE_SETTINGS)))throw new Error('参数字段不正确');
  for(const [key,[min,max]] of Object.entries(ranges)){
   const v=data[key];if(typeof v!=='number'||!Number.isFinite(v)||v<min||v>max)throw new Error(key+' 超出范围');
  }
  if(data.moonPhase!==null&&(typeof data.moonPhase!=='number'||!Number.isFinite(data.moonPhase)||data.moonPhase<0||data.moonPhase>1))throw new Error('月相超出范围');
  if(!['low','balanced','high'].includes(String(data.quality)))throw new Error('质量档位不正确');
- return data as unknown as SkySettings;
+
+ if(data.ocean!==undefined){
+  if(!data.ocean||typeof data.ocean!=='object'||Array.isArray(data.ocean))throw new Error('海洋参数格式不正确');
+  const ocean=data.ocean as Record<string,unknown>;
+  if(Object.keys(ocean).length!==7||Object.keys(ocean).some(key=>!(key in DEFAULT_OCEAN_SETTINGS)))throw new Error('海洋参数字段不正确');
+  for(const [key,[min,max]] of Object.entries(OCEAN_RANGES)){
+   const v=ocean[key];if(typeof v!=='number'||!Number.isFinite(v)||v<min||v>max)throw new Error(key+' 超出范围');
+  }
+  if(ocean.resolution!==128&&ocean.resolution!==256)throw new Error('波场分辨率不正确');
+  if(!['low','balanced','high'].includes(String(ocean.quality)))throw new Error('海洋质量档位不正确');
+ }
+ return normalizeSceneSettings(data as unknown as SceneSettings);
 }
 
 /** Same-origin file storage shared by all browsers using this project server. */
@@ -28,7 +40,7 @@ export function sceneDefaults():Plugin{
   if(!scenes.has(scene))return reply(404,{error:'场景不存在'});
   const file=path.join(root,'public','scene-defaults',scene+'.json');
   if(req.method==='GET'){
-   try{return reply(200,fs.existsSync(file)?validate(JSON.parse(fs.readFileSync(file,'utf8'))):DEFAULT_SKY_SETTINGS);}
+   try{return reply(200,fs.existsSync(file)?validate(JSON.parse(fs.readFileSync(file,'utf8'))):DEFAULT_SCENE_SETTINGS);}
    catch{return reply(500,{error:'无法读取场景默认参数文件'});}
   }
   if(req.method!=='POST')return reply(405,{error:'不支持的请求方法'});
@@ -41,7 +53,7 @@ export function sceneDefaults():Plugin{
   req.on('data',(chunk:Buffer)=>{bytes+=chunk.length;if(bytes>4096){tooLarge=true;chunks.length=0;}else if(!tooLarge)chunks.push(chunk);});
   req.on('end',()=>{
    if(tooLarge)return reply(413,{error:'参数过大'});
-   let settings:SkySettings;
+   let settings:SceneSettings;
    try{settings=validate(JSON.parse(Buffer.concat(chunks).toString('utf8')));}
    catch(error){return reply(400,{error:error instanceof Error?error.message:'参数格式不正确'});}
    try{

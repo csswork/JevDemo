@@ -1,5 +1,6 @@
 import {loadSceneDefaults,saveSceneDefaults} from './vrm/sky/sceneDefaults';
-import {DEFAULT_SKY_SETTINGS,type SkySettings} from './vrm/sky/streetSky';
+import {DEFAULT_SCENE_SETTINGS as DEFAULT_SKY_SETTINGS,type SceneSettings as SkySettings} from './vrm/sky/sceneSettings';
+import type {OceanSettings} from './vrm/ocean/oceanSettings';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Runtime, type LiveState } from './runtime';
 import { MockDecider } from './jev/mockDecider';
@@ -300,10 +301,10 @@ export default function App() {
   useEffect(()=>{
     const controller=new AbortController();setSkyLoading(true);setSkySaveStatus('');
     const defaults={...DEFAULT_SKY_SETTINGS};
-    setSkySettings(defaults);runtimeRef.current?.setSkySettings(defaults);
+    setSkySettings(defaults);runtimeRef.current?.setSceneSettings(defaults);
     loadSceneDefaults(backdrop,controller.signal).then(settings=>{
       if(controller.signal.aborted)return;
-      setSkySettings(settings);runtimeRef.current?.setSkySettings(settings);
+      setSkySettings(settings);runtimeRef.current?.setSceneSettings(settings);
     }).catch(error=>{
       if(!controller.signal.aborted)setSkySaveStatus(error instanceof Error?error.message:'读取失败');
     }).finally(()=>{if(!controller.signal.aborted)setSkyLoading(false);});
@@ -312,6 +313,7 @@ export default function App() {
   const changeSky=(values:Partial<SkySettings>)=>{
     setSkySettings(previous=>({...previous,...values}));runtimeRef.current?.setSkySettings(values);setSkySaveStatus('未保存');
   };
+  const changeOcean=(values:Partial<OceanSettings>)=>{setSkySettings(previous=>({...previous,ocean:{...previous.ocean,...values}}));runtimeRef.current?.setOceanSettings(values);setSkySaveStatus('未保存');};
   const saveSky=async()=>{
     const scene=backdrop;setSkySaving(true);setSkySaveStatus('');
     try{
@@ -1502,7 +1504,7 @@ export default function App() {
 
             {backdrop==='street'&&(
               <details className="section" open>
-                <summary>天空参数 <span className="count">街景</span></summary>
+                <summary>天空与海洋 <span className="count">街景</span></summary>
                 <fieldset className="sky-fields" disabled={skyLoading||skySaving}>
                 <div className="sliders sky-sliders">
                   {([
@@ -1523,6 +1525,18 @@ export default function App() {
                   <label>质量 <select aria-label="天空质量" value={skySettings.quality} onChange={e=>changeSky({quality:e.target.value as SkySettings['quality']})}><option value="low">节能</option><option value="balanced">均衡</option><option value="high">精细</option></select></label>
                 </div>
                 {skySettings.moonPhase!==null&&<div className="sliders sky-sliders"><label className="on"><span className="n">月相</span><input aria-label="月相" type="range" min="0" max="1" step=".01" value={skySettings.moonPhase} onChange={e=>changeSky({moonPhase:Number(e.target.value)})}/><span className="w">{Math.round(skySettings.moonPhase*100)}%</span></label></div>}
+                <div className="environment-heading">海洋</div>
+                <div className="sliders sky-sliders">
+                  {([
+                    ['waves','波浪',0,1.5],['roughness','粗糙度',.08,.6],['foam','泡沫',0,1],['reflection','反射',0,1],['glitter','波光',0,2],
+                  ] as const).map(([key,label,min,max])=>(
+                    <label className="on" key={key}><span className="n">{label}</span><input type="range" aria-label={'海洋'+label} min={min} max={max} step=".01" value={skySettings.ocean[key]} onChange={e=>changeOcean({[key]:Number(e.target.value)})}/><span className="w">{skySettings.ocean[key].toFixed(2)}</span></label>
+                  ))}
+                </div>
+                <div className="sky-options">
+                  <label>波场 <select aria-label="海洋波场分辨率" value={skySettings.ocean.resolution} onChange={e=>changeOcean({resolution:Number(e.target.value) as 128|256})}><option value="128">128²</option><option value="256">256²</option></select></label>
+                  <label>反射质量 <select aria-label="海洋反射质量" value={skySettings.ocean.quality} onChange={e=>changeOcean({quality:e.target.value as OceanSettings['quality']})}><option value="low">节能</option><option value="balanced">均衡</option><option value="high">精细</option></select></label>
+                </div>
                 <div className="sky-save">
                   <button className="sky-save-button" onClick={saveSky} disabled={skyLoading||skySaving}>{skySaving?'保存中…':'Save'}</button>
                   <span role="status">{skyLoading?'读取默认参数…':skySaveStatus}</span>

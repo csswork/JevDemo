@@ -1,3 +1,5 @@
+import {createStreetOcean} from './ocean/streetOcean';
+import {DEFAULT_OCEAN_SETTINGS,updateOceanSettings,type OceanSettings} from './ocean/oceanSettings';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
@@ -158,6 +160,8 @@ export function createStage(canvas: HTMLCanvasElement) {
   /** 一天里的时间（只有街景用：太阳、月亮、灯，见 timeOfDay.ts） */
   const time = new TimeOfDay();
   let skySettings={...DEFAULT_SKY_SETTINGS};
+  let oceanSettings={...DEFAULT_OCEAN_SETTINGS};
+  let streetOcean:ReturnType<typeof createStreetOcean>|null=null;
   let streetSky:ReturnType<typeof createStreetSky>|null=null;
   function effectiveTime(){return skySettings.moonPhase===null?time.state:{...time.state,moonPhase:skySettings.moonPhase};}
   /**
@@ -167,6 +171,7 @@ export function createStage(canvas: HTMLCanvasElement) {
    */
   function setBackdrop(id: BackdropId) {
     if (id === backdropId) return;
+    streetOcean?.dispose();streetOcean=null;
     streetSky?.dispose();streetSky=null;
     if (backdrop) {
       scene.remove(backdrop.group, ...backdrop.lights);
@@ -184,7 +189,7 @@ export function createStage(canvas: HTMLCanvasElement) {
       const b = BACKDROPS[id]();
       backdrop = b;
       scene.add(b.group, ...b.lights);
-      if(id==='street')streetSky=createStreetSky(scene,skySettings);
+      if(id==='street'){streetSky=createStreetSky(scene,skySettings);streetOcean=createStreetOcean(renderer,scene,b.group,oceanSettings);streetOcean.setWind(skySettings.windDirection,skySettings.windSpeed);}
       const env = b.environment;
       if (!env) {
         // 场景按时间自己给（lighting.envScene），第一帧就烘
@@ -314,7 +319,7 @@ export function createStage(canvas: HTMLCanvasElement) {
   const viewFrustum = new THREE.Frustum();
   const _viewProj = new THREE.Matrix4();
   scene.onBeforeRender = (_r, _s, cam) => {
-    if (!backdrop?.beforeRender) return;
+    if (!backdrop?.beforeRender||streetOcean?.reflecting) return;
     viewFrustum.setFromProjectionMatrix(_viewProj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
     let shadow: THREE.Frustum | null = null;
     if (key.castShadow) {
@@ -363,7 +368,9 @@ export function createStage(canvas: HTMLCanvasElement) {
     controls.update();followZoom();
     const cam=renderCamera();
     streetSky?.update(state,dt,cam);
+    streetOcean?.update(state,dt,cam);
     applyLighting();
+    streetOcean?.render(cam);
     if(streetSky){
       const auto=renderer.autoClear;
       try{streetSky.render(renderer,cam);renderer.autoClear=false;renderer.clearDepth();renderer.render(scene,cam);}
@@ -372,6 +379,7 @@ export function createStage(canvas: HTMLCanvasElement) {
   }
 
   function dispose() {
+    streetOcean?.dispose();
     streetSky?.dispose();
     backdrop?.dispose();
     envMap?.dispose();
@@ -395,7 +403,8 @@ export function createStage(canvas: HTMLCanvasElement) {
     render,
     dispose,
     setBackdrop,
-    setSkySettings(values:Partial<SkySettings>){skySettings=updateSkySettings(skySettings,values);streetSky?.configure(skySettings);},
+    setSkySettings(values:Partial<SkySettings>){skySettings=updateSkySettings(skySettings,values);streetSky?.configure(skySettings);streetOcean?.setWind(skySettings.windDirection,skySettings.windSpeed);},
+    setOceanSettings(values:Partial<OceanSettings>){oceanSettings=updateOceanSettings(oceanSettings,values);streetOcean?.configure(oceanSettings);},
     get skySettings(){return {...skySettings};},
     get backdrop() {
       return backdropId;
