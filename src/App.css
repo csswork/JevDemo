@@ -1551,7 +1551,6 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 /* 天空控制沿用调试面板的区块、字体、配色和实时开关。 */
-.sky-time { padding: 0 18px 14px; }
 .sky-sliders { gap: 10px; }
 .sky-sliders label { grid-template-columns: 66px minmax(0,1fr) 50px; }
 .sky-sliders input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); cursor: pointer; }
@@ -1561,3 +1560,9 @@ input[type='range']::-webkit-slider-thumb {
 .sky-options .live-chip { margin-left: 0; }
 .sky-options .live-chip:has(input:checked) { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
 .sky-options .live-chip:has(input:checked) .dot { background: var(--live); }
+
+.sky-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.sky-save { display: flex; align-items: center; gap: 10px; padding: 0 18px 16px; font-size: 11px; color: var(--dim); }
+.sky-save-button { border: 1px solid var(--accent-line); border-radius: 6px; padding: 5px 14px; background: var(--accent-soft); color: var(--accent); font: inherit; cursor: pointer; }
+.sky-save-button:hover { background: var(--glass-hover); }
+.sky-save-button:disabled { opacity: .5; cursor: default; }

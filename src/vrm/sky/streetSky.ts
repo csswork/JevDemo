@@ -4,27 +4,8 @@ import {createSkyMapping} from '../scenes/streetTime';
 import {REFLECT_LAYER} from '../scenes/water';
 import type {TimeState} from '../timeOfDay';
 
-export interface SkySettings {
-  coverage:number;
-  cirrus:number;
-  moonPhase:number|null;
-  windDirection:number;
-  windSpeed:number;
-  quality:'low'|'balanced'|'high';
-}
-export const DEFAULT_SKY_SETTINGS:SkySettings={coverage:.32,cirrus:.4,moonPhase:null,windDirection:27,windSpeed:2,quality:'balanced'};
-/** Shared validation for runtime callers and debug controls. */
-export function updateSkySettings(current:SkySettings,values:Partial<SkySettings>):SkySettings{
- const next={...current};
- for(const key of ['coverage','cirrus','windDirection','windSpeed'] as const){
-  const value=values[key];if(value!==undefined&&Number.isFinite(value))
-   next[key]=THREE.MathUtils.clamp(value,0,key==='windDirection'?360:key==='windSpeed'?12:1);
- }
- if(values.moonPhase===null)next.moonPhase=null;
- else if(values.moonPhase!==undefined&&Number.isFinite(values.moonPhase))next.moonPhase=THREE.MathUtils.clamp(values.moonPhase,0,1);
- if(values.quality==='low'||values.quality==='balanced'||values.quality==='high')next.quality=values.quality;
- return next;
-}
+import type {SkySettings} from './skySettings';
+export {DEFAULT_SKY_SETTINGS,updateSkySettings,type SkySettings} from './skySettings';
 export function createStreetSky(world:THREE.Scene,settings:SkySettings){
  const sky=createSkyRenderer(),background=new THREE.Scene();background.add(sky.group);
  const proxy=sky.environmentScene.clone();proxy.name='street-sky-reflection';
