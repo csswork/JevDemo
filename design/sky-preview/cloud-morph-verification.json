@@ -1,0 +1,25 @@
+{
+  "conditions": {
+    "fixedCamera": true,
+    "windSpeed": 0,
+    "cirrusCoverage": 0,
+    "daylightHours": 15,
+    "roi": [
+      0,
+      100,
+      1280,
+      330
+    ]
+  },
+  "brightCloudPixelFraction": {
+    "cloud-morph-12-t0.png": 0.3152,
+    "cloud-morph-32-t0.png": 0.6085,
+    "cloud-morph-65-t0.png": 0.8679,
+    "cloud-morph-32-t60.png": 0.6405
+  },
+  "evolution60Seconds": {
+    "meanAbsoluteRgbChange": 7.899,
+    "pixelFractionWithRgbChangeAbove10": 0.2744
+  },
+  "note": "Image diagnostic, not physical cloud coverage or a performance measurement."
+}

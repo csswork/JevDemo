@@ -107,16 +107,36 @@ export function createSkyRenderer() {
   const cirrus=new THREE.Mesh(dome,cirrusMat);cirrus.name='high-cirrus-layer';cirrus.renderOrder=-15;group.add(cirrus);
   const cloudMat=keep(new THREE.ShaderMaterial({uniforms:u,vertexShader:vertex,side:THREE.BackSide,transparent:true,depthTest:false,depthWrite:false,
     fragmentShader:`varying vec3 vDir;uniform vec3 sunDir,moonDir,cloudLight,cloudShade;uniform vec2 windOffset;uniform int steps;uniform float coverage,weatherThreshold,time,night;${cloudNoise}
-    float density(vec3 p){float h=(p.y-120.)/135.;float layer=smoothstep(0.,.15,h)*(1.-smoothstep(.65,1.,h));p.xz-=windOffset;
+    // Different drift at each noise scale changes lobes slowly instead of sliding a frozen volume.
+    // Reuses the same four texture samples as fbm; no extra noise layers or ray steps.
+    float evolvingFbm(vec3 p,float speed){
+      float value=0.,weight=.55;vec3 drift=vec3(.71,-.29,.49)*time*speed;
+      for(int i=0;i<4;i++){
+        value+=weight*noise3(p+drift);
+        p=p*2.03+vec3(11.7,7.3,1.9);weight*=.48;
+        drift=drift.yzx*1.13;
+      }
+      return value;
+    }
+    float density(vec3 p){p.xz-=windOffset;
     // An oblique slice crosses all lattice axes; an axis-aligned slice exposed square cells.
     vec3 weatherP=vec3(.8*p.x+.6*p.z,-.36*p.x+.48*p.z,.48*p.x-.64*p.z)/280.;
-    float weather=fbm(weatherP);
+    float weather=evolvingFbm(weatherP,.0015);
     float cover=smoothstep(weatherThreshold-.035,weatherThreshold+.035,weather);
     if(cover<.001)return 0.;
+    // Cloud amount controls local vertical growth as well as horizontal occupancy.
+    // Weak regions thin and rise at the base; strong cores develop taller, uneven tops.
+    float growth=clamp(cover*.55+(weather-weatherThreshold)*3.2+coverage*.30,0.,1.);
+    float base=max(120.,mix(141.,120.,growth)+(weather-.5)*8.);
+    float top=mix(165.,255.,pow(growth,.75));
+    float h=(p.y-base)/max(top-base,12.);
+    float layer=smoothstep(0.,.18,h)*(1.-smoothstep(.48,1.,h));
+    if(layer<.001)return 0.;
     vec3 q=vec3(.8*p.x+.6*p.z,-.36*p.x+.8*p.y+.48*p.z,.48*p.x+.6*p.y-.64*p.z);
-    float volume=fbm(q/85.);float erosion=noise3(q/24.);
-    // Weather selects regions; a 3D isosurface shapes their edges instead of extruding a mask.
-    float shape=max(0.,(volume-.30)*2.2-(1.-cover)*.65-erosion*.12);
+    float volume=evolvingFbm(q/85.,.009);
+    float erosion=noise3(q/24.+time*vec3(-.006,.011,.004));
+    // Raising the 3D isosurface threshold erodes every axis, not just the sides of a column.
+    float shape=max(0.,(volume-.33-(1.-growth)*.10)*2.7-(1.-cover)*.42-erosion*.12);
     return layer*shape*2.;}
 
     void main(){vec3 d=normalize(vDir);if(coverage<.001||d.y<.025){gl_FragColor=vec4(0.);return;}float near=120./d.y,far=min(255./d.y,near+1600.);float stepSize=(far-near)/float(steps);float jitter=hash(vec3(gl_FragCoord.xy,0.));float silver=pow(max(dot(d,normalize(mix(sunDir,moonDir,night))),0.),12.)*.5;float alpha=0.;vec3 col=vec3(0.);vec3 light=normalize(mix(sunDir,moonDir,night));
@@ -162,7 +182,7 @@ export function createSkyRenderer() {
     try{renderer.autoClear=false;renderer.setRenderTarget(target);renderer.setClearColor(0,0);renderer.clear();renderer.render(cloudScene,camera);}
     finally{renderer.setRenderTarget(previous);renderer.setClearColor(savedClear,alpha);renderer.autoClear=autoClear;}
   }
-  let elapsed=0;const windVelocity=new THREE.Vector2(1.768,.884);
+  let elapsed=0,coverageInitialized=false;const windVelocity=new THREE.Vector2(1.768,.884);
   const lighting={sunDirection:sunDir,moonDirection:moonDir,palette};
   return {group,environmentScene,lighting,sunDir,moonDir,windOffset:u.windOffset.value,renderClouds,
     setCirrusCoverage(amount:number){u.cirrusCoverage.value=THREE.MathUtils.clamp(amount,0,1);},
@@ -177,7 +197,10 @@ export function createSkyRenderer() {
       const night=1-THREE.MathUtils.smoothstep(state.sunElev,-14,-4);
       u.zenith.value.copy(palette.zenith);u.mid.value.copy(palette.mid);u.horizon.value.copy(palette.horizon);u.glow.value.copy(palette.glow);u.sunColor.value.copy(palette.sunCol);
       u.cloudLight.value.copy(palette.cloud);u.cloudShade.value.copy(palette.cloudShade);u.glowAmount.value=palette.glowAmt;
-      u.time.value=elapsed;u.coverage.value=THREE.MathUtils.clamp(coverage,0,1);u.weatherThreshold.value=weatherThreshold(u.coverage.value);u.night.value=night;stars.visible=night>.001;u.phase.value=phase;u.moonOn.value=(1-THREE.MathUtils.smoothstep(state.sunElev,-5,15))*THREE.MathUtils.smoothstep(moonDir.y,-.025,.04);
+      const amount=THREE.MathUtils.clamp(coverage,0,1);
+      u.coverage.value=coverageInitialized&&dt>0?THREE.MathUtils.damp(u.coverage.value,amount,6,Math.min(dt,.1)):amount;
+      coverageInitialized=true;
+      u.time.value=elapsed;u.weatherThreshold.value=weatherThreshold(u.coverage.value);u.night.value=night;stars.visible=night>.001;u.phase.value=phase;u.moonOn.value=(1-THREE.MathUtils.smoothstep(state.sunElev,-5,15))*THREE.MathUtils.smoothstep(moonDir.y,-.025,.04);
       group.position.copy(camera.position);
       sun.position.copy(sunDir).multiplyScalar(700);moon.position.copy(moonDir).multiplyScalar(700);
       group.updateMatrixWorld(true);sun.lookAt(camera.position);moon.lookAt(camera.position);sun.visible=sunDir.y>-.02;moon.visible=u.moonOn.value>.001;
