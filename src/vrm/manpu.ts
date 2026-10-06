@@ -328,6 +328,11 @@ export class ManpuLayer {
     if (!a) return;
     this.a = a;
     this.vein!.position.copy(a.vein);
+    // 漫符挂在头骨下面，别的层往模型上打射线（掩嘴笑找嘴、穿模检测）时会递归扫到它们：
+    // Sprite 没给相机会直接抛错，脸上的贴片也会被当成脸表面。一律不参与射线检测
+    this.root.traverse((o) => {
+      o.raycast = () => {};
+    });
     head.add(this.root);
   }
 
