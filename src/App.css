@@ -102,6 +102,8 @@ button { font: inherit; }
   filter: blur(70px);
   opacity: 0.55;
   pointer-events: none;
+  /* 单独一层交给合成器：模糊只画一次，之后的漂移只是移动这一层，不占主线程 */
+  will-change: transform;
 }
 .boot-glow.a {
   top: -22vmax;
