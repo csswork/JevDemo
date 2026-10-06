@@ -690,3 +690,13 @@ header {
 .ai-button {padding:5px 9px;border-color:#cad9bc;background:#edf3e5;color:#607c4c;font-size:10px}
 .motion-details textarea {width:100%;margin-top:12px;font-size:11px;line-height:1.8;min-height:150px}
 .saved-details {white-space:pre-wrap}
+
+fieldset.workspace {border:0;margin:0;padding:0;min-width:0}
+.workspace[aria-busy=true] {cursor:wait}
+.workspace[aria-busy=true] input,.workspace[aria-busy=true] select,.workspace[aria-busy=true] textarea {opacity:.5}
+.loading-message {pointer-events:auto;background:#eceee9e8;z-index:2}
+.loading-spinner {width:26px;height:26px;border:2px solid #ccd6c2;border-top-color:#66824f;border-radius:50%;animation:loading-spin .8s linear infinite}
+@keyframes loading-spin {to {transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce) {.loading-spinner {animation:none}}
+
+.sr-only {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}

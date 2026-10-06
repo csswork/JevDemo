@@ -13,6 +13,7 @@ import type { Edits } from '../shared';
 export interface PreviewHandle { exportGlb: () => Promise<ArrayBuffer>; }
 interface Props {
   url?: string; edits: Edits; target: string; playing: boolean; time: number; skeleton: boolean;
+  onLoadState: (status: 'loading' | 'ready' | 'error') => void;
   onTime: (time: number) => void; onDuration: (duration: number, edited: number) => void;
   handle: { current: PreviewHandle | null };
 }
@@ -27,15 +28,19 @@ export function Preview(props: Props) {
   } }), []);
   const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
   useEffect(() => {
+    // Report the resource captured by this effect; cancelled loads never unlock a newer one.
+    const onLoadState = current.current.onLoadState;
+    onLoadState(props.url ? 'loading' : 'ready');
+    exporter.current = null;
     const el = mount.current!; let disposed = false; let frame = 0;
     let renderer: THREE.WebGLRenderer;
     try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }
-    catch { queueMicrotask(() => setError('无法启动 3D 预览，请检查浏览器 WebGL 支持')); return; }
+    catch { queueMicrotask(() => { setError('无法启动 3D 预览，请检查浏览器 WebGL 支持'); setLoading(false); onLoadState('error'); }); return; }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setClearColor(0xeceee9); el.append(renderer.domElement);
     const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(36, 1, .01, 100);
     camera.position.set(2.8, 1.8, 3.8);
-    const controls = new OrbitControls(camera, renderer.domElement); controls.target.set(0, .9, 0); controls.enableDamping = true;
+    const controls = new OrbitControls(camera, renderer.domElement); controls.target.set(0, .9, 0); controls.enableDamping = true; controls.enabled = false;
     scene.add(new THREE.HemisphereLight(0xffffff, 0x929b89, .75));
     const light = new THREE.DirectionalLight(0xffffff, 1.5); light.position.set(2, 4, 3); scene.add(light);
     const fill = new THREE.DirectionalLight(0xdfe8ff, .55); fill.position.set(-3, 2, 1); scene.add(fill);
@@ -104,8 +109,9 @@ export function Preview(props: Props) {
     }
     async function load() {
       setError('');
+      setLoading(!!props.url);
       if (!props.url) return;
-      setLoading(true);
+      let succeeded = false;
       try {
         source = await new FBXLoader().loadAsync(props.url);
         if (disposed) { disposeTree(source); return; }
@@ -148,6 +154,7 @@ export function Preview(props: Props) {
           controls.target.copy(center); camera.position.copy(center).add(new THREE.Vector3(.18, .08, .98).normalize().multiplyScalar(distance));
           controls.update();
         }
+        succeeded = true;
         exporter.current = async () => {
           if (avatar) throw new Error('请切回「原始动作」导出；角色预览只用于验证适配效果');
           if (!source || !clip) throw new Error('动作还没有加载');
@@ -157,7 +164,7 @@ export function Preview(props: Props) {
           finally { pose(playTime, current.current.edits); }
         };
       } catch (e) { if (!disposed) setError(e instanceof Error ? e.message : '加载失败'); }
-      finally { if (!disposed) setLoading(false); }
+      finally { if (!disposed) { setLoading(false); controls.enabled = succeeded; onLoadState(succeeded ? 'ready' : 'error'); } }
     }
     void load();
     function draw(now: number) {
@@ -185,7 +192,7 @@ export function Preview(props: Props) {
   }, [props.url, props.target]);
   return <div className="viewport" ref={mount}>
     {!props.url && <div className="stage-message"><span className="stage-icon">↗</span><strong>让动作有自己的迭代空间</strong><span>添加一个动作，生成或导入 FBX 开始预览</span></div>}
-    {loading && <div className="stage-message"><strong>正在加载动作…</strong></div>}
+    {loading && <div className="stage-message loading-message" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/><strong>Loading…</strong><span>正在加载模型与动作，请稍候</span></div>}
     {error && <div className="preview-error">{error}</div>}
     <div className="stage-caption">拖动旋转 · 滚轮缩放 · 右键平移</div>
   </div>;

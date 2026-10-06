@@ -15,7 +15,7 @@ npm run motion
 2. **生成新版本** 会保存当前描述，并调用 HY-Motion 1.0。每次点击生成会消耗腾讯云积分；工作台不会自动重试提交。只允许一个生成任务同时进行。
 3. 从版本记录中选择候选，播放、拖动时间轴，调整起止时间、速度、水平位移、地面基准和骨骼角度。
 4. **保存为新版本** 留下新的编辑记录，旧版本与原始 FBX 保留。切回旧版本可重新分支迭代。
-5. 默认使用有蒙皮的素体预览。可切换 **夏夏 · 项目角色**、原始动作、示例 VRM，或载入本地 `.vrm` 替换角色；切换时保留同一时间点。镜头自动适配全身，骨架叠层默认关闭，可按需打开。骨骼角度为局部轴；VRM 为规范化骨骼轴，因此两个视图的轴向效果可能不同。这里延续项目旧的 SMPL-H 重定向方法，没有 IK 或碰撞求解。
+5. 默认使用有蒙皮的素体预览。可切换 **夏夏 · 项目角色**、原始动作、示例 VRM，或载入本地 `.vrm` 替换角色；切换时保留同一时间点。模型与动作加载期间显示 Loading，禁用工作台操作和镜头交互，加载失败会解除锁定并显示原因。镜头自动适配全身，骨架叠层默认关闭，可按需打开。骨骼角度为局部轴；VRM 为规范化骨骼轴，因此两个视图的轴向效果可能不同。这里延续项目旧的 SMPL-H 重定向方法，没有 IK 或碰撞求解。
 6. 满意后标记当前版本成熟。新生成或新保存调整会重置成熟标记，确保新候选重新检查。切回 **原始动作**，保存修改，导出烘焙后的 **GLB**、**编辑记录 JSON**，或下载原始 **FBX**。工具不写入正式项目的动作配置；GLB 是通用骨骼动画，接入 VRM 时仍需重定向。
 7. 删除动作会将所有版本移到回收站，点击回收站中的动作可恢复。生成中不能删除。
 
@@ -32,14 +32,10 @@ AI 根据当前描述、时长与已有细节，补充重心、肩肘腕、手�
 
 ## 预览模型
 
-- **素体**：Quaternius 的 Universal Base Characters（Superhero Male，CC0 1.0）。下载已打包的无贴图、哑光 glTF，将骨骼映射为工具内部的 VRM 人形格式；几何、蒙皮权重和绑定矩阵保留。模型位于 `motion-workbench/models/mannequin.vrm`，授权文本与来源/SHA-256 收据保存在同目录。
-- **夏夏**：直接读取正式项目已有的 `public/models/AvatarSample_A.vrm`，不复制或修改模型。
+- **素体**：直接读取本地已有的 `public/models/candidates/VRoid_V110_Female.vrm`（主项目隐藏的“素 · 灰色素体”），作为默认动作预览，不复制或修改模型。它位于 gitignored 目录，换机器时需要放回同一路径。
+- **夏夏**：直接读取正式项目已有的 `public/models/AvatarSample_A.vrm`。
 
-素体来源：[作者与授权说明](https://quaternius.com/packs/universalbasecharacters.html)、[下载文件的来源记录](https://github.com/programasweights/avatar/blob/main/ASSETS.md)。素体保留 CC0 元数据，加载器仅额外接受这个明确的授权 URL。要重新包装已下载的原始 GLB：
-
-```sh
-node motion-workbench/scripts/prepare-mannequin.mjs /absolute/path/to/character.glb
-```
+素体的来源与授权差异见主项目 README 的模型说明：作者 README 允许商用和再分发，文件元数据却禁止再分发。这里沿用本地文件作预览，保留原始元数据。原 Quaternius 素体与来源记录仍保存在 `motion-workbench/models/`，已不作为默认预览。
 
 ## 数据与密钥
 

@@ -88,7 +88,7 @@ export function workbenchApi(project: string): Plugin {
           fs.writeFileSync(store.assetPath(v.asset), bytes); store.save(); json(res, m, 201); return;
         }
         if (id === 'model' && req.method === 'GET') {
-          const models: Record<string, string> = { mannequin: 'motion-workbench/models/mannequin.vrm', xiaxia: 'public/models/AvatarSample_A.vrm', sample: 'public/models/AvatarSample_B.vrm' };
+          const models: Record<string, string> = { mannequin: 'public/models/candidates/VRoid_V110_Female.vrm', xiaxia: 'public/models/AvatarSample_A.vrm', sample: 'public/models/AvatarSample_B.vrm' };
           const file = models[action || 'sample']; if (!file) throw new InputError('预览模型不存在');
           res.setHeader('Content-Type', 'model/gltf-binary');
           fs.createReadStream(path.join(project, file)).on('error', () => res.destroy()).pipe(res); return;
