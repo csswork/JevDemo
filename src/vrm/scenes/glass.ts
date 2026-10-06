@@ -318,7 +318,7 @@ export interface GlassNight {
  *   aWinUv     在这扇窗里的位置（0..1），窗帘用
  */
 export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture, night: GlassNight) {
-  const mat = keep(new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.06, metalness: 0, emissive: 0xffffff }));
+  const mat = keep(new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.1, metalness: 0, emissive: 0xffffff }));
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uRooms = { value: atlas };
     shader.uniforms.uLights = night.uLights;
@@ -449,6 +449,17 @@ export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture, night: G
           }
           float NdotV = clamp( dot( Nw, Vw ), 0.0, 1.0 );
           float Fr = 0.04 + 0.96 * pow( 1.0 - NdotV, 5.0 );
+          // A subtle glass tint and frame contact, independent of the room image.
+          float paneEdge = min( min( vWinUv.x, 1.0-vWinUv.x ), min( vWinUv.y, 1.0-vWinUv.y ) );
+          float edgeShade = 1.0-smoothstep( 0.0, 0.035, paneEdge );
+          // Room corners have less ambient light than the middle of each wall.
+          vec3 cornerDist = vec3( min( hit.x, W-hit.x ), min( hit.y, H-hit.y ), min( -hit.z, D+hit.z ) );
+          float cornerAO = 1.0;
+          if( t == tz ) cornerAO = smoothstep( 0.0, 0.32, min( cornerDist.x, cornerDist.y ) );
+          else if( t == tx ) cornerAO = smoothstep( 0.0, 0.32, min( cornerDist.y, cornerDist.z ) );
+          else cornerAO = smoothstep( 0.0, 0.32, min( cornerDist.x, cornerDist.z ) );
+          if( t == tf ) cornerAO = 1.0;
+          room *= mix( 0.82, 1.0, cornerAO ) * ( 1.0-0.16*edgeShade ) * vec3( 0.96, 0.985, 1.0 );
           totalEmissiveRadiance = room * ( 1.0 - Fr );
         }`,
       )
@@ -463,11 +474,11 @@ export function interiorGlassMaterial(keep: Keep, atlas: THREE.Texture, night: G
  * 透明玻璃（她身边那家咖啡店，后面是真的 3D 室内）：只输出反射（环境 + 太阳的高光），
  * 自定义混合：结果 = 反射 + 后面 ×（1 − a），a 随菲涅耳变大（斜着看更像镜子、更挡后面）
  */
-export function clearGlassMaterial(keep: Keep, reflectionStrength = 2.0) {
+export function clearGlassMaterial(keep: Keep, reflectionStrength = 2.0, layered = false) {
   const mat = keep(
     new THREE.MeshStandardMaterial({
       color: 0x000000,
-      roughness: reflectionStrength < 1 ? 0.12 : 0.04,
+      roughness: reflectionStrength < 1 ? 0.12 : layered ? 0.09 : 0.04,
       metalness: 0,
       transparent: true,
       depthWrite: false,
@@ -478,16 +489,29 @@ export function clearGlassMaterial(keep: Keep, reflectionStrength = 2.0) {
     }),
   );
   mat.onBeforeCompile = (shader) => {
+    if (layered) {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec2 aPaneUv; varying vec2 vPaneUv;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPaneUv = aPaneUv;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vPaneUv;');
+    }
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${GLASS_REFLECTION(reflectionStrength)}`)
       .replace(
         '#include <opaque_fragment>',
         `float glassF = 0.04 + 0.96 * pow( 1.0 - saturate( dot( normal, normalize( vViewPosition ) ) ), 5.0 );
         ${reflectionStrength < 1 ? 'outgoingLight = min( outgoingLight, vec3( 0.12 ) );' : ''}
-        gl_FragColor = vec4( outgoingLight, 0.08 + 0.75 * glassF );`,
+        ${layered ? `
+        float paneEdge = min( min( vPaneUv.x, 1.0-vPaneUv.x ), min( vPaneUv.y, 1.0-vPaneUv.y ) );
+        float edgeBand = 1.0-smoothstep( 0.0, 0.028, paneEdge );
+        float glassOpacity = clamp( 0.025 + 0.90*glassF + 0.075*edgeBand, 0.0, 0.96 );
+        // Premultiplied surface color: the real interior stays visible at normal incidence.
+        outgoingLight += vec3( 0.045, 0.085, 0.10 ) * glassOpacity * ( 0.20+0.35*edgeBand );
+        gl_FragColor = vec4( outgoingLight, glassOpacity );
+        ` : 'gl_FragColor = vec4( outgoingLight, 0.08 + 0.75 * glassF );'}`,
       );
   };
-  mat.customProgramCacheKey = () => `street-clear-glass-${reflectionStrength}`;
+  mat.customProgramCacheKey = () => `street-clear-glass-${reflectionStrength}-${layered}`;
   return mat;
 }
 

@@ -1,0 +1,8 @@
+{
+  "buildings": 8,
+  "contactTriangles": 428,
+  "contactDraws": 1,
+  "contactTextures": 0,
+  "glassUv": "separate window sizes and offsets normalized correctly",
+  "fpsBenchmark": false
+}

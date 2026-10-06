@@ -1,3 +1,5 @@
+import { streetContactShadows, type ContactBuilding } from './streetContactShadows';
+import { glassPaneUv } from './glassPaneUv';
 import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION, FAR_WINDOW_HASH } from './farFacade';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -193,6 +195,7 @@ class Mesher {
   nrm: number[] = [];
   uv: number[] = [];
   uv1: number[] | null;
+  paneUv: number[] | null;
   col: number[] = [];
   idx: number[] = [];
   sway: number[] | null;
@@ -203,7 +206,8 @@ class Mesher {
   private readonly b = new THREE.Vector3();
   private readonly t = new THREE.Vector3();
   private readonly w = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-  constructor({ sway = false, uv1 = false, ext = false }: { sway?: boolean; uv1?: boolean; ext?: boolean } = {}) {
+  constructor({ sway = false, uv1 = false, ext = false, pane = false }: { sway?: boolean; uv1?: boolean; ext?: boolean; pane?: boolean } = {}) {
+    this.paneUv = pane ? [] : null;
     this.sway = sway ? [] : null;
     this.uv1 = uv1 ? [] : null;
     this.ext = ext ? [] : null;
@@ -225,6 +229,7 @@ class Mesher {
     const pos = geo.attributes.position;
     const nrm = geo.attributes.normal;
     const uv = geo.attributes.uv;
+    const paneUv = this.paneUv ? glassPaneUv(geo) : null;
     const col = geo.attributes.color;
     const p = this.a;
     const n = this.b;
@@ -241,6 +246,7 @@ class Mesher {
       const bl = col ? col.getZ(i) : 1;
       this.col.push(r * (tint?.r ?? 1), g * (tint?.g ?? 1), bl * (tint?.b ?? 1));
       if (this.uv1) this.uv1.push(plasterUV && uv ? uv.getX(i) : 0, plasterUV && uv ? uv.getY(i) : 0);
+      if (this.paneUv && paneUv) this.paneUv.push(paneUv[i*2], paneUv[i*2+1]);
       if (this.sway) this.sway.push(0, 0, 0, 0);
       if (this.ext) {
         if (typeof ext === 'function') this.ext.push(...ext(this.t.fromBufferAttribute(pos, i).applyMatrix4(local), _ln.fromBufferAttribute(nrm, i)));
@@ -276,6 +282,7 @@ class Mesher {
       this.pos.push(p.x, p.y, p.z);
       this.nrm.push(n.x, n.y, n.z);
       this.uv.push(uvs[i][0], uvs[i][1]);
+      if (this.paneUv) this.paneUv.push(uvs[i][0], uvs[i][1]);
       this.col.push(c.r, c.g, c.b);
       // 旗子：xyz = 往哪边摆（旗面的法线，正反两面一样），w = 离挂点多远（0 不动，1 摆得最大）
       if (this.sway) this.sway.push(sway?.dir.x ?? 0, sway?.dir.y ?? 0, sway?.dir.z ?? 0, sway?.w[i] ?? 0);
@@ -319,6 +326,7 @@ class Mesher {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nrm, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     if (this.uv1) g.setAttribute('uv1', new THREE.Float32BufferAttribute(this.uv1, 2));
+    if (this.paneUv) g.setAttribute('aPaneUv', new THREE.Float32BufferAttribute(this.paneUv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     if (this.sway) g.setAttribute('aSway', new THREE.Float32BufferAttribute(this.sway, 4));
     if (this.ext) g.setAttribute('aGlow', new THREE.Float32BufferAttribute(this.ext, 3));
@@ -406,11 +414,11 @@ class GlassMesher {
     if (idx) for (let i = 0; i < idx.count; i++) this.idx.push(base + idx.getX(i));
     else for (let i = 0; i < pos.count; i++) this.idx.push(base + i);
   }
-  /** 精建房子里的玻璃：房间按顶点在房子里的位置找（哪一层），窗帘的坐标用模型的 uv（Blender 那边每块玻璃 0..1） */
+  /** 精建房子里的玻璃：房间按顶点在房子里的位置找（哪一层），每个连通玻璃面单独归一窗帘和边缘坐标 */
   addHero(geo: THREE.BufferGeometry, M: THREE.Matrix4, roomOf: (q: THREE.Vector3) => RoomParams | null) {
     const pos = geo.attributes.position;
     const nrm = geo.attributes.normal;
-    const uv = geo.attributes.uv;
+    const paneUv = glassPaneUv(geo);
     const N = _nm.getNormalMatrix(M);
     const q = new THREE.Vector3();
     const p = new THREE.Vector3();
@@ -427,7 +435,7 @@ class GlassMesher {
       this.roomPos.push(q.x - room.left, q.y - room.floor);
       this.roomSize.push(...room.size);
       this.roomInfo.push(...room.info);
-      this.winUv.push(uv ? uv.getX(i) : 0.5, uv ? uv.getY(i) : 0.5);
+      this.winUv.push(paneUv[i*2], paneUv[i*2+1]);
     }
     const idx = geo.index;
     const n = idx ? idx.count : pos.count;
@@ -630,7 +638,7 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
       info: [ROOMS.indexOf((home ? (rk() < 0.55 ? 'home' : 'home2') : kind) as (typeof ROOMS)[number]), rk(), home ? (rk() < 0.2 ? 0.6 : 0.16 + rk() * 0.24) : 0.8, home && rk() < 0.75 ? 1 : 0],
     };
   };
-  const clearGlassMat = clearGlassMaterial(keep);
+  const clearGlassMat = clearGlassMaterial(keep, 1.6, true);
   const roofMat = roofMaterial(keep);
   const woodMat = woodMaterial(keep);
   const metalMat = metalMaterial(keep);
@@ -662,7 +670,7 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
   const fabric = new Mesher();
   const signs = new Mesher({ sway: true });
   const glassI = new GlassMesher();
-  const glassC = new Mesher();
+  const glassC = new Mesher({ pane: true });
   /** 不出几何体的"垃圾桶"（精建的那 8 栋走 building() 时，墙、屋顶、构件写进这里，最后扔掉） */
   const sink = new Mesher({ uv1: true, sway: true });
   /** 精建的那 8 栋：摆在哪、每层的房间（窗里看进去的） */
@@ -1865,7 +1873,7 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
       tile: new Mesher(),
       concrete: new Mesher(),
       glow: new Mesher({ ext: true }),
-      clear: new Mesher(),
+      clear: new Mesher({ pane: true }),
     });
     const sets = [meshers(), meshers()];
     const panes = new GlassMesher();
@@ -1899,7 +1907,30 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
       }
     }
     // 精建的那 8 栋并进近处那一套（同一个材质一次绘制）
-    if (heroKit) addHeroes(heroKit, sets[0], panes);
+    if (heroKit) {
+      addHeroes(heroKit, sets[0], panes);
+      const contacts: ContactBuilding[] = [];
+      for (const h of heroPlace) {
+        if (!heroKit.has(h.id)) continue;
+        const bw = h.w / h.b.ground.length;
+        const openings: ContactBuilding['openings'] = [];
+        const rows = [h.b.ground, ...h.b.upper];
+        rows.forEach((row,f) => {
+          const ya = f === 0 ? 0 : 3.2 + (f-1)*2.9, height = f === 0 ? 3.2 : 2.9;
+          for(let i=0;i<h.b.ground.length;i++) {
+            const spec = KIT.modules[CELL_NAME[row[i%row.length]] as keyof typeof KIT.modules] as KitModule | undefined;
+            if(!spec?.hole) continue;
+            const [u0,v0,u1,v1] = spec.hole;
+            const left = -h.w/2+i*bw;
+            openings.push([left+u0*bw,ya+v0*height,left+u1*bw,ya+v1*height]);
+          }
+        });
+        contacts.push({matrix:h.M,width:h.w,height:3.2+h.b.upper.length*2.9,sidewalkY:KERB_H,
+          openings, floors:h.b.upper.map((_,i)=>3.2+i*2.9),
+          balcony:h.b.balcony ? [-h.w/2+h.b.balcony[0]*bw+.05,-h.w/2+h.b.balcony[1]*bw-.05,3.2] : undefined});
+      }
+      group.add(streetContactShadows(keep,contacts));
+    }
     const add = (m: Mesher, mat: THREE.Material, name: string, cast = true) => {
       if (m.empty) return;
       const mesh = new THREE.Mesh(keep(m.build()), mat);
