@@ -15,9 +15,31 @@ npm run motion
 2. **生成新版本** 会保存当前描述，并调用 HY-Motion 1.0。每次点击生成会消耗腾讯云积分；工作台不会自动重试提交。只允许一个生成任务同时进行。
 3. 从版本记录中选择候选，播放、拖动时间轴，调整起止时间、速度、水平位移、地面基准和骨骼角度。
 4. **保存为新版本** 留下新的编辑记录，旧版本与原始 FBX 保留。切回旧版本可重新分支迭代。
-5. 切换到示例 VRM 或载入本地 `.vrm` 检查穿模。骨骼角度为局部轴；VRM 为规范化骨骼轴，因此两个视图的轴向效果可能不同。这里延续项目旧的 SMPL-H 重定向方法，没有 IK 或碰撞求解。
+5. 默认使用有蒙皮的素体预览。可切换 **夏夏 · 项目角色**、原始动作、示例 VRM，或载入本地 `.vrm` 替换角色；切换时保留同一时间点。镜头自动适配全身，骨架叠层默认关闭，可按需打开。骨骼角度为局部轴；VRM 为规范化骨骼轴，因此两个视图的轴向效果可能不同。这里延续项目旧的 SMPL-H 重定向方法，没有 IK 或碰撞求解。
 6. 满意后标记当前版本成熟。新生成或新保存调整会重置成熟标记，确保新候选重新检查。切回 **原始动作**，保存修改，导出烘焙后的 **GLB**、**编辑记录 JSON**，或下载原始 **FBX**。工具不写入正式项目的动作配置；GLB 是通用骨骼动画，接入 VRM 时仍需重定向。
 7. 删除动作会将所有版本移到回收站，点击回收站中的动作可恢复。生成中不能删除。
+
+## AI 补充描述
+
+填写简短动作意图后，点击描述旁的 **✦ AI 补充**，使用项目 `.env.local` 中的 `DEEPSEEK_API_KEY` 调用 DeepSeek。可选 `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL`，默认 `https://api.deepseek.com` / `deepseek-flash`。
+
+AI 根据当前描述、时长与已有细节，补充重心、肩肘腕、手掌方向、腿脚触地、动作节奏和收势，并给出起始、过渡、峰值与结束等关键姿态及秒数。结果包含：
+
+- **生成描述**：不超过 128 字，发给 HY-Motion。
+- **动作细节与关键姿态**：完整的时间节点与姿态描述，保留作为迭代参考，可继续编辑；随动作保存，并在新生成/导入版本里留档。
+
+补充结果先放入可编辑草稿，不自动保存或生成动作。**撤销 AI 补充** 能还原调用前的描述与细节。HY-Motion 的文生动作接口只接受生成描述，关键姿态参考不会变成逐帧硬约束。每次点击 AI 补充产生 DeepSeek API 用量；不自动重试或调用动作生成。
+
+## 预览模型
+
+- **素体**：Quaternius 的 Universal Base Characters（Superhero Male，CC0 1.0）。下载已打包的无贴图、哑光 glTF，将骨骼映射为工具内部的 VRM 人形格式；几何、蒙皮权重和绑定矩阵保留。模型位于 `motion-workbench/models/mannequin.vrm`，授权文本与来源/SHA-256 收据保存在同目录。
+- **夏夏**：直接读取正式项目已有的 `public/models/AvatarSample_A.vrm`，不复制或修改模型。
+
+素体来源：[作者与授权说明](https://quaternius.com/packs/universalbasecharacters.html)、[下载文件的来源记录](https://github.com/programasweights/avatar/blob/main/ASSETS.md)。素体保留 CC0 元数据，加载器仅额外接受这个明确的授权 URL。要重新包装已下载的原始 GLB：
+
+```sh
+node motion-workbench/scripts/prepare-mannequin.mjs /absolute/path/to/character.glb
+```
 
 ## 数据与密钥
 
@@ -38,6 +60,6 @@ GLB 以 30fps 采样并烘焙裁剪、播放速度、骨骼偏移和根位移校
 npm run motion:check
 ```
 
-测试覆盖版本隔离、重启持久化、回收站恢复、输入与路径校验、剪辑边界/速度烘焙、GLB 导出后重新加载，以及模拟云端任务的并发限制、恢复查询和下载。测试不会调用真实生成接口。
+测试覆盖版本隔离、重启持久化、回收站恢复、输入与路径校验、剪辑边界/速度烘焙、GLB 导出后重新加载、素体蒙皮随动作变形、AI 结构化结果/时间校验，以及模拟云端任务的并发限制、恢复查询和下载。测试不会调用真实生成接口。
 
-接口参考：[腾讯云提交文生动作任务](https://cloud.tencent.com/document/product/1804/131256)。
+接口参考：[腾讯云提交文生动作任务](https://cloud.tencent.com/document/product/1804/131256)、[DeepSeek JSON 输出](https://api-docs.deepseek.com/guides/json_mode/)。

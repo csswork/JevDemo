@@ -686,3 +686,7 @@ header {
 .inspector section {
   margin-bottom:20px}
 }
+.description-heading {display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;font-size:11px;color:#606d5d}
+.ai-button {padding:5px 9px;border-color:#cad9bc;background:#edf3e5;color:#607c4c;font-size:10px}
+.motion-details textarea {width:100%;margin-top:12px;font-size:11px;line-height:1.8;min-height:150px}
+.saved-details {white-space:pre-wrap}

@@ -1,10 +1,10 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { VRMLoaderPlugin, VRMUtils, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
+import { VRMUtils, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
+import { avatarLoader } from './avatarLoader';
 import { retargetSmpl } from './retargetSmpl';
 import { BONE_NAMES, trimClip } from './editClip';
 import { bakeClip } from './bakeClip';
@@ -36,8 +36,9 @@ export function Preview(props: Props) {
     const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(36, 1, .01, 100);
     camera.position.set(2.8, 1.8, 3.8);
     const controls = new OrbitControls(camera, renderer.domElement); controls.target.set(0, .9, 0); controls.enableDamping = true;
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x929b89, 2.5));
-    const light = new THREE.DirectionalLight(0xffffff, 3); light.position.set(2, 4, 3); scene.add(light);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x929b89, .75));
+    const light = new THREE.DirectionalLight(0xffffff, 1.5); light.position.set(2, 4, 3); scene.add(light);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, .55); fill.position.set(-3, 2, 1); scene.add(fill);
     const grid = new THREE.GridHelper(8, 40, 0xadb6a6, 0xd4d9d0); scene.add(grid);
     const resize = new ResizeObserver(() => {
       renderer.setSize(el.clientWidth, el.clientHeight); camera.aspect = el.clientWidth / Math.max(1, el.clientHeight); camera.updateProjectionMatrix();
@@ -112,7 +113,7 @@ export function Preview(props: Props) {
         sourceClip = source.animations[0];
         if (props.target !== 'source') {
           if (!source.getObjectByName('Pelvis')) throw new Error('角色预览仅支持 HY-Motion 的 SMPL-H 骨架，请切回原始动作');
-          const gltf = await new GLTFLoader().register(parser => new VRMLoaderPlugin(parser)).loadAsync(props.target);
+          const gltf = await avatarLoader().loadAsync(props.target);
           if (disposed) { disposeTree(gltf.scene); return; }
           avatar = gltf.userData.vrm;
           if (!avatar) { disposeTree(gltf.scene); throw new Error('请选择有效的 VRM 角色'); }
@@ -137,6 +138,16 @@ export function Preview(props: Props) {
         animated.traverse(node => rest.push({ node, position: node.position.clone(), quaternion: node.quaternion.clone() }));
         helper = new THREE.SkeletonHelper(animated); helper.visible = current.current.skeleton; scene.add(helper);
         rebuild(current.current.edits); editKey = JSON.stringify(current.current.edits);
+        avatar?.update(0); root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(animated);
+        if (box.isEmpty()) animated.traverse(node => { if ((node as THREE.Bone).isBone) box.expandByPoint(node.getWorldPosition(new THREE.Vector3())); });
+        if (!box.isEmpty()) {
+          const size = box.getSize(new THREE.Vector3()); const center = box.getCenter(new THREE.Vector3());
+          const aspect = el.clientWidth / Math.max(1, el.clientHeight);
+          const distance = Math.max(size.y, size.x / aspect, .5) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.2;
+          controls.target.copy(center); camera.position.copy(center).add(new THREE.Vector3(.18, .08, .98).normalize().multiplyScalar(distance));
+          controls.update();
+        }
         exporter.current = async () => {
           if (avatar) throw new Error('请切回「原始动作」导出；角色预览只用于验证适配效果');
           if (!source || !clip) throw new Error('动作还没有加载');

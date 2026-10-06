@@ -4,13 +4,14 @@ import { randomUUID } from 'node:crypto';
 import { defaultEdits, type Motion, type Version, type Edits } from '../shared.ts';
 
 export class InputError extends Error { status = 400; }
-export function checkDraft(value: unknown): { name: string; prompt: string; duration: number; rewrite: boolean; ready: boolean } {
+export function checkDraft(value: unknown): { name: string; prompt: string; details: string; duration: number; rewrite: boolean; ready: boolean } {
   const v = value as Partial<Motion> | null;
   if (!v || typeof v.name !== 'string' || !v.name.trim() || v.name.length > 80) throw new InputError('名称不能为空，最多 80 字');
   if (typeof v.prompt !== 'string' || [...v.prompt].length > 128) throw new InputError('描述最多 128 字');
+  if (v.details !== undefined && (typeof v.details !== 'string' || v.details.length > 8000)) throw new InputError('动作细节最多 8000 字');
   if (!Number.isInteger(v.duration) || v.duration! < 1 || v.duration! > 12) throw new InputError('时长须为 1–12 秒的整数');
   if (typeof v.rewrite !== 'boolean' || typeof v.ready !== 'boolean') throw new InputError('无效的动作设置');
-  return { name: v.name.trim(), prompt: v.prompt.trim(), duration: v.duration!, rewrite: v.rewrite, ready: v.ready };
+  return { name: v.name.trim(), prompt: v.prompt.trim(), details: v.details?.trim() ?? '', duration: v.duration!, rewrite: v.rewrite, ready: v.ready };
 }
 export function checkEdits(value: unknown): Edits {
   const e = value as Edits | null;
@@ -65,7 +66,7 @@ export class Store {
   }
   addVersion(id: string, source: Version['source']) {
     const m = this.motion(id);
-    const v: Version = { id: randomUUID(), label: `版本 ${m.versions.length + 1}`, createdAt: new Date().toISOString(), prompt: m.prompt, duration: m.duration, rewrite: m.rewrite, source, status: source === 'generated' ? 'submitting' : 'DONE', edits: defaultEdits(), notes: '' };
+    const v: Version = { id: randomUUID(), label: `版本 ${m.versions.length + 1}`, createdAt: new Date().toISOString(), prompt: m.prompt, details: m.details ?? '', duration: m.duration, rewrite: m.rewrite, source, status: source === 'generated' ? 'submitting' : 'DONE', edits: defaultEdits(), notes: '' };
     m.versions.push(v); m.ready = false; delete m.readyVersionId; this.touch(m); return v;
   }
   revise(id: string, vid: string, data: { edits: unknown; notes: unknown; label: unknown }) {

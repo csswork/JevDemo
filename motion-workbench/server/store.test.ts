@@ -12,12 +12,13 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-const draft = { name: '挥手', prompt: '站在原地挥手', duration: 5, rewrite: true, ready: false };
+const draft = { name: '挥手', prompt: '站在原地挥手', details: '0s 双手自然垂下；2s 右手抬起；5s 缓慢收势。', duration: 5, rewrite: true, ready: false };
 test('iterations retain immutable source and previous edits through restart and trash/restore', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'motion-test-'));
   try {
     const store = new Store(dir); const motion = store.create(draft);
     const original = store.addVersion(motion.id, 'imported'); original.asset = `${original.id}.fbx`;
+    assert.equal(original.details, draft.details);
     fs.writeFileSync(store.assetPath(original.asset), 'test source'); store.save();
     store.mature(motion.id, original.id, true);
     assert.equal(motion.readyVersionId, original.id);
@@ -25,6 +26,7 @@ test('iterations retain immutable source and previous edits through restart and 
     const revised = store.revise(motion.id, original.id, { edits, label: '更自然的挥手', notes: '去掉开头一步' });
     assert.equal(motion.ready, false); assert.equal(motion.readyVersionId, undefined);
     assert.equal(revised.asset, original.asset); assert.equal(revised.parentId, original.id);
+    assert.equal(revised.details, original.details);
     assert.equal(original.edits.start, 0); assert.equal(revised.edits.start, 1);
     edits.offsets.L_Shoulder[2] = 20; assert.equal(revised.edits.offsets.L_Shoulder[2], 12);
     store.trash(motion.id); assert.throws(() => store.motion(motion.id));

@@ -6,6 +6,7 @@ import { loadEnv, type Plugin } from 'vite';
 import { Store, InputError } from './store.ts';
 import { submitMotion, describeMotion, type TencentCreds } from './tencent3d.ts';
 import type { Version } from '../shared.ts';
+import { expandPrompt } from './expandPrompt.ts';
 
 async function body(req: IncomingMessage, limit = 1024 * 1024) {
   const parts: Buffer[] = []; let size = 0;
@@ -22,9 +23,10 @@ const json = (res: ServerResponse, value: unknown, status = 200) => {
 export function workbenchApi(project: string): Plugin {
   return { name: 'motion-workbench-api', configureServer(server) {
     const store = new Store(path.join(project, 'data', 'motion-workbench'));
-    const env = loadEnv('development', project, 'TENCENTCLOUD_');
+    const env = loadEnv('development', project, ['TENCENTCLOUD_', 'DEEPSEEK_']);
     const creds: TencentCreds = { secretId: env.TENCENTCLOUD_SECRET_ID ?? '', secretKey: env.TENCENTCLOUD_SECRET_KEY ?? '', region: env.TENCENTCLOUD_REGION };
     const configured = !!(creds.secretId && creds.secretKey);
+    const aiConfigured = !!env.DEEPSEEK_API_KEY;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let busy = false;
@@ -74,7 +76,10 @@ export function workbenchApi(project: string): Plugin {
         res.setHeader('Cache-Control', 'no-store');
         const parts = new URL(req.url ?? '/', 'http://localhost').pathname.split('/').filter(Boolean);
         const [id, action, vid] = parts;
-        if (!id && req.method === 'GET') { json(res, { motions: store.motions, configured }); return; }
+        if (!id && req.method === 'GET') { json(res, { motions: store.motions, configured, aiConfigured }); return; }
+        if (id === 'expand' && req.method === 'POST') {
+          json(res, await expandPrompt({ apiKey: env.DEEPSEEK_API_KEY ?? '', baseUrl: env.DEEPSEEK_BASE_URL, model: env.DEEPSEEK_MODEL }, JSON.parse((await body(req)).toString()))); return;
+        }
         if (!id && req.method === 'POST') { json(res, store.create(JSON.parse((await body(req)).toString())), 201); return; }
         if (id === 'demo' && req.method === 'POST') {
           const bytes = fs.readFileSync(path.join(project, 'motion-workbench/fixtures/smoke.fbx'));
@@ -83,7 +88,10 @@ export function workbenchApi(project: string): Plugin {
           fs.writeFileSync(store.assetPath(v.asset), bytes); store.save(); json(res, m, 201); return;
         }
         if (id === 'model' && req.method === 'GET') {
-          res.setHeader('Content-Type', 'model/gltf-binary'); fs.createReadStream(path.join(project, 'public/models/AvatarSample_B.vrm')).pipe(res); return;
+          const models: Record<string, string> = { mannequin: 'motion-workbench/models/mannequin.vrm', xiaxia: 'public/models/AvatarSample_A.vrm', sample: 'public/models/AvatarSample_B.vrm' };
+          const file = models[action || 'sample']; if (!file) throw new InputError('预览模型不存在');
+          res.setHeader('Content-Type', 'model/gltf-binary');
+          fs.createReadStream(path.join(project, file)).on('error', () => res.destroy()).pipe(res); return;
         }
         if (req.method === 'DELETE' && !action) { store.trash(id); json(res, { ok: true }); return; }
         if (req.method === 'PUT' && !action) { json(res, store.update(id, JSON.parse((await body(req)).toString()))); return; }

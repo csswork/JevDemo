@@ -1,0 +1,11 @@
+{
+  "author": "Quaternius",
+  "license": "CC0-1.0",
+  "pack": "https://quaternius.com/packs/universalbasecharacters.html",
+  "download": "https://raw.githubusercontent.com/programasweights/avatar/main/public/assets/character.glb",
+  "provenance": "https://github.com/programasweights/avatar/blob/main/ASSETS.md",
+  "retrievedAt": "2026-10-06",
+  "sourceSha256": "d6f3b64cab629f6ddca9ba063811aeffd3663a8a4e49ade47cd9505dc2bbd70f",
+  "outputSha256": "f365fb739a4c9875b8d315f97a3cc68b3cdc8749d1e14f286523eb6288f12b70",
+  "changes": "Added VRMC_vrm humanoid mapping and CC0 metadata. Preserved geometry, skin weights, inverse bind matrices, reference transforms and the downloaded matte jade material."
+}
