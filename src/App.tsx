@@ -23,6 +23,7 @@ import { Picker, type PickerItem } from './ui/Picker';
 import { TimeSlider } from './ui/TimeSlider';
 import { SpeechBubble } from './ui/SpeechBubble';
 import { HoverDock } from './ui/HoverDock';
+import { Loader } from './ui/Loader';
 import { EMOTION_LABEL, emotionLabel } from './ui/labels';
 import {
   IconBlank,
@@ -52,8 +53,6 @@ const BACKDROP_KEY = 'jev.backdrop';
  * 没设置过的角色用默认（模型自己的默认音色、公园、半身机位，见 models.ts），不继承别的角色的
  */
 const PREFS_KEY = 'jev.modelPrefs';
-/** 调试面板开着还是收着 */
-const PANEL_KEY = 'jev.panelOpen';
 type TimeValue = 'now' | number;
 interface ModelPrefs {
   speaker?: string;
@@ -229,23 +228,14 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // 界面：左上的角色设定展开着没有、聊天记录开着没有、调试面板开着没有（面板的开合记在浏览器里）
   const [chatOpen, setChatOpen] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(() => {
-    try {
-      const v = localStorage.getItem(PANEL_KEY);
-      if (v) return v === '1';
-    } catch {
-      // 读不了就按屏幕宽度定
-    }
-    // 第一次打开：窄屏先收着，别挡住角色
-    return window.innerWidth >= 720;
-  });
-  const togglePanel = (open: boolean) => {
-    setPanelOpen(open);
-    try {
-      localStorage.setItem(PANEL_KEY, open ? '1' : '0');
-    } catch {
-      // 记不住就算了
-    }
+  // 调试面板：每次打开页面都是收着的（以前记住开合，结果总是带着上次开着的状态进来）
+  const [panelOpen, setPanelOpen] = useState(false);
+  const togglePanel = setPanelOpen;
+  // 界面的出场：boot = 载入中（所有工具栏都藏着）→ in = 依次滑进来 → idle = 平常
+  const [uiPhase, setUiPhase] = useState<'boot' | 'in' | 'idle'>('boot');
+  const revealUi = () => {
+    setUiPhase('in');
+    window.setTimeout(() => setUiPhase('idle'), 1600);
   };
   // 刚发出去的那句话：聊天记录收着的时候在输入框上面飘一下再淡掉，让人知道发出去了
   const [echo, setEcho] = useState<{ id: number; text: string } | null>(null);
@@ -382,6 +372,7 @@ export default function App() {
       .then(async () => {
         if (disposed) return;
         setLoading(false);
+        revealUi();
         // 先试着把音频建起来：浏览器允许自动播放（常来的站点）时刷新完背景音就出来；
         // 不允许的话上下文是挂起的，第一次点击 / 按键时再放行（见上面的 unlock）
         rt.unlockAudio();
@@ -410,6 +401,7 @@ export default function App() {
         if (disposed) return;
         setError(e instanceof Error ? e.message : String(e));
         setLoading(false);
+        revealUi();
       });
 
     const onResize = () => rt.resize();
@@ -941,22 +933,11 @@ export default function App() {
   const voiceBackend = voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS';
 
   return (
-    <div className={`app${backdrop === 'street' ? ' has-time' : ''}`}>
+    <div className={`app ui-${uiPhase}${backdrop === 'street' ? ' has-time' : ''}`}>
       <div className="stage">
         <canvas ref={canvasRef} />
 
         <SpeechBubble runtime={runtimeRef} text={subtitle} thinking={busy} name={persona?.name ?? currentModel?.name} />
-
-        {loading && (
-          <div className="overlay">
-            <div className="loader">
-              <div className="bar">
-                <div className="fill" style={{ width: `${Math.round(progress * 100)}%` }} />
-              </div>
-              <span>载入模型 {Math.round(progress * 100)}%</span>
-            </div>
-          </div>
-        )}
 
         {error && (
           <div className="overlay">
@@ -1554,6 +1535,14 @@ export default function App() {
           </div>
         </aside>
       )}
+
+      {/* 开场的载入画面：盖在最上面，载完了自己淡出 */}
+      <Loader
+        done={!loading}
+        progress={progress}
+        name={currentModel?.name}
+        avatar={modelId ? `${import.meta.env.BASE_URL}avatars/${modelId}.png` : undefined}
+      />
     </div>
   );
 }
