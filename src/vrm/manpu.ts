@@ -11,7 +11,7 @@ import { damp } from './pose';
  * 这些符号的意思是固定的，不用看清脸也读得出来。
  *
  *   贴在脸上（跟着头走，被头发挡住时照样被挡）：
- *     脸红      害羞（开心 + 惊讶的混合，fromJev.ts 的 criteria 就是这么定义害羞的）、很强的开心
+ *     脸红      害羞（Jev 的 shy；开心 + 惊讶的混合也会淡淡地红一点）、很强的开心
  *     阴影竖线  很强的难过：额头到眼睛那一片罩一层往下淡的竖线
  *     眼泪      很强的难过：从下眼角沿着脸颊往下滑
  *   挂在头边（永远画在最上面，不被头发挡）：
@@ -386,13 +386,17 @@ export class ManpuLayer {
     if (!a) return;
     this.t += dt;
     const on = this.enabled ? 1 : 0;
-    const { happy, angry, sad, relaxed, surprised } = levels;
+    const { happy, angry, sad, relaxed, surprised, shy } = levels;
     const negative = sad + angry;
 
     // ---- 持续的：脸红、阴影竖线、青筋 ----
-    const shy = smooth(Math.min(happy, surprised), 0.1, 0.32);
-    const glow = 0.55 * smooth(happy, 0.6, 0.9);
-    this.blushW = damp(this.blushW, on * Math.max(shy, glow) * (1 - smooth(negative, 0.3, 0.6)), 3, dt);
+    // 害羞一上来就红（脸红是害羞最主要的信号，阈值放低）；惊喜的混合、很强的开心淡淡地红一点
+    const flush = Math.max(
+      smooth(shy, 0.08, 0.35),
+      0.6 * smooth(Math.min(happy, surprised), 0.1, 0.32),
+      0.55 * smooth(happy, 0.6, 0.9),
+    );
+    this.blushW = damp(this.blushW, on * flush * (1 - smooth(negative, 0.3, 0.6)), 3, dt);
     this.gloomW = damp(this.gloomW, on * smooth(sad, 0.45, 0.8), 2, dt);
     const veinGoal = on * smooth(angry, 0.3, 0.65);
     if (veinGoal > 0.05 && this.veinW < 0.05) this.veinPop = 0;
@@ -640,6 +644,36 @@ export class ManpuLayer {
     const mouth = onFace(mouthGuess) ?? mouthGuess;
     const eyeToMouth = Math.max(0.02, eyes.clone().sub(mouth).dot(up));
 
+    // 下眼睑在哪（相对两眼中点往上的坐标）：眨眼形状动到的顶点就是眼睑，闭上之后最低的那一圈就是下眼睑。
+    // 各模型眼睛大小差很多（MMD 转的眼睛大得多），按眼到嘴的固定比例放脸红，大眼睛的模型会红在眼睛上
+    const lowerLid = (() => {
+      let low = Infinity;
+      const v = new THREE.Vector3();
+      const d = new THREE.Vector3();
+      for (const b of mgr?.getExpression('blink')?.binds ?? []) {
+        if (!(b instanceof VRMExpressionMorphTargetBind)) continue;
+        for (const m of b.primitives) {
+          const morph = m.geometry.morphAttributes.position?.[b.index];
+          if (!morph) continue;
+          const rel = m.geometry.morphTargetsRelative;
+          const base = m.geometry.attributes.position;
+          const nm = new THREE.Matrix3().setFromMatrix4(m.matrixWorld);
+          for (let i = 0; i < morph.count; i++) {
+            d.fromBufferAttribute(morph, i);
+            if (!rel) d.sub(v.fromBufferAttribute(base, i));
+            if (d.lengthSq() < 1e-6) continue;
+            // 只看眼睛附近（左右各一个眼宽以内）
+            m.getVertexPosition(i, v);
+            v.applyMatrix4(m.matrixWorld).add(d.applyMatrix3(nm));
+            const rel2 = v.sub(eyes);
+            if (Math.abs(Math.abs(rel2.dot(left)) - eyeX) > unit * 1.2) continue;
+            low = Math.min(low, rel2.dot(up));
+          }
+        }
+      }
+      return low;
+    })();
+
     // 头的外轮廓（含头发）：头顶、两侧、刘海最前面
     const topY =
       (cast(meshes, headPos.clone().addScaledVector(up, 0.6), up.clone().negate())?.dot(up) ?? eyes.dot(up) + unit * 2.2) -
@@ -766,9 +800,14 @@ export class ManpuLayer {
       return m;
     };
 
-    // 脸红：眼睛正下方偏外，宽约 1.1 个眼距
+    // 脸红：眼睛正下方偏外的颧骨上，宽约 1.1 个眼距。上沿在下眼睑下面留一点空；
+    // 量不到下眼睑（没有眨眼形状）就按眼到嘴的 0.6
+    const blushH = unit * 0.52;
+    const blushY = Number.isFinite(lowerLid)
+      ? Math.max(-eyeToMouth * 0.8, lowerLid - unit * 0.12 - blushH / 2)
+      : -eyeToMouth * 0.6;
     for (const s of [1, -1]) {
-      this.blush.push(patch(at(s * eyeX * 1.05, -eyeToMouth * 0.42, 0), unit * 1.1, unit * 0.52, 0.0025, T.blush));
+      this.blush.push(patch(at(s * eyeX * 1.05, blushY, 0), unit * 1.1, blushH, 0.0025, T.blush));
     }
     // 阴影竖线：眼睛到额头，压在刘海前面
     this.gloom = card(unit * 3.6, unit * 1.9, T.gloom, 11);

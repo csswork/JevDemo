@@ -261,13 +261,14 @@ export class Character {
     this.expression.update(dt, vrm);
     // 漫符读的是 Jev 定的语义强度：整脸预设的模型上表情层按 ceiling 压过幅度，这里还原回来
     const ex = this.expression;
-    const level = (e: 'happy' | 'angry' | 'sad' | 'relaxed' | 'surprised') => ex.weightOf(e) / Math.max(0.05, ex.ceiling[e] ?? 1);
+    const level = (e: 'happy' | 'angry' | 'sad' | 'relaxed' | 'surprised' | 'shy') => ex.weightOf(e) / Math.max(0.05, ex.ceiling[e] ?? 1);
     this.manpu.update(dt, {
       happy: level('happy'),
       angry: level('angry'),
       sad: level('sad'),
       relaxed: level('relaxed'),
       surprised: level('surprised'),
+      shy: level('shy'),
     });
     this.lipsync.setMouthRoom(1 - 0.6 * this.expression.mouthOcclusion());
     this.lipsync.update(dt, vrm);

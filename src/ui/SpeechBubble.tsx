@@ -9,7 +9,7 @@ import type { Runtime } from '../runtime';
  *  - 描边是手画的、微微在"抖"（漫画 / 动画里的 boiling line：每 0.14 秒换一次噪声），说话时一直轻轻浮着
  *  - 名牌像一张歪着贴的小贴纸，说话的时候旁边有三根跳动的声波
  *  - 气泡的样子跟着脸上的情绪变：开心会轻轻跳、有小音符；惊讶抖一下、冒出惊叹线；生气是红边加青筋；
- *    难过是冷色、往下沉一点；放松是淡绿、慢慢晃
+ *    难过是冷色、往下沉一点；放松是淡绿、慢慢晃；害羞是粉色、往里缩一下，冒一颗小心
  *  - 等台词的时候是一朵真的"云"（三个点在冒），从头边冒出两个小泡泡连过去
  *  - 出现是弹性的（压扁 → 拉长 → 回弹），消失是缩回嘴边
  *  - 说完停 3 秒淡出
@@ -20,8 +20,8 @@ import type { Runtime } from '../runtime';
  */
 
 type Place = 'r' | 'l' | 't';
-type Mood = 'calm' | 'happy' | 'surprised' | 'angry' | 'sad' | 'relaxed';
-const MOODS: Mood[] = ['happy', 'surprised', 'angry', 'sad', 'relaxed'];
+type Mood = 'calm' | 'happy' | 'surprised' | 'angry' | 'sad' | 'relaxed' | 'shy';
+const MOODS: Mood[] = ['happy', 'surprised', 'angry', 'sad', 'relaxed', 'shy'];
 
 /** 说完多久淡出（秒）：3 秒起，每个字多 0.05 秒，最多 6 秒 */
 const LINGER = 3;
@@ -342,6 +342,9 @@ export function SpeechBubble({
             </g>
             <g className="fx-sad">
               <path d="M20 6c4 6 7 10 7 14a7 7 0 0 1-14 0c0-4 3-8 7-14z" />
+            </g>
+            <g className="fx-shy">
+              <path d="M20 31C11 25 7 20 7 15a6 6 0 0 1 13-2 6 6 0 0 1 13 2c0 5-4 10-13 16z" />
             </g>
             <g className="fx-relaxed">
               <path d="M6 22c4-6 8-6 10 0s6 6 10 0M14 12c3-4 6-4 8 0s5 4 8 0" />

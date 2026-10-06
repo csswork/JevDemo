@@ -60,16 +60,17 @@ export interface JevPayload {
 
 /**
  * criteria 的描述写得比情绪名宽：Jev 回的是整个概率分布，描述覆盖到"害羞""苦笑"
- * 这类复合状态，它们才会以混合的形式出现（害羞 ≈ happy + surprised，苦笑 ≈ sad + relaxed），
+ * 这类复合状态，它们才会以混合的形式出现（苦笑 ≈ sad + relaxed、惊喜 ≈ happy + surprised），
  * 渲染层再按部位把混合合成一张脸。
  */
 export const EMOTION_CRITERIA: Record<Emotion, string> = {
   neutral: '平静、认真，或者在想事情，没有明显情绪',
-  happy: '开心、被逗笑、得意，或者害羞里带着高兴',
+  happy: '开心、被逗笑、得意',
   angry: '生气、不满、嫌弃、不耐烦',
   sad: '难过、失落、委屈、歉意、同情对方',
   relaxed: '放松、温和、亲切、释然',
   surprised: '意外、吃惊、没想到、有点慌',
+  shy: '害羞、不好意思、被夸得难为情、心动',
 };
 
 const GAZE_CRITERIA: Record<GazeTarget, string> = {

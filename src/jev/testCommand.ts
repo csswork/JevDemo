@@ -48,6 +48,10 @@ const ALIASES: Record<string, Emotion> = {
   意外: 'surprised',
   吃惊: 'surprised',
   震惊: 'surprised',
+  害羞: 'shy',
+  不好意思: 'shy',
+  羞: 'shy',
+  脸红: 'shy',
 };
 
 const DEFAULT_SPEECH = '这是一句用来看表情的测试台词，长度大概够演完三个节拍。';

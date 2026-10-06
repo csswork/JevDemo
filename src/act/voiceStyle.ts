@@ -17,11 +17,12 @@ const WORDS: Record<Emotion, string> = {
   sad: '难过、失落',
   relaxed: '温柔、放松',
   surprised: '惊讶',
+  shy: '害羞、小声',
 };
 
 /**
  * 常见的混合有更贴切的说法。键是"主导+次要"，按概率排序后的前两名。
- * 和 fromJev.ts 里 criteria 的描述对应：害羞 ≈ happy + surprised，苦笑 ≈ sad + relaxed。
+ * 和 fromJev.ts 里 criteria 的描述对应：苦笑 ≈ sad + relaxed。害羞现在是单独的情绪（shy）。
  */
 const COMPOUND: Record<string, string> = {
   'happy+surprised': '惊喜',
@@ -32,6 +33,9 @@ const COMPOUND: Record<string, string> = {
   'angry+sad': '又气又委屈',
   'happy+sad': '笑着、但有点心酸',
   'neutral+relaxed': '平和、亲切',
+  'shy+happy': '害羞又开心',
+  'happy+shy': '开心、有点不好意思',
+  'shy+surprised': '慌张又害羞',
 };
 
 /** 情绪不明显时用的语气 */

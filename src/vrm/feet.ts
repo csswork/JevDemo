@@ -58,7 +58,8 @@ export class FootLock {
     }));
     if (nodes.some((n) => !n.upper?.parent || !n.lower || !n.foot)) return;
 
-    scene.updateMatrixWorld(true);
+    // 只刷新标准化骨架（整个 vrm.scene 有几百个头发 / 衣服节点，每帧刷一遍要好几毫秒）
+    H.normalizedHumanBonesRoot.updateMatrixWorld(true);
     const [sceneQ, sceneQInv] = this._q;
     scene.getWorldQuaternion(sceneQ);
     sceneQInv.copy(sceneQ).invert();

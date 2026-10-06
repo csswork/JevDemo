@@ -1746,6 +1746,21 @@ input[type='range']::-webkit-slider-thumb {
   75% { transform: rotate(1.2deg); }
 }
 
+/* —— 害羞：粉色、往里缩一下又探出来，冒一颗小心 —— */
+.bubble[data-mood='shy'] { --b-bg: #fff2f5; --b-ink: #a33a5c; --b-text: #5a2236; --b-fx: #f06292; }
+.bubble[data-mood='shy'] .bubble-mood,
+.bubble.speaking[data-mood='shy'] .bubble-mood { animation: shrink 2.2s ease-in-out infinite; }
+.bubble[data-mood='shy'] .fx-shy { display: inline; animation: flutter 1.6s ease-in-out infinite; }
+.fx-shy path { fill: #ffc1d4; }
+@keyframes shrink {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(0.97) translateY(1px); }
+}
+@keyframes flutter {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.12); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bubble *, .bubble { animation: none !important; transition: opacity 0.2s !important; }
 }

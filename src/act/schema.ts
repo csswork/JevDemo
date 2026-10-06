@@ -11,7 +11,7 @@
  */
 
 /** VRM 1.0 标准表情槽，三方模型通用。three-vrm 会把 VRM 0.x 的 joy/sorrow/fun 自动归一到这套命名。 */
-export const EMOTIONS = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised'] as const;
+export const EMOTIONS = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'shy'] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
 /**

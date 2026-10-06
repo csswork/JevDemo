@@ -123,6 +123,7 @@ export function installAudit(rt: Runtime) {
     ['难过', { sad: 0.8 }],
     ['生气', { angry: 0.8 }],
     ['惊讶', { surprised: 0.8 }],
+    ['害羞', { shy: 0.8 }],
   ];
 
   /**
@@ -196,7 +197,7 @@ export function installAudit(rt: Runtime) {
   const MANPU_SET: Array<[string, Partial<Record<Emotion, number>>, number]> = [
     ['平静', { neutral: 1 }, 1.6],
     ['开心 85%', { happy: 0.85 }, 2.2],
-    ['害羞', { happy: 0.5, surprised: 0.4 }, 1.6],
+    ['害羞 80%', { shy: 0.8 }, 1.6],
     ['生气 80%', { angry: 0.8 }, 1.6],
     ['难过 90%', { sad: 0.9 }, 1.3],
     ['惊讶 80%', { surprised: 0.8 }, 0.45],
