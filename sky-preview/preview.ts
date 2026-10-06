@@ -140,6 +140,10 @@ function setView(kind:string){follow.checked=false;
  else{camera.position.set(0,2.4,12);controls.target.set(-4,6,-45);}
  controls.update();}
 setView('street');el('street-view').onclick=()=>setView('street');el('sea-view').onclick=()=>setView('sea');el('wide-view').onclick=()=>setView('wide');
+el<HTMLSelectElement>('building-review').onchange=e=>{
+ const id=(e.target as HTMLSelectElement).value,anchor=world.getObjectByName(`street-building-preview-${id}`);
+ if(!anchor)return;follow.checked=false;controls.target.copy(anchor.position);camera.position.fromArray(anchor.userData.camera);controls.update();
+};
 el('flower-view').onclick=()=>setView('flowers');el('plant-view').onclick=()=>setView('plants');el('town-view').onclick=()=>setView('town');el('ocean-view').onclick=()=>setView('ocean');el('shore-view').onclick=()=>setView('shore');el('glint-view').onclick=()=>setView('glints');
 el('toggle-controls').onclick=()=>{const panel=el('sky-controls');panel.hidden=!panel.hidden;el('toggle-controls').textContent=panel.hidden?'展开天空控制':'收起天空控制';if(!panel.hidden){el('ocean-controls').hidden=true;el('toggle-ocean').textContent='海洋控制';}};
 controls.addEventListener('start',()=>follow.checked=false);
@@ -179,6 +183,7 @@ function frame(now:number){const dt=Math.min((now-last)/1000,.1);last=now;
  renderer.autoClear=true;sky.renderClouds(renderer,camera);renderer.render(background,camera);
  if(visible.checked){renderer.autoClear=false;renderer.clearDepth();renderer.render(world,camera);renderer.autoClear=true;}
  const h=Number(hour.value);el<HTMLOutputElement>('clock').value=`${String(Math.floor(h)).padStart(2,'0')}:${String(Math.floor(h%1*60)).padStart(2,'0')}`;
+ status.dataset.drawCalls=String(renderer.info.render.calls);status.dataset.triangles=String(renderer.info.render.triangles);
  status.textContent=time.state.sunElev>-3?'街景 · 新天空 · 日光':'街景 · 新天空 · 夜色';status.dataset.ready=String(assetsPending===0);status.dataset.assetsFailed=String(assetsFailed);
  frameId=requestAnimationFrame(frame);
 }

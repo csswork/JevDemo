@@ -1,5 +1,5 @@
 {
-  "_doc": "她身边那 8 栋（Blender 的 hero_buildings.py 整栋精建，street.ts 照着摆）：s = 门脸中点在路上的位置（离她脚下的弧长，米）；格子、屋顶、遮阳篷……和 BuildingSpec 一样，颜色写成 #rrggbb",
+  "_doc": "她身边那 8 栋（Blender 的 hero_buildings.py 整栋精建，street.ts 照着摆）：s = 门脸中点在路上的位置（离她脚下的弧长，米）；格子、屋顶、遮阳篷……和 BuildingSpec 一样，颜色写成 #rrggbb；groundTint/woodTint/trimTint/frameTint 和 facadeStyle 控制精建模型的顶点配色与低面数立面构件，不新增运行时材质。",
   "buildings": [
     {
       "id": "cafe",
@@ -35,7 +35,11 @@
         1
       ],
       "solid": true,
-      "interior": true
+      "interior": true,
+      "groundTint": "#e8ddce",
+      "woodTint": "#99806a",
+      "trimTint": "#ede5d8",
+      "facadeStyle": "coastal"
     },
     {
       "id": "pottery",
@@ -54,9 +58,9 @@
           "WIN_LATTICE"
         ]
       ],
-      "tint": "#f7efe2",
+      "tint": "#ebdfca",
       "roof": "tsuma",
-      "roofTint": "#8ea0bc",
+      "roofTint": "#657986",
       "pitch": 30,
       "hisashi": true,
       "sign": 1,
@@ -64,7 +68,11 @@
         1,
         1
       ],
-      "solid": true
+      "solid": true,
+      "groundTint": "#dccab0",
+      "woodTint": "#80634d",
+      "trimTint": "#c9b79c",
+      "facadeStyle": "timber"
     },
     {
       "id": "house",
@@ -77,14 +85,19 @@
       ],
       "upper": [
         [
-          "WIN_ALU",
-          "WALL_AC"
+          "WIN_WOOD",
+          "WIN_SMALL"
         ]
       ],
-      "tint": "#e9eef2",
+      "tint": "#d6e0da",
       "roof": "hira",
-      "roofTint": "#7d8aa0",
-      "solid": true
+      "roofTint": "#65777e",
+      "solid": true,
+      "groundTint": "#bfcec4",
+      "woodTint": "#9caaa1",
+      "trimTint": "#f0eee4",
+      "frameTint": "#707c77",
+      "facadeStyle": "shutters"
     },
     {
       "id": "souvenir",
@@ -98,16 +111,21 @@
       ],
       "upper": [
         [
-          "WIN_WOOD",
           "WIN_ALU",
-          "WIN_WOOD"
+          "WIN_TALL",
+          "WIN_ALU"
         ]
       ],
-      "tint": "#fbf2e2",
+      "tint": "#efd9c6",
       "roof": "yose",
-      "roofTint": "#8ea0bc",
-      "awning": "#3d6fb4",
-      "sign": 2
+      "roofTint": "#987b6b",
+      "awning": "#658d87",
+      "sign": 2,
+      "groundTint": "#e0bf9f",
+      "woodTint": "#ac8970",
+      "trimTint": "#f5ecdc",
+      "frameTint": "#788d87",
+      "facadeStyle": "townhouse"
     },
     {
       "id": "tower",
@@ -120,17 +138,22 @@
       ],
       "upper": [
         [
-          "WIN_ALU",
-          "WIN_ALU"
+          "WIN_TALL",
+          "WIN_TALL"
         ],
         [
           "WIN_SMALL",
-          "WALL_AC"
+          "WIN_SMALL"
         ]
       ],
-      "tint": "#eeeeec",
+      "tint": "#e0e1da",
       "roof": "flat",
-      "roofTint": "#7d8aa0"
+      "roofTint": "#7d8aa0",
+      "groundTint": "#c5c7bd",
+      "woodTint": "#939a94",
+      "trimTint": "#c0c7c2",
+      "frameTint": "#5d7177",
+      "facadeStyle": "masonry"
     },
     {
       "id": "izakaya",
@@ -147,15 +170,19 @@
           "WIN_LATTICE"
         ]
       ],
-      "tint": "#f6e8d2",
+      "tint": "#e2d1b6",
       "roof": "hira",
-      "roofTint": "#5f6672",
+      "roofTint": "#555c65",
       "hisashi": true,
       "sign": 4,
       "banner": [
         6,
         0
-      ]
+      ],
+      "groundTint": "#a19076",
+      "woodTint": "#6e5140",
+      "trimTint": "#9c7b5c",
+      "facadeStyle": "timber"
     },
     {
       "id": "flower",
@@ -168,16 +195,21 @@
       ],
       "upper": [
         [
-          "WIN_WOOD",
-          "WIN_WOOD"
+          "WIN_TALL",
+          "WIN_TALL"
         ]
       ],
-      "tint": "#ffffff",
+      "tint": "#dce8df",
       "roof": "hira",
-      "roofTint": "#8ea0bc",
-      "awning": "#4e8a5c",
+      "roofTint": "#7f9291",
+      "awning": "#5f947b",
       "sign": 3,
-      "solid": true
+      "solid": true,
+      "groundTint": "#f4f0e7",
+      "woodTint": "#95aaa0",
+      "trimTint": "#f2eee1",
+      "frameTint": "#6d8c7d",
+      "facadeStyle": "shutters"
     },
     {
       "id": "lattice",
@@ -194,11 +226,15 @@
           "WIN_WOOD"
         ]
       ],
-      "tint": "#f6e8d2",
+      "tint": "#e4d8c4",
       "roof": "yose",
-      "roofTint": "#7d8aa0",
+      "roofTint": "#68716e",
       "hisashi": true,
-      "solid": true
+      "solid": true,
+      "groundTint": "#ccbba1",
+      "woodTint": "#8a6b51",
+      "trimTint": "#a99172",
+      "facadeStyle": "timber"
     }
   ]
 }

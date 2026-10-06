@@ -1450,6 +1450,14 @@ export function createStreet(options:{legacySky?:boolean}={}): Backdrop {
   let heroCafe: { M: THREE.Matrix4; w: number; d: number; door: [number, number] } | null = null;
   for (const b of specs) {
     const built = building(b);
+    if (b.hero) {
+      // Inert review anchors: no mesh, texture or extra draw. Preview can inspect each facade.
+      const anchor = new THREE.Object3D();
+      anchor.name = `street-building-preview-${b.hero}`;
+      anchor.position.copy(v3(0,built.H*.58+.3,.1).applyMatrix4(built.M));
+      anchor.userData.camera = v3(built.w*.28,built.H*.88+.7,Math.max(10,built.w*1.25)).applyMatrix4(built.M).toArray();
+      group.add(anchor);
+    }
     if (b.interior) {
       const doorBay = b.ground.indexOf(F.CAFE_DOOR);
       const bw = built.w / b.ground.length;

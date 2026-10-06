@@ -93,7 +93,7 @@ def basis(X, Y, Z, c):
 def darker(hex_color, k):
     h = hex_color.lstrip('#')
     r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
-    return '#%02x%02x%02x' % (int(r * k), int(g * k), int(b * k))
+    return '#%02x%02x%02x' % (min(255, int(r * k)), min(255, int(g * k)), min(255, int(b * k)))
 
 
 def hole_of(name, bw, ya, yb):
@@ -123,6 +123,21 @@ class Hero:
         slots['plaster_shade'] = 'plaster'
         colors['tile'] = spec['roofTint']
         colors['tile_dark'] = darker(spec['roofTint'], 0.62)
+        colors['plaster_ground'] = spec.get('groundTint', spec['tint'])
+        colors['plaster_ground_shade'] = darker(colors['plaster_ground'], 0.88)
+        slots['plaster_ground'] = slots['plaster_ground_shade'] = 'plaster'
+        wood = spec.get('woodTint', colors['wood_mid'])
+        for name, strength in (('wood_dark', .73), ('wood_mid', 1.), ('wood_light', 1.14),
+                               ('fascia', .70), ('rafter', .82), ('sign_frame', .78)):
+            colors[name] = darker(wood, strength)
+        trim = spec.get('trimTint', colors['cornice'])
+        colors['cornice'] = colors['corner'] = trim
+        colors['detail_trim'], colors['detail_wood'] = trim, wood
+        slots['detail_trim'], slots['detail_wood'] = 'paint', 'wood'
+        if spec.get('frameTint'):
+            colors['alu'] = spec['frameTint']
+            colors['alu_dark'] = darker(spec['frameTint'], .76)
+            colors['alu_white'] = trim
         colors['awning'] = spec.get('awning', '#2c3350')
         colors['awning_dark'] = darker(colors['awning'], 0.8)
         slots['awning'] = 'fabric'
@@ -167,15 +182,16 @@ class Hero:
                     b.quad(p(a, ya), p(c, ya), p(c, z0), p(a, z0), color)
                 if yb - z1 > 1e-3:
                     b.quad(p(a, z1), p(c, z1), p(c, yb), p(a, yb), color)
+        reveal_color = 'plaster_ground_shade' if color == 'plaster_ground' else 'plaster_shade'
         # 窗套（洞口四个内侧面）。底面压低 5mm：构件的窗台顶面正好在洞口底边、往墙里伸 12cm，
         # 和底面重合的话那一条一直闪（深度打架）；墙的正面还是到洞口底边，多出一道 5mm 的小台阶，看不出来（street.ts 的 bay() 同样处理）
         for x0, z0, x1, z1 in holes:
             zr = z0 - 0.005 if z0 > ya + 0.01 else z0
             if z0 > ya + 0.01:
-                b.quad(p(x0, zr), p(x1, zr), p(x1, zr, depth), p(x0, zr, depth), 'plaster_shade')
-            b.quad(p(x0, z1, depth), p(x1, z1, depth), p(x1, z1), p(x0, z1), 'plaster_shade')
-            b.quad(p(x0, zr), p(x0, zr, depth), p(x0, z1, depth), p(x0, z1), 'plaster_shade')
-            b.quad(p(x1, zr, depth), p(x1, zr), p(x1, z1), p(x1, z1, depth), 'plaster_shade')
+                b.quad(p(x0, zr), p(x1, zr), p(x1, zr, depth), p(x0, zr, depth), reveal_color)
+            b.quad(p(x0, z1, depth), p(x1, z1, depth), p(x1, z1), p(x0, z1), reveal_color)
+            b.quad(p(x0, zr), p(x0, zr, depth), p(x0, z1, depth), p(x0, z1), reveal_color)
+            b.quad(p(x1, zr, depth), p(x1, zr), p(x1, z1), p(x1, z1, depth), reveal_color)
 
     def walls(self):
         h, b, hw, d = self.h, self.b, self.hw, self.d
@@ -199,7 +215,8 @@ class Hero:
                     if f == 0 and not h.get('interior'):
                         for pos, props in K.LIGHTS.get(cell, []):
                             self.light((cx + pos[0] * self.bw / K.CW, pos[1], ya + pos[2]), **props)
-            self.wall((0, 0, 0), (1, 0, 0), self.w, ya, yb, holes)
+            wall_color = 'plaster_ground' if f == 0 else 'plaster'
+            self.wall((0, 0, 0), (1, 0, 0), self.w, ya, yb, holes, wall_color)
             # 侧墙：一楼素墙；楼上每边一扇小窗（毛玻璃）
             for side in (1, -1):
                 sh = []
@@ -208,8 +225,8 @@ class Hero:
                     with b.at(T((side * hw, d / 2, 0)) @ R(side * math.pi / 2, 4, 'Z') @ T((side * 0.9, 0, 0))):
                         K.frame(b, -0.35, 0.35, ya + 1.0, ya + 1.75, 'alu', 0.04)
                         b.quad((-0.35, K.D - 0.005, ya + 1.0), (0.35, K.D - 0.005, ya + 1.0), (0.35, K.D - 0.005, ya + 1.75), (-0.35, K.D - 0.005, ya + 1.75), 'frost_cool')
-                self.wall((side * hw, d / 2, 0), (0, side, 0), d, ya, yb, sh)
-            self.wall((0, d, 0), (-1, 0, 0), self.w, ya, yb, [])
+                self.wall((side * hw, d / 2, 0), (0, side, 0), d, ya, yb, sh, wall_color)
+            self.wall((0, d, 0), (-1, 0, 0), self.w, ya, yb, [], wall_color)
         # 石台基（一楼墙根）、腰线、墙角的护角
         gh = h['ground']
         for i in range(self.bays):
@@ -228,6 +245,46 @@ class Hero:
             b.box(-hw - 0.03, -0.05, z - 0.08, hw + 0.03, 0.0, z + 0.04, 'cornice')
         for x in (-hw, hw):
             b.box(x - 0.04, -0.04, 0.3, x + 0.04, 0.04, self.H, 'corner')
+
+    def facade_details(self):
+        """A few silhouette/readability accents, using existing material slots.
+        Keep windows/openings unobstructed and avoid dense decorative slats."""
+        b, hw, h = self.b, self.hw, self.h
+        style = h.get('facadeStyle')
+        if style == 'timber':
+            for i in range(self.bays + 1):
+                x = -hw + i * self.bw
+                b.box(x-.045, -.036, GH+.12, x+.045, -.006, self.H-.06, 'detail_wood')
+            for z in (GH+.12, self.H-.08):
+                b.box(-hw, -.04, z-.045, hw, -.008, z+.045, 'detail_wood')
+            if h['roof'] == 'tsuma':
+                top = self.H + hw * math.tan(math.radians(h.get('pitch',24)))
+                b.box(-.045,-.03,self.H,.045,-.004,top-.08,'detail_wood')
+                b.box(-hw,-.03,self.H+.07,hw,-.004,self.H+.15,'detail_wood')
+        elif style in ('coastal', 'townhouse', 'shutters'):
+            for f, row in enumerate(h['upper'],1):
+                ya = GH + (f-1)*UH
+                for i in range(self.bays):
+                    name = row[i % len(row)]
+                    r = hole_of(name,self.bw,ya,ya+UH)
+                    if not r: continue
+                    cx = -hw + (i+.5)*self.bw
+                    x0,z0,x1,z1 = cx+r[0],r[1],cx+r[2],r[3]
+                    # Projecting pale lintel distinguishes the upper storey from shop glazing.
+                    b.box(x0-.06,-.055,z1+.01,x1+.06,-.005,z1+.07,'detail_trim')
+                    if style == 'shutters':
+                        for x in (x0-.24,x1+.035):
+                            b.box(x,-.044,z0,x+.205,-.012,z1,'detail_wood')
+                            for k in range(1,5):
+                                z = z0+(z1-z0)*k/5
+                                b.box(x+.014,-.05,z-.009,x+.191,-.044,z+.009,'detail_trim')
+            if style == 'townhouse':
+                for x in (-hw+.14,hw-.14):
+                    b.box(x-.055,-.042,.3,x+.055,-.004,self.H,'detail_trim')
+        elif style == 'masonry':
+            # A restrained vertical centre pier and stepped parapet on the compact town block.
+            b.box(-.065,-.05,.3,.065,-.008,self.H,'detail_trim')
+            b.box(-hw,-.025,self.H+.43,hw,-.002,self.H+.50,'detail_trim')
 
     # ---------------------------------------------------------- 屋顶
     def slab(self, pts, t=0.12, rafters=True):
@@ -354,7 +411,7 @@ class Hero:
         tan = math.tan(pitch)
         kind = h['roof']
         ye = H - OV * tan
-        if kind == 'hira' or (kind == 'yose' and self.w < d):
+        if kind == 'hira':
             yr = H + (d / 2) * tan
             front = [(-hw - SO, -OV, ye), (hw + SO, -OV, ye), (hw + SO, d / 2, yr), (-hw - SO, d / 2, yr)]
             back = [(hw + SO, d + OV, ye), (-hw - SO, d + OV, ye), (-hw - SO, d / 2, yr), (hw + SO, d / 2, yr)]
@@ -396,15 +453,26 @@ class Hero:
             for sx in (1, -1):
                 self.pipe(sx * (hw + 0.05), 0.12, ye - 0.15)
         elif kind == 'yose':
-            yr = H + (d / 2) * tan
-            xr = hw - d / 2
+            # Genuine hip roof for either aspect ratio; narrow houses used to fall
+            # back to another gable roof, erasing their intended silhouette difference.
+            yr = H + min(hw, d / 2) * tan
+            xr = max(0, hw - d / 2)
             El, Er = -hw - OV, hw + OV
-            slabs = [
-                ([(El, -OV, ye), (Er, -OV, ye), (xr, d / 2, yr), (-xr, d / 2, yr)], (0, -1, 0)),
-                ([(Er, d + OV, ye), (El, d + OV, ye), (-xr, d / 2, yr), (xr, d / 2, yr)], (0, 1, 0)),
-                ([(Er, -OV, ye), (Er, d + OV, ye), (xr, d / 2, yr)], (1, 0, 0)),
-                ([(El, d + OV, ye), (El, -OV, ye), (-xr, d / 2, yr)], (-1, 0, 0)),
-            ]
+            if self.w >= d:
+                slabs = [
+                    ([(El, -OV, ye), (Er, -OV, ye), (xr, d / 2, yr), (-xr, d / 2, yr)], (0, -1, 0)),
+                    ([(Er, d + OV, ye), (El, d + OV, ye), (-xr, d / 2, yr), (xr, d / 2, yr)], (0, 1, 0)),
+                    ([(Er, -OV, ye), (Er, d + OV, ye), (xr, d / 2, yr)], (1, 0, 0)),
+                    ([(El, d + OV, ye), (El, -OV, ye), (-xr, d / 2, yr)], (-1, 0, 0)),
+                ]
+            else:
+                ra, rb = (0, hw, yr), (0, d - hw, yr)
+                slabs = [
+                    ([(El, -OV, ye), (Er, -OV, ye), ra], (0, -1, 0)),
+                    ([(Er, d + OV, ye), (El, d + OV, ye), rb], (0, 1, 0)),
+                    ([(Er, -OV, ye), (Er, d + OV, ye), rb, ra], (1, 0, 0)),
+                    ([(El, d + OV, ye), (El, -OV, ye), ra, rb], (-1, 0, 0)),
+                ]
             for pts, o in slabs:
                 P = self.slab(pts)
                 e0, e1 = P[0], P[1]
@@ -414,8 +482,9 @@ class Hero:
                 if o[1] != 0:
                     self.tile_band(e0, e1, up, nrm, rows=2)
                 self.eave(((e0 + e1) / 2).to_tuple(), (e1 - e0).length, o, pitch, o[1] < 0)
-            if xr > 0.05:
-                self.ridge((0, d / 2, yr - 0.04), 2 * xr, (0, -1, 0))
+            ridge_length = abs(self.w - d)
+            if ridge_length > 0.05:
+                self.ridge((0, d / 2, yr - 0.04), ridge_length, (0, -1, 0) if self.w >= d else (1, 0, 0))
             for x in (-hw + 0.12, hw - 0.12):
                 self.pipe(x, -0.07, ye - 0.15)
         else:
@@ -667,6 +736,7 @@ class Hero:
         h = self.h
         self.walls()
         self.roof()
+        self.facade_details()
         if h.get('hisashi'):
             self.hisashi()
         if h.get('awning'):

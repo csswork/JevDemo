@@ -1,0 +1,14 @@
+{
+  "before": {
+    "bytes": 6413804,
+    "meshes": 8,
+    "primitives": 76,
+    "triangles": 98146
+  },
+  "after": {
+    "bytes": 6880928,
+    "meshes": 8,
+    "primitives": 76,
+    "triangles": 102414
+  }
+}
