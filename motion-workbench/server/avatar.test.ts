@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { avatarLoader } from '../src/avatarLoader.ts';
 import { VRMUtils } from '@pixiv/three-vrm';
+import { BONE_NAMES } from '../src/editClip.ts';
 import { retargetSmpl } from '../src/retargetSmpl.ts';
 
 test('local VRoid female mannequin loads as humanoid and FBX motion deforms the skinned body', async () => {
@@ -16,6 +17,9 @@ test('local VRoid female mannequin loads as humanoid and FBX motion deforms the 
   assert.equal(avatar.meta.metaVersion, '0');
   VRMUtils.rotateVRM0(avatar);
   for (const bone of ['hips', 'head', 'leftFoot', 'rightFoot', 'rightLowerArm', 'leftHand']) assert.ok(avatar.humanoid.getNormalizedBoneNode(bone));
+  for (const [id, name] of Object.entries(BONE_NAMES)) {
+    if (/Thumb|Index|Middle|Ring|Pinky/.test(id)) assert.ok(avatar.humanoid.getNormalizedBoneNode(name), id);
+  }
   avatar.scene.updateMatrixWorld(true);
   const fixture = fs.readFileSync(new URL('../fixtures/smoke.fbx', import.meta.url));
   const source = new FBXLoader().parse(fixture.buffer.slice(fixture.byteOffset, fixture.byteOffset + fixture.byteLength), '');

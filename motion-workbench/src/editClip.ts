@@ -27,3 +27,10 @@ export const BONE_NAMES: Record<string, string> = {
   L_Hip: 'leftUpperLeg', R_Hip: 'rightUpperLeg', L_Knee: 'leftLowerLeg', R_Knee: 'rightLowerLeg',
   L_Ankle: 'leftFoot', R_Ankle: 'rightFoot', L_Foot: 'leftToes', R_Foot: 'rightToes',
 };
+
+for (const [side, prefix] of [['L', 'left'], ['R', 'right']]) {
+  for (const [finger, vrm] of [['Thumb', 'Thumb'], ['Index', 'Index'], ['Middle', 'Middle'], ['Ring', 'Ring'], ['Pinky', 'Little']]) {
+    const segments = finger === 'Thumb' ? ['Metacarpal', 'Proximal', 'Distal'] : ['Proximal', 'Intermediate', 'Distal'];
+    segments.forEach((segment, i) => { BONE_NAMES[`${side}_${finger}${i + 1}`] = `${prefix}${vrm}${segment}`; });
+  }
+}

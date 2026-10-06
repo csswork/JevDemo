@@ -2,17 +2,22 @@ import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } fro
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+import { applyBoneEdits, avatarBoneName, BONE_LABELS, offsetQuaternion, rotationOffset } from './boneEditing';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VRMUtils, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
 import { avatarLoader } from './avatarLoader';
 import { retargetSmpl } from './retargetSmpl';
-import { BONE_NAMES, trimClip } from './editClip';
+import { trimClip } from './editClip';
 import { bakeClip } from './bakeClip';
 import type { Edits } from '../shared';
 
 export interface PreviewHandle { exportGlb: () => Promise<ArrayBuffer>; }
 interface Props {
   url?: string; edits: Edits; target: string; playing: boolean; time: number; skeleton: boolean;
+  boneEditing: boolean; bone: string; boneMode: 'rotate' | 'translate';
+  onSelectBone: (bone: string) => void; onBones: (bones: string[]) => void;
+  onBoneEdit: (bone: string, mode: 'rotate' | 'translate', values: [number, number, number]) => void;
   onLoadState: (status: 'loading' | 'ready' | 'error') => void;
   onTime: (time: number) => void; onDuration: (duration: number, edited: number) => void;
   handle: { current: PreviewHandle | null };
@@ -55,6 +60,52 @@ export function Preview(props: Props) {
     let editKey = ''; let playTime = 0; let lastTime = performance.now(); let lastSent = -1;
     let initialRoot = new THREE.Vector3(); let ground = 0;
     const root = new THREE.Group(); scene.add(root);
+    const transform = new TransformControls(camera, renderer.domElement); transform.setSpace('local'); transform.setSize(.7);
+    transform.enabled = false; const transformHelper = transform.getHelper(); scene.add(transformHelper);
+    const proxy = new THREE.Object3D();
+    const markers = new THREE.Group(); scene.add(markers); markers.visible = false;
+    const joints = new Map<string, THREE.Object3D>(); const dots = new Map<string, THREE.Mesh>();
+    const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
+    let loaded = false; let attached = ''; let dragBone = ''; let dragMode: 'rotate' | 'translate' = 'rotate';
+    const dragBaseQ = new THREE.Quaternion(); const dragBaseP = new THREE.Vector3();
+    const resolveBone = (name: string) => avatar ? avatar.humanoid.getNormalizedBoneNode(avatarBoneName(name) as VRMHumanBoneName) : source?.getObjectByName(name);
+    transform.addEventListener('dragging-changed', e => { controls.enabled = loaded && !e.value; });
+    transform.addEventListener('mouseDown', () => {
+      const p = current.current; dragBone = attached; dragMode = p.boneMode;
+      dragBaseQ.copy(proxy.quaternion).multiply(offsetQuaternion(p.edits.offsets[dragBone] ?? [0, 0, 0]).invert());
+      dragBaseP.copy(proxy.position).sub(new THREE.Vector3(...(p.edits.positions?.[dragBone] ?? [0, 0, 0])).multiplyScalar(avatar ? 1 : 100));
+    });
+    transform.addEventListener('objectChange', () => {
+      if (!transform.dragging || !dragBone) return;
+      const values = dragMode === 'rotate' ? rotationOffset(dragBaseQ, proxy.quaternion) : proxy.position.clone().sub(dragBaseP).multiplyScalar(avatar ? 1 : .01).toArray().map(v => Math.max(-2, Math.min(2, Math.round(v * 10000) / 10000))) as [number, number, number];
+      current.current.onBoneEdit(dragBone, dragMode, values);
+    });
+    let pointerStart: [number, number] | undefined;
+    const pointerDown = (e: PointerEvent) => { pointerStart = [e.clientX, e.clientY]; };
+    const pointerUp = (e: PointerEvent) => {
+      if (!loaded || !current.current.boneEditing || transform.axis || !pointerStart || Math.hypot(e.clientX - pointerStart[0], e.clientY - pointerStart[1]) > 4) return;
+      const rect = renderer.domElement.getBoundingClientRect(); pointer.set((e.clientX - rect.left) / rect.width * 2 - 1, -(e.clientY - rect.top) / rect.height * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects([...dots.values()], false)[0];
+      if (hit) current.current.onSelectBone(hit.object.userData.bone);
+    };
+    renderer.domElement.addEventListener('pointerdown', pointerDown); renderer.domElement.addEventListener('pointerup', pointerUp);
+    function syncEditor() {
+      const p = current.current; markers.visible = loaded && p.boneEditing;
+      if (!loaded || !p.boneEditing || !joints.has(p.bone)) { transform.detach(); transform.enabled = false; attached = ''; return; }
+      const node = joints.get(p.bone)!;
+      if (!transform.dragging) {
+        if (proxy.parent !== node.parent) node.parent!.add(proxy);
+        proxy.position.copy(node.position); proxy.quaternion.copy(node.quaternion); proxy.scale.set(1, 1, 1); proxy.updateMatrixWorld(true);
+        transform.setMode(p.boneMode); transform.attach(proxy); transform.enabled = true; attached = p.bone;
+      }
+      for (const [id, dot] of dots) {
+        dot.position.copy(joints.get(id)!.getWorldPosition(new THREE.Vector3()));
+        const finger = /Thumb|Index|Middle|Ring|Pinky/.test(id);
+        dot.scale.setScalar(camera.position.distanceTo(dot.position) * (id === p.bone ? .009 : finger ? .0035 : .006));
+        (dot.material as THREE.MeshBasicMaterial).color.set(id === p.bone ? 0xf5a623 : finger ? 0x537cc7 : 0x66824f);
+      }
+    }
     const disposeTree = (object: THREE.Object3D) => object.traverse(o => {
       const m = o as THREE.Mesh;
       m.geometry?.dispose();
@@ -74,11 +125,7 @@ export function Preview(props: Props) {
       for (const r of rest) { r.node.position.copy(r.position); r.node.quaternion.copy(r.quaternion); }
       root.position.set(0, 0, 0);
       for (const { binding, interpolant } of bindings) binding.setValue(interpolant.evaluate(THREE.MathUtils.clamp(t, 0, clip.duration)), 0);
-      const q = new THREE.Quaternion();
-      for (const [bone, angles] of Object.entries(edits.offsets)) {
-        const node = avatar ? avatar.humanoid.getNormalizedBoneNode((BONE_NAMES[bone] ?? bone) as VRMHumanBoneName) : source?.getObjectByName(bone);
-        if (node) node.quaternion.multiply(q.setFromEuler(new THREE.Euler(...angles.map(THREE.MathUtils.degToRad) as [number, number, number], 'XYZ')));
-      }
+      applyBoneEdits(edits, resolveBone, avatar ? 1 : 100);
       avatar?.humanoid.update(); root.updateMatrixWorld(true);
       const pos = pelvis()?.getWorldPosition(new THREE.Vector3());
       if (edits.inPlace && pos) { root.position.x = initialRoot.x - pos.x; root.position.z = initialRoot.z - pos.z; }
@@ -142,6 +189,12 @@ export function Preview(props: Props) {
         }
         const animated = avatar ? avatar.scene : source;
         animated.traverse(node => rest.push({ node, position: node.position.clone(), quaternion: node.quaternion.clone() }));
+        for (const id of Object.keys(BONE_LABELS)) {
+          const node = resolveBone(id); if (!node) continue; joints.set(id, node);
+          const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: 0x66824f, depthTest: false, depthWrite: false }));
+          dot.userData.bone = id; dot.renderOrder = 100; markers.add(dot); dots.set(id, dot);
+        }
+        current.current.onBones([...joints.keys()]);
         helper = new THREE.SkeletonHelper(animated); helper.visible = current.current.skeleton; scene.add(helper);
         rebuild(current.current.edits); editKey = JSON.stringify(current.current.edits);
         avatar?.update(0); root.updateMatrixWorld(true);
@@ -154,7 +207,7 @@ export function Preview(props: Props) {
           controls.target.copy(center); camera.position.copy(center).add(new THREE.Vector3(.18, .08, .98).normalize().multiplyScalar(distance));
           controls.update();
         }
-        succeeded = true;
+        succeeded = true; loaded = true;
         exporter.current = async () => {
           if (avatar) throw new Error('请切回「原始动作」导出；角色预览只用于验证适配效果');
           if (!source || !clip) throw new Error('动作还没有加载');
@@ -172,20 +225,20 @@ export function Preview(props: Props) {
       frame = requestAnimationFrame(draw);
       const p = current.current; const dt = Math.min((now - lastTime) / 1000, .1); lastTime = now;
       const key = JSON.stringify(p.edits);
-      if (key !== editKey) { rebuild(p.edits); editKey = key; }
+      if (key !== editKey && !transform.dragging) { rebuild(p.edits); editKey = key; }
       if (clip) {
         if (Math.abs(p.time - lastSent) > .025) playTime = p.time;
-        if (p.playing) playTime = p.edits.loop ? (playTime + dt) % clip.duration : Math.min(clip.duration, playTime + dt);
+        if (p.playing && !p.boneEditing) playTime = p.edits.loop ? (playTime + dt) % clip.duration : Math.min(clip.duration, playTime + dt);
         pose(playTime, p.edits);
-        if (p.playing) { lastSent = playTime; p.onTime(playTime); }
+        if (p.playing && !p.boneEditing) { lastSent = playTime; p.onTime(playTime); }
       }
-      if (helper) helper.visible = p.skeleton;
-      avatar?.update(dt); controls.update(); renderer.render(scene, camera);
+      if (helper) helper.visible = p.skeleton || (loaded && p.boneEditing);
+      avatar?.update(dt); syncEditor(); controls.update(); renderer.render(scene, camera);
     }
     frame = requestAnimationFrame(draw);
     return () => {
       disposed = true; cancelAnimationFrame(frame); resize.disconnect(); exporter.current = null;
-      for (const { binding } of bindings) binding.unbind(); controls.dispose(); helper?.dispose(); disposeTree(scene);
+      for (const { binding } of bindings) binding.unbind(); controls.dispose(); transform.detach(); transform.dispose(); proxy.removeFromParent(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointerup', pointerUp); helper?.dispose(); disposeTree(scene);
       if (source && avatar) disposeTree(source);
       renderer.dispose(); renderer.domElement.remove();
     };
@@ -194,6 +247,6 @@ export function Preview(props: Props) {
     {!props.url && <div className="stage-message"><span className="stage-icon">↗</span><strong>让动作有自己的迭代空间</strong><span>添加一个动作，生成或导入 FBX 开始预览</span></div>}
     {loading && <div className="stage-message loading-message" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/><strong>Loading…</strong><span>正在加载模型与动作，请稍候</span></div>}
     {error && <div className="preview-error">{error}</div>}
-    <div className="stage-caption">拖动旋转 · 滚轮缩放 · 右键平移</div>
+    <div className="stage-caption">{props.boneEditing ? `${BONE_LABELS[props.bone]} · 点击关节选择 · 拖动${props.boneMode === 'rotate' ? '圆环旋转' : '箭头移动'}` : '拖动旋转 · 滚轮缩放 · 右键平移'}</div>
   </div>;
 }

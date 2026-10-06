@@ -1,3 +1,4 @@
+import { applyBoneEdits } from '../src/boneEditing.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -22,12 +23,14 @@ test('iterations retain immutable source and previous edits through restart and 
     fs.writeFileSync(store.assetPath(original.asset), 'test source'); store.save();
     store.mature(motion.id, original.id, true);
     assert.equal(motion.readyVersionId, original.id);
-    const edits = { ...defaultEdits(), start: 1, end: 4, speed: .5, offsets: { L_Shoulder: [0, 0, 12] as [number, number, number] } };
+    const edits = { ...defaultEdits(), start: 1, end: 4, speed: .5, positions: { R_Index2: [.01, .02, -.03] as [number, number, number] }, offsets: { L_Shoulder: [0, 0, 12] as [number, number, number] } };
     const revised = store.revise(motion.id, original.id, { edits, label: '更自然的挥手', notes: '去掉开头一步' });
     assert.equal(motion.ready, false); assert.equal(motion.readyVersionId, undefined);
     assert.equal(revised.asset, original.asset); assert.equal(revised.parentId, original.id);
     assert.equal(revised.details, original.details);
     assert.equal(original.edits.start, 0); assert.equal(revised.edits.start, 1);
+    assert.deepEqual(revised.edits.positions?.R_Index2, [.01, .02, -.03]);
+    edits.positions.R_Index2[0] = .1; assert.equal(revised.edits.positions?.R_Index2[0], .01);
     edits.offsets.L_Shoulder[2] = 20; assert.equal(revised.edits.offsets.L_Shoulder[2], 12);
     store.trash(motion.id); assert.throws(() => store.motion(motion.id));
     const reopened = new Store(dir); reopened.restore(motion.id);
@@ -63,17 +66,21 @@ test('FBX fixture exports a reloadable GLB containing exact edited boundary pose
   const root = new THREE.Group(); source.scale.setScalar(.01); root.add(source);
   assert.equal(source.animations[0].duration, 4);
   const clip = trimClip(source.animations[0], { ...defaultEdits(), start: 1, end: 3, speed: .5 });
+  const finger = new THREE.Bone(); finger.name = 'R_Index2'; source.getObjectByName('R_Wrist')!.add(finger);
   const arm = source.getObjectByName('R_Elbow')!;
   const interpolant = (clip.tracks[0] as THREE.KeyframeTrack & { createInterpolant(): THREE.Interpolant }).createInterpolant();
   const offset = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, .2, 0));
   const baked = bakeClip(root, source, clip.duration, t => {
     arm.quaternion.fromArray(interpolant.evaluate(t)).multiply(offset);
+    finger.position.set(3, 0, 0); finger.quaternion.identity();
+    applyBoneEdits({ ...defaultEdits(), offsets: { R_Index2: [0, 30, 0] }, positions: { R_Index2: [.01, -.02, .03] } }, name => source.getObjectByName(name), 100);
     root.position.set(-t * .1, .05, 0);
   });
   const actual = baked.tracks.find(t => t.name === `${arm.uuid}.quaternion`)!;
   const expected = new THREE.Quaternion().fromArray(interpolant.evaluate(0)).multiply(offset);
   assert.ok(new THREE.Quaternion().fromArray(actual.values).normalize().angleTo(expected.clone().normalize()) < 1e-6);
   assert.equal(baked.duration, 4);
+  assert.deepEqual(Array.from(baked.tracks.find(t => t.name === `${finger.uuid}.position`)!.values).slice(0, 3), [4, -2, 3]);
   const oldReader = globalThis.FileReader;
   class Reader {
     result: ArrayBuffer | null = null;
@@ -86,8 +93,10 @@ test('FBX fixture exports a reloadable GLB containing exact edited boundary pose
     assert.equal(new DataView(result).getUint32(0, true), 0x46546c67);
     const reloaded = await new GLTFLoader().parseAsync(result, '');
     assert.equal(reloaded.animations.length, 1); assert.equal(reloaded.animations[0].duration, 4);
-    assert.equal(reloaded.animations[0].tracks.length, 45);
+    assert.equal(reloaded.animations[0].tracks.length, 47);
     assert.ok(reloaded.scene.getObjectByName('R_Elbow'));
+    const fingerTrack = reloaded.animations[0].tracks.find(t => t.name === 'R_Index2.position')!;
+    assert.ok(fingerTrack); assert.deepEqual(Array.from(fingerTrack.values).slice(0, 3), [4, -2, 3]);
     const translation = baked.tracks.at(-1)!;
     assert.ok(Math.abs(translation.values.at(-3)! + .4) < 1e-6);
   } finally { globalThis.FileReader = oldReader; }

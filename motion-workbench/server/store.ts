@@ -20,6 +20,12 @@ export function checkEdits(value: unknown): Edits {
   for (const [bone, angles] of Object.entries(e.offsets)) {
     if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(bone) || !Array.isArray(angles) || angles.length !== 3 || !angles.every(x => Number.isFinite(x) && Math.abs(x) <= 180)) throw new InputError('骨骼偏移无效');
   }
+  if (e.positions !== undefined) {
+    if (!e.positions || typeof e.positions !== 'object' || Array.isArray(e.positions)) throw new InputError('骨骼位置偏移无效');
+    for (const [bone, values] of Object.entries(e.positions)) {
+      if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(bone) || !Array.isArray(values) || values.length !== 3 || !values.every(x => Number.isFinite(x) && Math.abs(x) <= 2)) throw new InputError('骨骼位置偏移无效（范围 ±2 米）');
+    }
+  }
   return structuredClone(e);
 }
 export class Store {

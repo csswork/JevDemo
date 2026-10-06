@@ -2,6 +2,8 @@ export type Status = 'submitting' | 'WAIT' | 'RUN' | 'DONE' | 'FAIL';
 export interface Edits {
   start: number; end: number; speed: number; loop: boolean;
   inPlace: boolean; ground: boolean;
+  /** Local bone translation offsets in meters. Optional for existing saved versions. */
+  positions?: Record<string, [number, number, number]>;
   offsets: Record<string, [number, number, number]>;
 }
 export const defaultEdits = (): Edits => ({ start: 0, end: 0, speed: 1, loop: true, inPlace: true, ground: true, offsets: {} });

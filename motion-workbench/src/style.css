@@ -700,3 +700,9 @@ fieldset.workspace {border:0;margin:0;padding:0;min-width:0}
 @media(prefers-reduced-motion:reduce) {.loading-spinner {animation:none}}
 
 .sr-only {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+
+.direct-edit {display:block;margin-top:14px}
+.bone-modes {display:flex;gap:6px;margin:10px 0}
+.bone-modes button {flex:1;font-size:11px}
+.bone-modes .selected {background:#e7eedf;border-color:#adc29a}
+.axis input.axis-number {flex:none;width:60px;padding:5px;font-size:10px}
