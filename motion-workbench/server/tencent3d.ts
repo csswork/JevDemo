@@ -77,7 +77,7 @@ export interface MotionJobResult {
 /**
  * 提交文生动作。
  * prompt 最多 128 字；duration 1~12 秒。rewrite = 让服务端先扩写描述（中文描述建议开）。
- * mesh = FBX 里带不带蒙皮网格 —— 我们只要骨骼动画，默认不带，文件小很多
+ * mesh = FBX 里带不带蒙皮网格 —— 工作台默认带网格，方便检查源动作
  */
 export async function submitMotion(
   creds: TencentCreds,

@@ -933,6 +933,10 @@ idle_loop 只有手腕、没有手指轨道，VRM 的静止姿势又是 T-pose �
 代码已经删掉（在 git 历史里：`server/tencent3d.ts`、`server/motionGen.ts`、`src/vrm/retargetSmpl.ts`），
 生成的文件移到了废纸篓。剪辑层的 `scale` / `offset` / `hips` 和两层混合是通用的，待机循环就用上了。
 
+现在可在独立的[动作工作台](motion-workbench/README.md)继续试验 HY-Motion：`npm run motion`，
+打开 `http://127.0.0.1:5680`。支持动作草稿、生成/导入、多版本迭代、裁剪与姿态调整、VRM 预览、回收站和手动导出。
+素材保存在 `data/motion-workbench/`，不会自动进入正式动作库。
+
 ### 测试预览
 
 右侧「测试预览」面板（只在 `npm run dev` 下出现）：点动作从当前姿势交叉淡入，

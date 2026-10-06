@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -20,10 +20,14 @@ export function Preview(props: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const current = useRef(props);
   useLayoutEffect(() => { current.current = props; });
+  const exporter = useRef<(() => Promise<ArrayBuffer>) | null>(null);
+  useImperativeHandle(props.handle, () => ({ exportGlb: async () => {
+    if (!exporter.current) throw new Error('预览尚未加载');
+    return exporter.current();
+  } }), []);
   const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
   useEffect(() => {
     const el = mount.current!; let disposed = false; let frame = 0;
-    const exportHandle = props.handle;
     let renderer: THREE.WebGLRenderer;
     try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }
     catch { queueMicrotask(() => setError('无法启动 3D 预览，请检查浏览器 WebGL 支持')); return; }
@@ -133,14 +137,14 @@ export function Preview(props: Props) {
         animated.traverse(node => rest.push({ node, position: node.position.clone(), quaternion: node.quaternion.clone() }));
         helper = new THREE.SkeletonHelper(animated); helper.visible = current.current.skeleton; scene.add(helper);
         rebuild(current.current.edits); editKey = JSON.stringify(current.current.edits);
-        exportHandle.current = { exportGlb: async () => {
+        exporter.current = async () => {
           if (avatar) throw new Error('请切回「原始动作」导出；角色预览只用于验证适配效果');
           if (!source || !clip) throw new Error('动作还没有加载');
           const baked = bakeClip(root, source, clip.duration, t => pose(t, current.current.edits));
           pose(0, current.current.edits);
           try { return await new GLTFExporter().parseAsync(root, { binary: true, animations: [baked], onlyVisible: false }) as ArrayBuffer; }
           finally { pose(playTime, current.current.edits); }
-        } };
+        };
       } catch (e) { if (!disposed) setError(e instanceof Error ? e.message : '加载失败'); }
       finally { if (!disposed) setLoading(false); }
     }
@@ -162,12 +166,12 @@ export function Preview(props: Props) {
     }
     frame = requestAnimationFrame(draw);
     return () => {
-      disposed = true; cancelAnimationFrame(frame); resize.disconnect(); exportHandle.current = null;
+      disposed = true; cancelAnimationFrame(frame); resize.disconnect(); exporter.current = null;
       for (const { binding } of bindings) binding.unbind(); controls.dispose(); helper?.dispose(); disposeTree(scene);
       if (source && avatar) disposeTree(source);
       renderer.dispose(); renderer.domElement.remove();
     };
-  }, [props.url, props.target, props.handle]);
+  }, [props.url, props.target]);
   return <div className="viewport" ref={mount}>
     {!props.url && <div className="stage-message"><span className="stage-icon">↗</span><strong>让动作有自己的迭代空间</strong><span>添加一个动作，生成或导入 FBX 开始预览</span></div>}
     {loading && <div className="stage-message"><strong>正在加载动作…</strong></div>}

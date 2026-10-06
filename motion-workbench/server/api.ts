@@ -76,6 +76,12 @@ export function workbenchApi(project: string): Plugin {
         const [id, action, vid] = parts;
         if (!id && req.method === 'GET') { json(res, { motions: store.motions, configured }); return; }
         if (!id && req.method === 'POST') { json(res, store.create(JSON.parse((await body(req)).toString())), 201); return; }
+        if (id === 'demo' && req.method === 'POST') {
+          const bytes = fs.readFileSync(path.join(project, 'motion-workbench/fixtures/smoke.fbx'));
+          const m = store.create({ name: '示例 · 挥手骨架', prompt: '站在原地，右前臂轻轻挥动。', duration: 4, rewrite: true, ready: false });
+          const v = store.addVersion(m.id, 'imported'); v.asset = `${v.id}.fbx`; v.label = '自制演示骨架'; v.notes = '免费测试素材，用于熟悉裁剪、骨骼调整和版本迭代；没有调用生成服务。';
+          fs.writeFileSync(store.assetPath(v.asset), bytes); store.save(); json(res, m, 201); return;
+        }
         if (id === 'model' && req.method === 'GET') {
           res.setHeader('Content-Type', 'model/gltf-binary'); fs.createReadStream(path.join(project, 'public/models/AvatarSample_B.vrm')).pipe(res); return;
         }

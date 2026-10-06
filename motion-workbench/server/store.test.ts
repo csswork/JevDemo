@@ -19,8 +19,11 @@ test('iterations retain immutable source and previous edits through restart and 
     const store = new Store(dir); const motion = store.create(draft);
     const original = store.addVersion(motion.id, 'imported'); original.asset = `${original.id}.fbx`;
     fs.writeFileSync(store.assetPath(original.asset), 'test source'); store.save();
+    store.mature(motion.id, original.id, true);
+    assert.equal(motion.readyVersionId, original.id);
     const edits = { ...defaultEdits(), start: 1, end: 4, speed: .5, offsets: { L_Shoulder: [0, 0, 12] as [number, number, number] } };
     const revised = store.revise(motion.id, original.id, { edits, label: '更自然的挥手', notes: '去掉开头一步' });
+    assert.equal(motion.ready, false); assert.equal(motion.readyVersionId, undefined);
     assert.equal(revised.asset, original.asset); assert.equal(revised.parentId, original.id);
     assert.equal(original.edits.start, 0); assert.equal(revised.edits.start, 1);
     edits.offsets.L_Shoulder[2] = 20; assert.equal(revised.edits.offsets.L_Shoulder[2], 12);
@@ -67,7 +70,7 @@ test('FBX fixture exports a reloadable GLB containing exact edited boundary pose
   });
   const actual = baked.tracks.find(t => t.name === `${arm.uuid}.quaternion`)!;
   const expected = new THREE.Quaternion().fromArray(interpolant.evaluate(0)).multiply(offset);
-  assert.ok(new THREE.Quaternion().fromArray(actual.values).angleTo(expected) < 1e-6);
+  assert.ok(new THREE.Quaternion().fromArray(actual.values).normalize().angleTo(expected.clone().normalize()) < 1e-6);
   assert.equal(baked.duration, 4);
   const oldReader = globalThis.FileReader;
   class Reader {
