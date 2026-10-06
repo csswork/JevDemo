@@ -1,7 +1,8 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { exportMotion } from './exportMotion';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { applyBoneEdits, avatarBoneName, BONE_LABELS, offsetQuaternion, rotationOffset } from './boneEditing';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -9,12 +10,12 @@ import { VRMUtils, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
 import { avatarLoader } from './avatarLoader';
 import { retargetSmpl } from './retargetSmpl';
 import { trimClip } from './editClip';
-import { bakeClip } from './bakeClip';
 import type { Edits } from '../shared';
 
 export interface PreviewHandle { exportGlb: () => Promise<ArrayBuffer>; }
 interface Props {
   url?: string; edits: Edits; target: string; playing: boolean; time: number; skeleton: boolean;
+  viewMode: 'rotate' | 'pan';
   boneEditing: boolean; bone: string; boneMode: 'rotate' | 'translate';
   onSelectBone: (bone: string) => void; onBones: (bones: string[]) => void;
   onBoneEdit: (bone: string, mode: 'rotate' | 'translate', values: [number, number, number]) => void;
@@ -45,7 +46,7 @@ export function Preview(props: Props) {
     renderer.setClearColor(0xeceee9); el.append(renderer.domElement);
     const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(36, 1, .01, 100);
     camera.position.set(2.8, 1.8, 3.8);
-    const controls = new OrbitControls(camera, renderer.domElement); controls.target.set(0, .9, 0); controls.enableDamping = true; controls.enabled = false;
+    const controls = new OrbitControls(camera, renderer.domElement); controls.target.set(0, .9, 0); controls.enableDamping = true; controls.screenSpacePanning = true; controls.enabled = false;
     scene.add(new THREE.HemisphereLight(0xffffff, 0x929b89, .75));
     const light = new THREE.DirectionalLight(0xffffff, 1.5); light.position.set(2, 4, 3); scene.add(light);
     const fill = new THREE.DirectionalLight(0xdfe8ff, .55); fill.position.set(-3, 2, 1); scene.add(fill);
@@ -53,7 +54,7 @@ export function Preview(props: Props) {
     const resize = new ResizeObserver(() => {
       renderer.setSize(el.clientWidth, el.clientHeight); camera.aspect = el.clientWidth / Math.max(1, el.clientHeight); camera.updateProjectionMatrix();
     }); resize.observe(el);
-    let source: THREE.Group | undefined; let sourceClip: THREE.AnimationClip | undefined;
+    let source: THREE.Group | undefined; let exportSnapshot: THREE.Group | undefined; let sourceClip: THREE.AnimationClip | undefined;
     let clip: THREE.AnimationClip | undefined;
     let bindings: Array<{ binding: THREE.PropertyBinding & { setValue(buffer: ArrayLike<number>, offset: number): void }; interpolant: THREE.Interpolant }> = [];
     let avatar: VRM | undefined; let helper: THREE.SkeletonHelper | undefined;
@@ -163,6 +164,7 @@ export function Preview(props: Props) {
         source = await new FBXLoader().loadAsync(props.url);
         if (disposed) { disposeTree(source); return; }
         if (!source.animations[0]) throw new Error('FBX 中没有动画轨道');
+        exportSnapshot = clone(source) as THREE.Group; exportSnapshot.animations = source.animations;
         sourceClip = source.animations[0];
         if (props.target !== 'source') {
           if (!source.getObjectByName('Pelvis')) throw new Error('角色预览仅支持 HY-Motion 的 SMPL-H 骨架，请切回原始动作');
@@ -209,12 +211,8 @@ export function Preview(props: Props) {
         }
         succeeded = true; loaded = true;
         exporter.current = async () => {
-          if (avatar) throw new Error('请切回「原始动作」导出；角色预览只用于验证适配效果');
-          if (!source || !clip) throw new Error('动作还没有加载');
-          const baked = bakeClip(root, source, clip.duration, t => pose(t, current.current.edits));
-          pose(0, current.current.edits);
-          try { return await new GLTFExporter().parseAsync(root, { binary: true, animations: [baked], onlyVisible: false }) as ArrayBuffer; }
-          finally { pose(playTime, current.current.edits); }
+          if (!exportSnapshot) throw new Error('动作还没有加载');
+          return exportMotion(exportSnapshot, current.current.edits);
         };
       } catch (e) { if (!disposed) setError(e instanceof Error ? e.message : '加载失败'); }
       finally { if (!disposed) { setLoading(false); controls.enabled = succeeded; onLoadState(succeeded ? 'ready' : 'error'); } }
@@ -233,7 +231,7 @@ export function Preview(props: Props) {
         if (p.playing && !p.boneEditing) { lastSent = playTime; p.onTime(playTime); }
       }
       if (helper) helper.visible = p.skeleton || (loaded && p.boneEditing);
-      avatar?.update(dt); syncEditor(); controls.update(); renderer.render(scene, camera);
+      avatar?.update(dt); syncEditor(); controls.mouseButtons.LEFT = p.viewMode === 'pan' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE; controls.update(); renderer.render(scene, camera);
     }
     frame = requestAnimationFrame(draw);
     return () => {
@@ -247,6 +245,6 @@ export function Preview(props: Props) {
     {!props.url && <div className="stage-message"><span className="stage-icon">↗</span><strong>让动作有自己的迭代空间</strong><span>添加一个动作，生成或导入 FBX 开始预览</span></div>}
     {loading && <div className="stage-message loading-message" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/><strong>Loading…</strong><span>正在加载模型与动作，请稍候</span></div>}
     {error && <div className="preview-error">{error}</div>}
-    <div className="stage-caption">{props.boneEditing ? `${BONE_LABELS[props.bone]} · 点击关节选择 · 拖动${props.boneMode === 'rotate' ? '圆环旋转' : '箭头移动'}` : '拖动旋转 · 滚轮缩放 · 右键平移'}</div>
+    <div className="stage-caption">{props.boneEditing ? `${BONE_LABELS[props.bone]} · 点击关节选择 · 拖动${props.boneMode === 'rotate' ? '圆环旋转' : '箭头移动'}` : props.viewMode === 'pan' ? '拖动上下 / 左右平移 · 滚轮缩放' : '拖动旋转 · 滚轮缩放 · 右键 / Shift＋拖动上下左右平移'}</div>
   </div>;
 }
