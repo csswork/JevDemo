@@ -115,6 +115,10 @@ button { font: inherit; }
   background: radial-gradient(circle, rgba(140, 158, 255, 0.5), transparent 65%);
   animation: glow-b 17s ease-in-out infinite alternate;
 }
+/* 粒子层（ui/LoaderFx.tsx）：铺满，在柔光上面、头像下面 */
+.boot-fx { position: absolute; inset: 0; pointer-events: none; }
+.boot-fx canvas { display: block; width: 100%; height: 100%; }
+.boot-center { z-index: 1; }
 @keyframes glow-a { to { transform: translate(20vmax, 14vmax) scale(1.15); } }
 @keyframes glow-b { to { transform: translate(-18vmax, -12vmax) scale(1.1); } }
 
@@ -142,6 +146,8 @@ button { font: inherit; }
   place-items: center;
   width: 136px;
   height: 136px;
+  /* 粒子的光环比头像圈大一圈：名字放到光环外面去 */
+  margin-bottom: 40px;
 }
 .boot-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); overflow: visible; }
 .boot-ring .track { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-width: 3; }

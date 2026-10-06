@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { LoaderFx } from './LoaderFx';
 
 /**
  * 开场的载入画面：她的头像在中间，外面一圈是下载进度；底下是名字和一句状态。
- * 背景是两团很慢地漂着的柔光。载完了不是一下消失：整层淡出，头像放大、变虚，像镜头推进场景里。
+ * 背景是两团很慢地漂着的柔光，上面一层粒子在头像周围打旋（LoaderFx，three.js），随着进度汇成头像外的光环。
+ * 载完了不是一下消失：粒子往外炸开，整层淡出，头像放大、变虚，像镜头推进场景里。
  *
  * done 变成 true 之后自己再待 0.8 秒（退场动画），然后卸载
  */
@@ -37,6 +39,8 @@ export function Loader({
     <div className={`boot ${done ? 'out' : ''}`} role="status" aria-live="polite">
       <div className="boot-glow a" />
       <div className="boot-glow b" />
+      {/* 粒子（three.js）：在头像周围打旋，随进度汇成光环，载完往外炸开 */}
+      <LoaderFx progress={name ? progress : 0} leaving={done} />
       <div className="boot-center">
         <div className={`boot-ring ${name ? '' : 'idle'}`}>
           <svg viewBox="0 0 120 120" aria-hidden>

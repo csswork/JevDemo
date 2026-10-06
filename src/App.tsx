@@ -171,6 +171,15 @@ function audioStateLog() {
 /** 每个页面一份（StrictMode 会把 effect 跑两遍，放在组件外才不会一页出两个文件） */
 const audioLog = import.meta.env.DEV ? audioStateLog() : null;
 
+/**
+ * 开发用：?boot=0.6 让载入画面一直停在 60%（本地模型有缓存，正常载入一闪就过去了，调不了样子）
+ */
+const BOOT_PREVIEW = (() => {
+  if (!import.meta.env.DEV) return null;
+  const v = new URLSearchParams(location.search).get('boot');
+  return v != null && Number.isFinite(Number(v)) ? Math.max(0, Math.min(1, Number(v))) : null;
+})();
+
 interface Turn {
   role: 'user' | 'character';
   text: string;
@@ -1538,8 +1547,8 @@ export default function App() {
 
       {/* 开场的载入画面：盖在最上面，载完了自己淡出 */}
       <Loader
-        done={!loading}
-        progress={progress}
+        done={BOOT_PREVIEW == null && !loading}
+        progress={BOOT_PREVIEW ?? progress}
         name={currentModel?.name}
         avatar={modelId ? `${import.meta.env.BASE_URL}avatars/${modelId}.png` : undefined}
       />
