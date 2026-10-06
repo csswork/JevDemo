@@ -15,6 +15,7 @@ import type { TimeMode } from '../vrm/timeOfDay';
  *   __trace('开心 80% > 难过 50%')         表情时间线（测试指令语法，不花钱）
  *   __filmstrip('惊讶 80%', [0.3, 1, 2])   指定时刻的脸部特写拼图
  *   await __faces('faces_Vivi.jpg')        默认取景 + 六种表情，存到 dev-out/
+ *   await __manpu('manpu_Vivi.jpg')        漫符：每种情绪演一段截头部特写（第三个参数 = 画面半高，0.1 是脸部特写）
  *   await __motionstrip('greeting')        一个动作按时间截全身，存到 dev-out/
  *   await __motionstrip('laugh_cover', 8, 'x.jpg', { face: 35 })   脸部特写（水平转角 35°）
  *   __clip('laugh_cover')                  穿模检测：手指有没有插进脸里（逐帧，按脸表面算深度）
@@ -185,6 +186,65 @@ export function installAudit(rt: Runtime) {
     Object.assign(img.style, { position: 'fixed', left: '0', top: '0', width: '100vw', zIndex: '99999', background: '#000' });
     img.src = sheet.toDataURL('image/jpeg', 0.9);
     return `${k} shots（点图片关闭）`;
+  };
+
+  /**
+   * 漫符（vrm/manpu.ts）：每种情绪各演一段，在指定时刻截一张头部特写（头上的符号也在框里），存到 dev-out/。
+   * 每一项 [标签, 情绪混合, 演多少秒]：一次性的符号（！、汗滴）要截得早，音符、眼泪要等它们冒出来
+   * half = 画面半高（米），0.1 是脸部特写
+   */
+  const MANPU_SET: Array<[string, Partial<Record<Emotion, number>>, number]> = [
+    ['平静', { neutral: 1 }, 1.6],
+    ['开心 85%', { happy: 0.85 }, 2.2],
+    ['害羞', { happy: 0.5, surprised: 0.4 }, 1.6],
+    ['生气 80%', { angry: 0.8 }, 1.6],
+    ['难过 90%', { sad: 0.9 }, 1.3],
+    ['惊讶 80%', { surprised: 0.8 }, 0.45],
+    ['慌', { surprised: 0.5, sad: 0.4 }, 0.9],
+  ];
+  const manpu = async (name: string, cases = MANPU_SET, half = 0.2) => {
+    const stage = rt.stage!;
+    const cvs = stage.renderer.domElement;
+    const exr = ch().expression;
+    const mp = ch().manpu;
+    const ex = exr as unknown as { nextBlink: number };
+    const micro = exr.microEnabled;
+    exr.microEnabled = false;
+    rt.stopMotion();
+    const tw = 360, th = 420;
+    const sheet = document.createElement('canvas');
+    sheet.width = cases.length * tw;
+    sheet.height = th + 36;
+    const g = sheet.getContext('2d')!;
+    g.fillStyle = '#111';
+    g.fillRect(0, 0, sheet.width, sheet.height);
+    const head = node('head');
+    const fov = THREE.MathUtils.radToDeg(2 * Math.atan(half / stage.camera.position.distanceTo(head.getWorldPosition(new THREE.Vector3()))));
+    for (let k = 0; k < cases.length; k++) {
+      const [text, mix, secs] = cases[k];
+      exr.reset();
+      mp.reset();
+      for (let i = 0; i < 20; i++) rt.step(1 / 60);
+      exr.setBlend(mix, 0.25);
+      for (let t = 0; t < secs; t += 1 / 60) {
+        ex.nextBlink = 1e9;
+        rt.step(1 / 60);
+      }
+      const p = head.getWorldPosition(new THREE.Vector3());
+      closeup([p.x, p.y + 0.05, p.z + 0.06], fov);
+      const fw = (cvs.height * tw) / th;
+      g.drawImage(cvs, (cvs.width - fw) / 2, 0, fw, cvs.height, k * tw, 0, tw, th);
+      g.fillStyle = '#fff';
+      g.font = 'bold 22px sans-serif';
+      g.fillText(text, k * tw + 10, th + 27);
+    }
+    closeup(null);
+    exr.reset();
+    mp.reset();
+    exr.microEnabled = micro;
+    const blob = await new Promise<Blob>((res) => sheet.toBlob((b) => res(b!), 'image/jpeg', 0.9));
+    const res = await fetch(`/__dev/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
+    return res.json();
   };
 
   /**
@@ -682,6 +742,7 @@ export function installAudit(rt: Runtime) {
   w.__hands = hands;
   w.__clip = clip;
   w.__faces = faces;
+  w.__manpu = manpu;
   w.__trace = trace;
   w.__filmstrip = filmstrip;
   w.__closeup = closeup;

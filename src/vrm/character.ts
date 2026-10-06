@@ -8,6 +8,7 @@ import { HandLayer } from './hands';
 import { IDLE_BASE, MotionLayer, motionTalk } from './motion';
 import { GestureLayer } from './gestures';
 import { FootLock } from './feet';
+import { ManpuLayer } from './manpu';
 import { isProceduralMotion, type MotionId } from '../act/schema';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
@@ -25,6 +26,7 @@ import { decryptModel, fetchBytes, isProtected } from './protect';
  * 有动捕待机时 idle 只留姿态的微调（呼吸、重心、垂手都由动捕负责）。
  * 手指和说话时手上的小动作由 hands 层负责（动捕待机没有手指轨道）。
  * 程序生成的表演动作（gestures.ts）：身体是叠加的偏移，手碰脸的那只胳膊在 flush 之后用 IK 覆盖。
+ * 漫符（manpu.ts）：脸红、阴影竖线、眼泪、💢、♪、！、汗滴，按 Jev 给的情绪挂在头上，跟着头走。
  * 待机时脚踩住地面（feet.ts）：胯部的晃动由膝盖和大腿吸收，脚不跟着滑。
  *
  * 换渲染引擎（Live2D / Unity / AnimeActEngine）时，需要重写的只有这个文件和 vrm/ 目录；
@@ -41,6 +43,7 @@ export class Character {
   readonly expression = new ExpressionLayer();
   readonly lipsync = new LipSyncLayer();
   readonly feet = new FootLock();
+  readonly manpu = new ManpuLayer();
 
   private acc = new PoseAccumulator();
   /** 调试开关：关掉后只跑 vrm.update，用于隔离"是我的层还是引擎本身"的问题 */
@@ -92,6 +95,7 @@ export class Character {
     this.motion.bind(vrm);
     this.gesture.bind(vrm);
     this.feet.reset();
+    this.manpu.bind(vrm);
     // 有动捕待机就垫在最底下；没配（IDLE_BASE = null）或文件不在时用 idle 层的程序待机
     if (IDLE_BASE) void this.motion.setBase(IDLE_BASE);
 
@@ -255,6 +259,16 @@ export class Character {
 
     this.expression.setMouthActivity(this.lipsync.openness);
     this.expression.update(dt, vrm);
+    // 漫符读的是 Jev 定的语义强度：整脸预设的模型上表情层按 ceiling 压过幅度，这里还原回来
+    const ex = this.expression;
+    const level = (e: 'happy' | 'angry' | 'sad' | 'relaxed' | 'surprised') => ex.weightOf(e) / Math.max(0.05, ex.ceiling[e] ?? 1);
+    this.manpu.update(dt, {
+      happy: level('happy'),
+      angry: level('angry'),
+      sad: level('sad'),
+      relaxed: level('relaxed'),
+      surprised: level('surprised'),
+    });
     this.lipsync.setMouthRoom(1 - 0.6 * this.expression.mouthOcclusion());
     this.lipsync.update(dt, vrm);
 
@@ -262,6 +276,7 @@ export class Character {
   }
 
   dispose() {
+    this.manpu.dispose();
     if (this.vrm) VRMUtils.deepDispose(this.vrm.scene);
     this.vrm = null;
   }
