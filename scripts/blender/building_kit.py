@@ -656,6 +656,8 @@ def main():
     for name, fn in CELLS.items():
         for lod in (0, 1):
             b = Builder(COLORS, SLOTS)
+            if not lod:
+                b.box_bevels = {name: 0.004 for name in ('wood_dark', 'wood_mid', 'wood_light', 'wood_raw', 'alu', 'alu_dark', 'alu_white')}
             if lod:
                 b.box_faces = ['-y', '+z']
             fn(b, lod)

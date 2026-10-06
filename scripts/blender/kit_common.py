@@ -125,6 +125,8 @@ class Builder:
         self.face_uv = {}
         # 只建盒子的这几个面（None = 全部）：远处的简化档只要正面和顶面（背面贴着墙、底面看不到）
         self.box_faces = None
+        # Opt-in only: architectural boxes, never foliage/glass or simplified LOD.
+        self.box_bevels = {}
 
     @contextmanager
     def at(self, M):
@@ -153,6 +155,24 @@ class Builder:
         return self.face([self.v(a), self.v(b), self.v(c), self.v(d)], color, smooth, uv)
 
     def box(self, x0, y0, z0, x1, y1, z1, color, faces='all'):
+        width = self.box_bevels.get(color, 0)
+        size = (x1 - x0, y1 - y0, z1 - z0)
+        if width and faces == 'all' and self.box_faces is None and min(size) >= 0.025:
+            # A single chamfer catches light without rounding the broad faces.
+            # Bevel each closed box before joining, retaining its color/slot and bounds.
+            temp = bmesh.new()
+            bmesh.ops.create_cube(temp, size=1.0)
+            center = Vector(((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2))
+            for v in temp.verts:
+                v.co = Vector(tuple(v.co[i] * size[i] for i in range(3))) + center
+            bmesh.ops.bevel(temp, geom=list(temp.edges), offset=min(width, min(size) * 0.12),
+                            segments=1, affect='EDGES', clamp_overlap=True)
+            bmesh.ops.recalc_face_normals(temp, faces=list(temp.faces))
+            vertices = {v: self.v(v.co) for v in temp.verts}
+            for f in temp.faces:
+                self.face([vertices[v] for v in f.verts], color)
+            temp.free()
+            return
         vs = [self.v(p) for p in ((x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1))]
         quads = {'-z': (0, 3, 2, 1), '+z': (4, 5, 6, 7), '-y': (0, 1, 5, 4), '+x': (1, 2, 6, 5), '+y': (2, 3, 7, 6), '-x': (3, 0, 4, 7)}
         for k, q in quads.items():

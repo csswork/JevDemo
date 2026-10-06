@@ -1,0 +1,30 @@
+{
+  "hero": {
+    "before": {
+      "meshes": 8,
+      "primitives": 76,
+      "triangles": 82116
+    },
+    "after": {
+      "meshes": 8,
+      "primitives": 76,
+      "triangles": 98146
+    },
+    "bytesBefore": 5450636,
+    "bytesAfter": 6413804
+  },
+  "kit": {
+    "before": {
+      "meshes": 54,
+      "primitives": 129,
+      "triangles": 9186
+    },
+    "after": {
+      "meshes": 54,
+      "primitives": 129,
+      "triangles": 13826
+    },
+    "bytesBefore": 809532,
+    "bytesAfter": 1088268
+  }
+}

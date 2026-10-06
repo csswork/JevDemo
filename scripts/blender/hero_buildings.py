@@ -128,6 +128,10 @@ class Hero:
         slots['awning'] = 'fabric'
         slots['awning_dark'] = 'fabric'
         self.b = Builder(colors, slots)
+        self.b.box_bevels = {name: 0.004 for name in (
+            'wood_dark', 'wood_mid', 'wood_light', 'wood_raw', 'alu', 'alu_dark', 'alu_white',
+            'fascia', 'rafter', 'soffit', 'sign_frame')}
+        self.b.box_bevels.update(cornice=0.008, corner=0.008)
         self.lights = []
 
     def light(self, pos, **props):

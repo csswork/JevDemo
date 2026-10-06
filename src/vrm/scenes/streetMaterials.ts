@@ -43,7 +43,7 @@ const normMap = (k: number, lo = 0) => /* glsl */ `
 /**
  * 墙：灰泥的 PBR 铺在 uv1（米）上，立面图集（窗、门、梁、招牌……）按遮罩盖在上面 —— 遮罩是 0 的地方是灰泥，
  * 1 的地方是画出来的构件（构件那里不要灰泥的法线，粗糙度也换掉）。每栋的顶点色乘在最后（米白、浅灰……）。
- * 墙根 60cm 一圈溅上去的泥；每层楼板下面零星几道往下流的雨痕。
+ * 墙根和楼板下只留轻微风化；灰泥、木材、屋瓦都让建筑配色主导，贴图提供克制的细节。
  * holes = 每一格开口的 uv 范围（streetTextures.ts 的 holeRects）：窗、店门那块挖空，真的玻璃和窗框在里面（street.ts）
  */
 export function facadeMaterial(keep: Keep, atlas: { map: THREE.Texture; emissive: THREE.Texture; mask: THREE.Texture }, holes: THREE.Vector4[]) {
@@ -56,7 +56,8 @@ export function facadeMaterial(keep: Keep, atlas: { map: THREE.Texture; emissive
       emissiveIntensity: 0.85,
       vertexColors: true,
       // 这张灰泥有一道道竖的接缝，法线和明暗都压淡（不然像竖拼的木板墙）
-      normalScale: new THREE.Vector2(0.35, 0.35),
+      normalScale: new THREE.Vector2(0.18, 0.18),
+      aoMapIntensity: 0.35,
     }),
   );
   mat.onBeforeCompile = (shader) => {
@@ -69,19 +70,19 @@ export function facadeMaterial(keep: Keep, atlas: { map: THREE.Texture; emissive
       .replace(
         '#include <map_fragment>',
         `if ( inHole( vEmissiveMapUv ) ) discard;
-        ${normMap(0.4)}
+        ${normMap(0.22, 0.55)}
         vec4 atlasC = texture2D( uAtlas, vEmissiveMapUv );
         float atlasM = texture2D( uMask, vEmissiveMapUv ).r;
         vec2 wallM = vMapUv * ${PLASTER_M.toFixed(2)};
-        float grime = ( 1.0 - smoothstep( 0.0, 0.6, vWorld.y ) ) * 0.3;
+        float grime = ( 1.0 - smoothstep( 0.0, 0.6, vWorld.y ) ) * 0.08;
         float col = floor( wallM.x * 4.0 );
         float streak = step( 0.7, streetHash( col * 7.31 + floor( wallM.y / 2.9 ) * 3.7 ) )
           * ( 1.0 - smoothstep( 0.05, 0.45, abs( fract( wallM.x * 4.0 ) - 0.5 ) ) )
-          * smoothstep( 1.0, 0.25, fract( ( wallM.y - 0.15 ) / 2.9 ) ) * 0.16;
+          * ( 1.0 - smoothstep( 0.25, 1.0, fract( ( wallM.y - 0.15 ) / 2.9 ) ) ) * 0.04;
         vec3 plasterC = diffuseColor.rgb * ( 1.0 - grime - streak ) * mix( vec3( 1.0 ), vec3( 0.96, 0.92, 0.86 ), grime * 2.0 );
         diffuseColor.rgb = mix( plasterC, atlasC.rgb, atlasM );`,
       )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix( roughnessFactor, 0.55, atlasM );')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix( 0.82 + 0.12 * roughnessFactor, 0.65, atlasM );')
       .replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * ( 1.0 - atlasM );');
   };
   mat.customProgramCacheKey = () => 'street-facade';
@@ -119,16 +120,21 @@ export function facadeDepthMaterial(keep: Keep, holes: THREE.Vector4[]) {
  * 日式的熏瓦带一点光泽（粗糙度压低一点）
  */
 export function roofMaterial(keep: Keep) {
-  const mat = keep(new THREE.MeshStandardMaterial({ ...pbrTextures('ceramic_roof_01', keep, { repeat: 1 / 3.5 }), vertexColors: true }));
+  const mat = keep(new THREE.MeshStandardMaterial({
+    ...pbrTextures('ceramic_roof_01', keep, { repeat: 1 / 3.5 }),
+    vertexColors: true,
+    normalScale: new THREE.Vector2(0.4, 0.4),
+    aoMapIntensity: 0.4,
+  }));
   mat.color.setScalar(0.85);
   mat.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <map_fragment>',
-        `${normMap(0.9, 0.35)}
+        `${normMap(0.38, 0.55)}
         diffuseColor.rgb = vec3( dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) );`,
       )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= 0.72;');
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = 0.62 + 0.16 * roughnessFactor;');
   };
   mat.customProgramCacheKey = () => 'street-roof';
   return mat;
@@ -215,14 +221,25 @@ export function concreteMaterial(keep: Keep, kind: 'curb' | 'parapet' | 'seawall
   return mat;
 }
 
-/** 木头：公园那张旧木板（1.8m 一张），压暗成深棕的木梁、檐口板、阳台。顶点色调每块的深浅 */
+/** 木材底色由建筑顶点色统一控制，照片只提供低对比木纹；柔和的法线和粗糙度避免旧木板的脏黑斑。 */
 export function woodMaterial(keep: Keep) {
-  const mat = keep(new THREE.MeshStandardMaterial({ ...pbrTextures('weathered_brown_planks', keep, { repeat: 1 / 1.8 }), vertexColors: true }));
-  mat.color.setRGB(0.62, 0.5, 0.42);
+  const mat = keep(new THREE.MeshStandardMaterial({
+    ...pbrTextures('weathered_brown_planks', keep, { repeat: 1 / 1.8 }),
+    vertexColors: true,
+    normalScale: new THREE.Vector2(0.22, 0.22),
+    aoMapIntensity: 0.35,
+  }));
+  mat.color.setScalar(0.9);
+  mat.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <map_fragment>', normMap(0.28, 0.6))
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = 0.72 + 0.16 * roughnessFactor;');
+  };
+  mat.customProgramCacheKey = () => 'street-wood';
   return mat;
 }
 
 /** 铁件：遮阳篷的支架、旗子的铁臂、侧沟的格栅、电线杆的横担和变压器 */
 export function metalMaterial(keep: Keep) {
-  return keep(new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.55, roughness: 0.42 }));
+  return keep(new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.55, roughness: 0.52 }));
 }
