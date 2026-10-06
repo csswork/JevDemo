@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "motion": "vite --config motion-workbench/vite.config.ts",
+    "motion:check": "tsc -p motion-workbench/tsconfig.json && node --experimental-strip-types --test motion-workbench/server/*.test.ts",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
