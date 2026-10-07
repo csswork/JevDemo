@@ -500,7 +500,11 @@ export default function App() {
   // 换后端之后存下来的选择还能对上。暂时不能选的（加载中）不算，但不改用户存的选择
   const usable = voices.filter((v) => !v.disabled);
   const match = (id?: string | null) => usable.find((v) => id && v.id.toLowerCase() === id.toLowerCase());
-  const activeVoice = match(speaker) ?? match(voice.speaker) ?? usable[0];
+  // 存下来的选择不在列表里（比如以前选的千问音色，现在只列 MiniMax）：退回这个角色自己的默认音色；
+  // 没配 MiniMax 时列表里只有千问 / 本地，退回她以前的千问音色
+  const model = MODELS.find((m) => m.id === modelId);
+  const activeVoice =
+    match(speaker) ?? match(model?.voice) ?? match(model?.qwenVoice) ?? match(voice.speaker) ?? usable[0];
   const activeSpeaker = activeVoice?.id ?? voice.speaker ?? 'Vivian';
   const activeName = activeVoice?.name ?? activeSpeaker;
   const groups = [...new Set(voices.map((v) => v.group))];

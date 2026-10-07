@@ -27,10 +27,15 @@ export interface ModelMeta {
   license: string;
   face: '分部位' | '整脸';
   /**
-   * 默认音色（千问系统音色 id，见 server/qwenTts.ts 的 QWEN_VOICES；本地后端按小写对上）。
+   * 默认音色：MiniMax 系统音色（见 server/minimaxTts.ts 的 MINIMAX_VOICES）。
    * 照着人设挑的；用户在面板上换过就以用户的为准（按角色存）
    */
   voice?: string;
+  /**
+   * 以前的千问音色（见 server/qwenTts.ts 的 QWEN_VOICES；本地后端按小写对上）。
+   * 配了 MINIMAX_API_KEY 时千问音色是隐藏的，这个用不上；没配 MiniMax 时退回它
+   */
+  qwenVoice?: string;
   /**
    * 待机时上臂额外外展多少度（在待机动作自带的 6° 之上）。裙子越蓬，垂手时手越容易陷进裙摆：
    * 逐个模型看手部特写定的 —— 詩乃 / 绮拉这类窄裙 0，薇薇的 A 字连衣裙 +3，维多利亚的蓬裙 +6
@@ -46,7 +51,7 @@ function quappa(
   name: string,
   code: string,
   desc: string,
-  opts: { editor?: string; voice?: string; armOut?: number; hidden?: boolean } = {},
+  opts: { editor?: string; voice?: string; qwenVoice?: string; armOut?: number; hidden?: boolean } = {},
 ): ModelMeta {
   return {
     id,
@@ -56,6 +61,7 @@ function quappa(
     license: `©QUAPPA-ELの巣処${opts.editor ? `（${opts.editor}）` : ''} · 个人非商用`,
     face: '分部位',
     voice: opts.voice,
+    qwenVoice: opts.qwenVoice,
     armOut: opts.armOut,
     hidden: opts.hidden,
   };
@@ -69,7 +75,8 @@ export const MODELS: ModelMeta[] = [
     desc: '温柔会倾听 · 棕红短发开衫',
     license: '可商用、可改、可再分发',
     face: '整脸',
-    voice: 'Cherry',
+    voice: 'minimax:Chinese (Mandarin)_Warm_Girl',
+    qwenVoice: 'Cherry',
   },
   {
     id: 'shino',
@@ -78,19 +85,21 @@ export const MODELS: ModelMeta[] = [
     desc: '外冷内热 · 黑长直制服',
     license: 'CC0',
     face: '分部位',
-    voice: 'Seren',
+    voice: 'minimax:danya_xuejie',
+    qwenVoice: 'Seren',
   },
   quappa('quelle', '库薇勒', 'EL-F3U_Quelle', '要强小女仆 · 猫耳女仆装', {
     editor: 'Edit by SirAyane',
-    voice: 'Mia',
+    voice: 'minimax:Chinese (Mandarin)_Crisp_Girl',
+    qwenVoice: 'Mia',
     armOut: 8,
   }),
-  quappa('menabell', '梅娜贝尔', 'EL-Pr236_Menabell', '话痨发明家 · 圆眼镜红裙', { voice: 'Bunny', armOut: 8 }),
-  quappa('kuromatsu', '沙瑠纱', 'EL-Pr238_KUROMATSU', '慢热文艺 · 麻花辫开衫', { voice: 'Nini', armOut: 4 }),
-  quappa('fukuharae', '七七春', 'EL-Pr243M1_FUKUHARAE', '慵懒贝斯手 · 猫耳朋克', { voice: 'Vivian' }),
-  quappa('inahade', '露艾卡', 'EL-Pr250_INAHADE', '宅系吐槽 · 眼镜卷发双马尾', { voice: 'Chelsie' }),
-  quappa('rosastout', '萝莎', 'EL-Pr251_Rosastout', '张扬好胜 · 粉发朋克夹克', { voice: 'Vivian' }),
-  quappa('kotora', '莉莉', 'EL-Pr252_KOTORA', '元气短跑少女 · 橙发麻花辫', { voice: 'Bella', armOut: 5 }),
+  quappa('menabell', '梅娜贝尔', 'EL-Pr236_Menabell', '话痨发明家 · 圆眼镜红裙', { voice: 'minimax:qiaopi_mengmei', qwenVoice: 'Bunny', armOut: 8 }),
+  quappa('kuromatsu', '沙瑠纱', 'EL-Pr238_KUROMATSU', '慢热文艺 · 麻花辫开衫', { voice: 'minimax:Chinese (Mandarin)_Soft_Girl', qwenVoice: 'Nini', armOut: 4 }),
+  quappa('fukuharae', '七七春', 'EL-Pr243M1_FUKUHARAE', '慵懒贝斯手 · 猫耳朋克', { voice: 'minimax:female-yujie', qwenVoice: 'Vivian' }),
+  quappa('inahade', '露艾卡', 'EL-Pr250_INAHADE', '宅系吐槽 · 眼镜卷发双马尾', { voice: 'minimax:Chinese (Mandarin)_Warm_Bestie', qwenVoice: 'Chelsie' }),
+  quappa('rosastout', '萝莎', 'EL-Pr251_Rosastout', '张扬好胜 · 粉发朋克夹克', { voice: 'minimax:Arrogant_Miss', qwenVoice: 'Vivian' }),
+  quappa('kotora', '莉莉', 'EL-Pr252_KOTORA', '元气短跑少女 · 橙发麻花辫', { voice: 'minimax:tianxin_xiaoling', qwenVoice: 'Bella', armOut: 5 }),
   {
     id: 'vivi',
     name: '薇薇',
@@ -98,7 +107,8 @@ export const MODELS: ModelMeta[] = [
     desc: '元气天然 · 围裙连衣裙',
     license: 'CC0',
     face: '分部位',
-    voice: 'Stella',
+    voice: 'minimax:diadia_xuemei',
+    qwenVoice: 'Stella',
     armOut: 3,
   },
   {
@@ -108,7 +118,8 @@ export const MODELS: ModelMeta[] = [
     desc: '傲娇大小姐 · 金粉侧马尾',
     license: 'CC0',
     face: '分部位',
-    voice: 'Maia',
+    voice: 'minimax:Chinese (Mandarin)_Mature_Woman',
+    qwenVoice: 'Maia',
     armOut: 6,
   },
   {
@@ -118,7 +129,8 @@ export const MODELS: ModelMeta[] = [
     desc: '理性仿生人 · 白发异瞳',
     license: 'CC0',
     face: '分部位',
-    voice: 'Serena',
+    voice: 'minimax:Chinese (Mandarin)_Gentle_Senior',
+    qwenVoice: 'Serena',
   },
   {
     id: 'hair_female',
@@ -127,7 +139,8 @@ export const MODELS: ModelMeta[] = [
     desc: '嘴硬猫系 · 猫耳双马尾',
     license: 'CC0',
     face: '分部位',
-    voice: 'Momo',
+    voice: 'minimax:female-shaonv',
+    qwenVoice: 'Momo',
   },
   {
     id: 'avatar_b',
@@ -136,7 +149,8 @@ export const MODELS: ModelMeta[] = [
     desc: '直率辣妹 · 紫发挑染',
     license: 'VRM 许可：可商用、可改、可再分发',
     face: '分部位',
-    voice: 'Bellona',
+    voice: 'minimax:wumei_yujie',
+    qwenVoice: 'Bellona',
   },
   // 下面的不在下拉框里
   {
@@ -146,7 +160,8 @@ export const MODELS: ModelMeta[] = [
     desc: '认真新人 · 灰色素体',
     license: '可商用（作者 README）',
     face: '分部位',
-    voice: 'Cherry',
+    voice: 'minimax:Chinese (Mandarin)_Sweet_Lady',
+    qwenVoice: 'Cherry',
     hidden: true,
   },
   {
@@ -156,7 +171,8 @@ export const MODELS: ModelMeta[] = [
     desc: '天真爱幻想 · 金色麻花辫',
     license: 'ニコニ立体ちゃん 利用规约',
     face: '整脸',
-    voice: 'Stella',
+    voice: 'minimax:female-tianmei',
+    qwenVoice: 'Stella',
     hidden: true,
   },
 ];

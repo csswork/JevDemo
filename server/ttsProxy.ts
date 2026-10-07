@@ -24,6 +24,9 @@ import { detectBase, lastDetectError, QWEN_VOICES, synthesize, type QwenConfig, 
  *   DASHSCOPE_BASE_URL      千问的接口地址；默认自动探测（千问 AI 平台 / 百炼北京 / 百炼国际）
  *   QWEN_TTS_MODEL          默认 qwen3-tts-instruct-flash（支持语气指令）
  *   TTS_SPEAKER             默认音色（界面下拉框没选过时用）
+ *   MINIMAX_API_KEY         配了就**只用 MiniMax**：界面只列 MiniMax 音色，千问 / 本地的音色隐藏（代码都留着）。
+ *                           实测 MiniMax 的效果比千问好很多。没配时和以前一样走千问 / 本地
+ *   TTS_SHOW_QWEN=on        配了 MiniMax 时仍然把千问 / 本地的音色列出来（对比试听用）
  *   TTS_URL / TTS_AUTOSTART 本地后端的地址、是否自动启动
  *
  * 本地后端的自动启动：dev server 起来时探一下，没在跑就用 tts/.venv 拉起来。
@@ -98,6 +101,9 @@ export function ttsProxy(): Plugin {
   let backend: 'qwen' | 'local' = 'local';
   let qwen: QwenConfig | null = null;
   let minimax: MiniMaxConfig | null = null;
+  /** 配了 MiniMax 时只用它：千问 / 本地的音色不列出来，本地服务也不自动拉起 */
+  let minimaxOnly = false;
+  let minimaxDefault = 'minimax:female-shaonv';
   let root = process.cwd();
   /** 传给 Python 进程的配置。.env.local 里的值 Vite 不会放进 process.env，得显式传 */
   let childEnv: Record<string, string> = {};
@@ -128,6 +134,10 @@ export function ttsProxy(): Plugin {
         apiKey: minimaxKey,
         baseUrl: (env.MINIMAX_BASE_URL || 'https://api.minimax.cn').trim(),
       } : null;
+      const on = (v?: string) => /^(on|true|1|yes)$/i.test((v || '').trim());
+      minimaxOnly = !!minimax && !on(env.TTS_SHOW_QWEN);
+      const sp = (env.TTS_SPEAKER || '').trim();
+      if (MINIMAX_VOICES.some((v) => v.id === sp)) minimaxDefault = sp;
       childEnv = Object.fromEntries(
         ['TTS_SPEAKER', 'TTS_MODEL', 'TTS_DESIGN_MODEL'].filter((k) => env[k]?.trim()).map((k) => [k, env[k].trim()]),
       );
@@ -135,7 +145,8 @@ export function ttsProxy(): Plugin {
     configureServer(server) {
       const log = server.config.logger;
 
-      if (enabled && backend === 'qwen' && qwen) {
+      if (enabled && minimaxOnly) log.info(`[tts] MiniMax 语音（千问 / 本地音色已隐藏，TTS_SHOW_QWEN=on 可显示）· 默认 ${minimaxDefault}`);
+      if (enabled && !minimaxOnly && backend === 'qwen' && qwen) {
         const cfg = qwen;
         void detectBase(cfg).then((base) =>
           base
@@ -143,7 +154,7 @@ export function ttsProxy(): Plugin {
             : log.warn(`[tts] ${lastDetectError()}`),
         );
       }
-      if (enabled && backend === 'local' && autostart) startLocal(log);
+      if (enabled && !minimaxOnly && backend === 'local' && autostart) startLocal(log);
 
       function startLocal(logger: typeof log) {
         const python = resolve(root, 'tts/.venv/bin/python');
@@ -193,6 +204,7 @@ export function ttsProxy(): Plugin {
 
           try {
             if (req.method === 'GET' && req.url?.startsWith('/health')) {
+              if (minimaxOnly) return send(200, minimaxHealth());
               return send(200, backend === 'qwen' ? await qwenHealth() : await localHealth());
             }
             if (req.method === 'POST' && req.url?.startsWith('/synth')) {
@@ -217,6 +229,10 @@ export function ttsProxy(): Plugin {
           }
         })();
       });
+
+      function minimaxHealth() {
+        return { ready: true, backend, speaker: minimaxDefault, voices: MINIMAX_VOICES, error: null };
+      }
 
       async function qwenHealth() {
         if (!qwen) return { ready: false, backend, error: '没配 DASHSCOPE_API_KEY' };
