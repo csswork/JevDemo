@@ -147,7 +147,8 @@ export interface Delivery {
  *            语气被压平。慌（惊讶 + 难过 / 生气）给 fearful
  *   韵律     按"强度 × 主导情绪有多纯"微调，幅度都很小（语速 ±8%、音高 ±1~2 个半音、音量 ±15%）：
  *            开心快一点高一点，难过慢一点低一点轻一点，生气快一点响一点，惊讶高一点；
- *            害羞没有对应的 emotion，靠慢一点、轻一点、略高一点
+ *            害羞没有对应的 emotion，靠慢一点、轻一点、略高一点；
+ *            嫌弃给 disgusted（MiniMax 有这个情绪）；得意、困惑没有对应的，得意慢半拍、略高，困惑慢一点、尾音略高
  * 没有结构化的判断（老客户端）时退回从中文语气描述里认情绪，calm 同样不给。
  */
 export function deliveryFor(style?: VoiceStyle | null, instructions?: string | null): Delivery {
@@ -162,6 +163,8 @@ export function deliveryFor(style?: VoiceStyle | null, instructions?: string | n
   if (isPanic(style) && k >= 0.3) d.emotion = 'fearful';
   else if (p >= 0.35 && k >= 0.3 && (emotion === 'happy' || emotion === 'sad' || emotion === 'angry' || emotion === 'surprised')) {
     d.emotion = emotion;
+  } else if (p >= 0.35 && k >= 0.3 && emotion === 'disgusted') {
+    d.emotion = 'disgusted';
   }
   switch (emotion) {
     case 'happy':
@@ -188,6 +191,18 @@ export function deliveryFor(style?: VoiceStyle | null, instructions?: string | n
     case 'relaxed':
       d.speed -= 0.04 * Math.min(1, p / 0.6);
       break;
+    case 'smug':
+      d.speed -= 0.04 * w;
+      d.pitch += Math.round(w);
+      break;
+    case 'confused':
+      d.speed -= 0.05 * Math.min(1, p / 0.6);
+      if (p >= 0.5) d.pitch += 1;
+      break;
+    case 'disgusted':
+      d.speed -= 0.03 * w;
+      d.vol -= 0.05 * w;
+      break;
   }
   d.speed = Math.round(d.speed * 100) / 100;
   d.vol = Math.round(d.vol * 100) / 100;
@@ -203,8 +218,8 @@ export function emotionFor(instructions?: string | null): string | undefined {
     [/难过|失落|伤感|心酸|委屈|苦笑/, 'sad'],
     [/惊讶|又惊又喜/, 'surprised'],
     [/害怕|恐惧|慌张/, 'fearful'],
-    [/厌恶/, 'disgusted'],
-    [/自然|平静|温柔|放松|平和|亲切|害羞|无奈/, 'calm'],
+    [/厌恶|嫌弃|无语/, 'disgusted'],
+    [/自然|平静|温柔|放松|平和|亲切|害羞|无奈|得意|疑惑/, 'calm'],
   ];
   return words
     .map(([pattern, emotion]) => ({ index: instructions.search(pattern), emotion }))

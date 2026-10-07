@@ -18,6 +18,9 @@ const WORDS: Record<Emotion, string> = {
   relaxed: '温柔、放松',
   surprised: '惊讶',
   shy: '害羞、小声',
+  smug: '得意、有点小骄傲',
+  confused: '疑惑、不太确定',
+  disgusted: '嫌弃、无语',
 };
 
 /**
@@ -36,6 +39,9 @@ const COMPOUND: Record<string, string> = {
   'shy+happy': '害羞又开心',
   'happy+shy': '开心、有点不好意思',
   'shy+surprised': '慌张又害羞',
+  'smug+happy': '得意洋洋',
+  'confused+surprised': '一脸疑惑',
+  'disgusted+angry': '嫌弃又不耐烦',
 };
 
 /** 情绪不明显时用的语气 */

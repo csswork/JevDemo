@@ -52,6 +52,16 @@ const ALIASES: Record<string, Emotion> = {
   不好意思: 'shy',
   羞: 'shy',
   脸红: 'shy',
+  得意: 'smug',
+  骄傲: 'smug',
+  嘚瑟: 'smug',
+  困惑: 'confused',
+  疑问: 'confused',
+  疑惑: 'confused',
+  不解: 'confused',
+  嫌弃: 'disgusted',
+  无语: 'disgusted',
+  鄙视: 'disgusted',
 };
 
 const DEFAULT_SPEECH = '这是一句用来看表情的测试台词，长度大概够演完三个节拍。';

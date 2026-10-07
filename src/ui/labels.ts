@@ -9,6 +9,9 @@ export const EMOTION_LABEL: Record<Emotion, string> = {
   relaxed: '放松',
   surprised: '惊讶',
   shy: '害羞',
+  smug: '得意',
+  confused: '困惑',
+  disgusted: '嫌弃',
 };
 
 /** 情绪 id → 中文；不认识的原样返回 */

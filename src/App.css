@@ -1761,6 +1761,45 @@ input[type='range']::-webkit-slider-thumb {
   50% { transform: translateY(-3px) scale(1.12); }
 }
 
+/* —— 得意：金色、往上挺一下，一颗闪光 —— */
+.bubble[data-mood='smug'] { --b-bg: #fffaea; --b-ink: #8a5a00; --b-text: #4a3300; --b-fx: #f2b11a; }
+.bubble[data-mood='smug'] .bubble-mood,
+.bubble.speaking[data-mood='smug'] .bubble-mood { animation: puffup 1.8s ease-in-out infinite; }
+.bubble[data-mood='smug'] .fx-smug { display: inline; animation: twinkle 1.4s ease-in-out infinite; }
+.fx-smug path { fill: #ffe27a; }
+.fx-smug { transform-origin: 20px 19px; }
+@keyframes puffup {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-3px) scale(1.02); }
+}
+@keyframes twinkle {
+  0%, 100% { transform: scale(0.8) rotate(0deg); opacity: 0.7; }
+  50% { transform: scale(1.15) rotate(20deg); opacity: 1; }
+}
+
+/* —— 困惑：淡蓝、歪一下，一个问号 —— */
+.bubble[data-mood='confused'] { --b-bg: #f1f5ff; --b-ink: #2f4a8f; --b-text: #23305a; --b-fx: #5b8cff; }
+.bubble[data-mood='confused'] .bubble-mood,
+.bubble.speaking[data-mood='confused'] .bubble-mood { animation: tilt 2.4s ease-in-out infinite; }
+.bubble[data-mood='confused'] .fx-confused { display: inline; animation: tilt 1.6s ease-in-out infinite reverse; }
+.fx-confused path { fill: none; }
+.fx-confused { transform-origin: 20px 30px; }
+@keyframes tilt {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-2.5deg); }
+}
+
+/* —— 嫌弃：灰青、往后缩一点，三条竖线 —— */
+.bubble[data-mood='disgusted'] { --b-bg: #eef4f3; --b-ink: #2c5257; --b-text: #23393c; --b-fx: #3f8a92; }
+.bubble[data-mood='disgusted'] .bubble-mood,
+.bubble.speaking[data-mood='disgusted'] .bubble-mood { animation: recoil 2.6s ease-in-out infinite; }
+.bubble[data-mood='disgusted'] .fx-disgusted { display: inline; animation: drip 2.4s ease-in infinite; }
+.fx-disgusted path { fill: none; }
+@keyframes recoil {
+  0%, 100% { transform: translateX(0); }
+  35% { transform: translateX(2px) scale(0.985); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bubble *, .bubble { animation: none !important; transition: opacity 0.2s !important; }
 }

@@ -318,7 +318,7 @@ export class Character {
    */
   emotionLevels() {
     const ex = this.expression;
-    const level = (e: 'happy' | 'angry' | 'sad' | 'relaxed' | 'surprised' | 'shy') =>
+    const level = (e: Exclude<Emotion, 'neutral'>) =>
       Math.min(1, ex.weightOf(e) / Math.max(0.05, ex.ceiling[e] ?? 1));
     return {
       happy: level('happy'),
@@ -327,6 +327,9 @@ export class Character {
       relaxed: level('relaxed'),
       surprised: level('surprised'),
       shy: level('shy'),
+      smug: level('smug'),
+      confused: level('confused'),
+      disgusted: level('disgusted'),
     };
   }
 

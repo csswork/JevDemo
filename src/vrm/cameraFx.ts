@@ -18,7 +18,17 @@ import { smoothstep } from './pose';
 
 export interface FxSignals {
   /** 各情绪当前的语义强度（0..1，已还原 ceiling） */
-  levels: { happy: number; angry: number; sad: number; surprised: number; shy: number; relaxed: number };
+  levels: {
+    happy: number;
+    angry: number;
+    sad: number;
+    surprised: number;
+    shy: number;
+    relaxed: number;
+    smug: number;
+    confused: number;
+    disgusted: number;
+  };
   /** 这一帧新来的"冲过头"（换情绪 / 猛地变强），见 ExpressionLayer.takeAccents */
   accents: Array<{ emo: string; strength: number }>;
 }
@@ -102,8 +112,8 @@ export class CameraFx {
     const on = this.enabled;
     const L = s.levels;
 
-    // 推镜：看最强的那个"带劲"的情绪。放松不推（推镜是强调，平静的满足不需要）
-    const strongest = Math.max(L.happy, L.angry, L.sad, L.surprised, L.shy);
+    // 推镜：看最强的那个"带劲"的情绪。放松、困惑不推（推镜是强调，平静的满足、想不明白都不需要）
+    const strongest = Math.max(L.happy, L.angry, L.sad, L.surprised, L.shy, L.smug, L.disgusted);
     const pushGoal = on ? smoothstep((strongest - PUSH_FROM) / PUSH_SPAN) : 0;
     const tau = pushGoal > this.push ? PUSH_IN_TAU : PUSH_OUT_TAU;
     this.push += (pushGoal - this.push) * (1 - Math.exp(-dt / tau));

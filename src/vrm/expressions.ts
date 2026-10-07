@@ -43,6 +43,13 @@ const RECIPES: Record<Feeling, Partial<Record<Shape, number>>> = {
   // 害羞：眉头微微皱起（困り眉）、眼睑往下收一点、半眯的笑眼、抿着嘴笑 —— 不张嘴。
   // 脸红不在脸型里，由漫符层（manpu.ts）画
   shy: { brow_sad: 0.45, eye_smile: 0.32, eye_sad: 0.22, mouth_smile: 0.55 },
+  // 得意（ドヤ顔）：眼睛眯成一半（笑眼 + 上眼皮压下来）、闭着嘴笑得很满。标志是漫符层的鼻息。
+  // 只用笑眼会像开心，只压眼皮会像生气：两个各一半才是"哼哼"的那种眯
+  smug: { brow_relaxed: 0.5, eye_smile: 0.5, eye_angry: 0.45, mouth_smile: 0.9 },
+  // 困惑：眉头往上皱（困り眉）、眼睛微微睁大、嘴微张抿着。标志是头边的 ？
+  confused: { brow_sad: 0.55, brow_surprised: 0.2, eye_wide: 0.2, mouth_frown: 0.35, mouth_o: 0.12 },
+  // 嫌弃（ジト目）：眉压低、眼皮压成一条缝、嘴角往下撇。标志是脸上一片发青的竖线
+  disgusted: { brow_angry: 0.55, eye_angry: 0.7, eye_sad: 0.15, mouth_frown: 0.6, mouth_sad: 0.2 },
 };
 
 /**
@@ -50,9 +57,9 @@ const RECIPES: Record<Feeling, Partial<Record<Shape, number>>> = {
  * 另外见 compose() 里的掩饰规则：同时有正负情绪时，嘴上的负面再压一半。
  */
 const PART_BIAS: Record<FacePart, Record<Feeling, number>> = {
-  brow: { happy: 0.8, relaxed: 0.7, sad: 1.15, angry: 1.1, surprised: 1.1, shy: 1 },
-  eye: { happy: 1, relaxed: 1, sad: 1, angry: 1, surprised: 1, shy: 1 },
-  mouth: { happy: 1.1, relaxed: 1.1, sad: 0.85, angry: 0.9, surprised: 0.9, shy: 1 },
+  brow: { happy: 0.8, relaxed: 0.7, sad: 1.15, angry: 1.1, surprised: 1.1, shy: 1, smug: 1, confused: 1.1, disgusted: 1.1 },
+  eye: { happy: 1, relaxed: 1, sad: 1, angry: 1, surprised: 1, shy: 1, smug: 1, confused: 1, disgusted: 1 },
+  mouth: { happy: 1.1, relaxed: 1.1, sad: 0.85, angry: 0.9, surprised: 0.9, shy: 1, smug: 1.1, confused: 1, disgusted: 0.9 },
 };
 
 /**
@@ -85,6 +92,9 @@ const ACCENTS: Record<Feeling, Partial<Record<Shape, number>>> = {
   sad: { brow_sad: 0.8, eye_sad: 0.5, mouth_sad: 0.5 },
   shy: { eye_smile: 0.6, brow_sad: 0.5 },
   relaxed: { eye_smile: 0.4, mouth_smile: 0.4 },
+  smug: { eye_angry: 0.5, mouth_smile: 0.6 },
+  confused: { brow_sad: 0.5, eye_wide: 0.45 },
+  disgusted: { eye_angry: 0.6, brow_angry: 0.5, mouth_frown: 0.5 },
 };
 const ACCENT_GAIN = 0.45;
 const ACCENT_DURATION = 0.6;
@@ -165,6 +175,9 @@ const MICRO: Record<Emotion, Array<Partial<Record<Shape, number>>>> = {
   angry: [{ eye_angry: 0.6 }, { mouth_pout: 0.5 }, { brow_angry: 0.5 }],
   surprised: [{ eye_wide: 0.6 }, { mouth_o: 0.3 }],
   shy: [{ eye_smile: 0.4 }, { mouth_smile: 0.5 }, { brow_sad: 0.4 }],
+  smug: [{ mouth_smile: 0.5 }, { eye_angry: 0.4 }, { brow_relaxed: 0.5 }],
+  confused: [{ brow_sad: 0.5 }, { eye_wide: 0.4 }, { mouth_frown: 0.4 }],
+  disgusted: [{ eye_angry: 0.5 }, { mouth_frown: 0.5 }, { brow_angry: 0.4 }],
 };
 
 /** 对话状态的神态（叠加层，不是情绪） */
@@ -189,10 +202,15 @@ const FALLBACK: Record<Emotion, Emotion[]> = {
   surprised: ['happy'],
   // 模型没有害羞槽（VRM 标准里就没有）：退回放松（温和的笑，不会像 happy 那样把眼睛笑闭）
   shy: ['relaxed', 'happy'],
+  // 下面三个 VRM 标准里也没有：得意退回开心（ceiling 压着，眼睛不笑闭），困惑退回惊讶（压得很低，只剩一点睁眼），
+  // 嫌弃退回生气
+  smug: ['happy', 'relaxed'],
+  confused: ['surprised'],
+  disgusted: ['angry'],
 };
 
-const ALL_EMOTIONS: Emotion[] = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'shy'];
-const FEELINGS: Feeling[] = ['happy', 'angry', 'sad', 'relaxed', 'surprised', 'shy'];
+const ALL_EMOTIONS: Emotion[] = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'shy', 'smug', 'confused', 'disgusted'];
+const FEELINGS: Feeling[] = ['happy', 'angry', 'sad', 'relaxed', 'surprised', 'shy', 'smug', 'confused', 'disgusted'];
 
 /**
  * 情绪 → 整脸预设的权重上限。**只在没有分部位形状的模型上用**：整脸预设同时改眉眼嘴，
@@ -208,8 +226,22 @@ export const DEFAULT_CEILING: ExpressionCeiling = {
   relaxed: 1,
   surprised: 0.75,
   shy: 0.8,
+  smug: 0.45,
+  confused: 0.35,
+  disgusted: 0.7,
 };
-const NO_CEILING: ExpressionCeiling = { neutral: 1, happy: 1, angry: 1, sad: 1, relaxed: 1, surprised: 1, shy: 1 };
+const NO_CEILING: ExpressionCeiling = {
+  neutral: 1,
+  happy: 1,
+  angry: 1,
+  sad: 1,
+  relaxed: 1,
+  surprised: 1,
+  shy: 1,
+  smug: 1,
+  confused: 1,
+  disgusted: 1,
+};
 
 interface MixEntry {
   t: number;
@@ -774,8 +806,8 @@ export class ExpressionLayer {
   private compose(mix: Mix, part: FacePart): Map<string, number> {
     const rig = this.rig!;
     // 害羞算一半正面：它的困り眉不该被当成"负面"去压嘴上的笑
-    const pos = (mix.happy ?? 0) + (mix.relaxed ?? 0) + 0.5 * (mix.shy ?? 0);
-    const neg = (mix.sad ?? 0) + (mix.angry ?? 0);
+    const pos = (mix.happy ?? 0) + (mix.relaxed ?? 0) + 0.5 * (mix.shy ?? 0) + (mix.smug ?? 0);
+    const neg = (mix.sad ?? 0) + (mix.angry ?? 0) + (mix.disgusted ?? 0);
     // 中性占比高时整体收一点（"带一点笑意的平静"）
     const feelingSum = FEELINGS.reduce((s, e) => s + (mix[e] ?? 0), 0);
     const calm = feelingSum > 0 ? 1 - 0.3 * Math.min(1, mix.neutral ?? 0) : 1;
@@ -786,8 +818,8 @@ export class ExpressionLayer {
       if (w <= 0) continue;
       let bias = PART_BIAS[part][emo];
       // 掩饰：有笑意时嘴上的负面情绪再压一半；有负面时眉毛上的笑意压一半
-      if (part === 'mouth' && (emo === 'sad' || emo === 'angry') && pos > 0.25) bias *= 0.45;
-      if (part === 'brow' && (emo === 'happy' || emo === 'relaxed') && neg > 0.25) bias *= 0.5;
+      if (part === 'mouth' && (emo === 'sad' || emo === 'angry' || emo === 'disgusted') && pos > 0.25) bias *= 0.45;
+      if (part === 'brow' && (emo === 'happy' || emo === 'relaxed' || emo === 'smug') && neg > 0.25) bias *= 0.5;
       for (const [shape, amount] of Object.entries(RECIPES[emo]) as Array<[Shape, number]>) {
         if (SHAPES[shape] !== part) continue;
         shapes.set(shape, (shapes.get(shape) ?? 0) + w * bias * amount);
@@ -910,6 +942,9 @@ export class ExpressionLayer {
         relaxed: ['happy', 'sad'],
         surprised: ['happy', 'angry'],
         shy: ['happy', 'relaxed'],
+        smug: ['happy', 'relaxed'],
+        confused: ['surprised', 'sad'],
+        disgusted: ['angry', 'sad'],
       };
       const pool = adjacent[this.dominant];
       this.flick(pool[Math.floor(Math.random() * pool.length)], 0.08 + Math.random() * 0.14, 0.35 + Math.random() * 0.4);

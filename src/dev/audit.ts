@@ -124,6 +124,9 @@ export function installAudit(rt: Runtime) {
     ['生气', { angry: 0.8 }],
     ['惊讶', { surprised: 0.8 }],
     ['害羞', { shy: 0.8 }],
+    ['得意', { smug: 0.8 }],
+    ['困惑', { confused: 0.8 }],
+    ['嫌弃', { disgusted: 0.8 }],
   ];
 
   /**
@@ -198,6 +201,9 @@ export function installAudit(rt: Runtime) {
     ['平静', { neutral: 1 }, 1.6],
     ['开心 85%', { happy: 0.85 }, 2.2],
     ['害羞 80%', { shy: 0.8 }, 1.6],
+    ['得意 80%', { smug: 0.8 }, 2.2],
+    ['困惑 80%', { confused: 0.8 }, 1.2],
+    ['嫌弃 80%', { disgusted: 0.8 }, 1.4],
     ['生气 80%', { angry: 0.8 }, 1.6],
     ['难过 90%', { sad: 0.9 }, 1.3],
     ['惊讶 80%', { surprised: 0.8 }, 0.45],

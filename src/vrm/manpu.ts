@@ -19,6 +19,10 @@ import { damp } from './pose';
  *     ♪         开心（放松时少一些），一个个往上飘
  *     ！        惊讶的那一下，弹出来就收
  *     汗滴      慌（惊讶 + 难过 / 生气）、苦笑（难过 + 放松），滑一下停住
+ *     ？        困惑，蹦出来之后挂着轻轻晃
+ *     ✦        得意（ドヤ），头边一闪一闪的四角星（试过鼻息：在 3D 脸上停在嘴角，像沾了牛奶）
+ *   贴在脸上：
+ *     发青竖线  嫌弃（ドン引き），和难过的阴影竖线同一个位置，颜色偏青
  *
  * **情绪是什么、多强全部来自 Jev**：这里只读表情层此刻的语义情绪（weightOf，已经带着峰值回落、
  * 余韵和心情惯性），按阈值换算成符号，不多问 Jev 一个问题。
@@ -32,7 +36,7 @@ type Feeling = Exclude<Emotion, 'neutral'>;
 export type Levels = Record<Feeling, number>;
 
 /** 一次性的符号，预览 / 调试用：__jev.character.manpu.trigger('exclaim') */
-export type ManpuKind = 'exclaim' | 'sweat' | 'note' | 'tear';
+export type ManpuKind = 'exclaim' | 'sweat' | 'note' | 'tear' | 'question' | 'sparkle';
 
 const smooth = (x: number, a: number, b: number) => THREE.MathUtils.smoothstep(x, a, b);
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -215,12 +219,16 @@ const drawBlush = (g: CanvasRenderingContext2D) => {
   }
 };
 
-/** 阴影竖线：上浓下淡，四边都是软的（贴在刘海前面，硬边会像一块色板） */
-const drawGloom = (g: CanvasRenderingContext2D) => {
+/**
+ * 阴影竖线：上浓下淡，四边都是软的（贴在刘海前面，硬边会像一块色板）。
+ * rgb 是色调：难过偏紫（默认），嫌弃偏青
+ */
+const drawLines = (rgb: [number, number, number], line: [number, number, number]) => (g: CanvasRenderingContext2D) => {
+  const c = (v: [number, number, number], a: number) => `rgba(${v[0]},${v[1]},${v[2]},${a})`;
   const tint = g.createLinearGradient(0, 0, 0, 256);
-  tint.addColorStop(0, 'rgba(58,40,120,0)');
-  tint.addColorStop(0.18, 'rgba(58,40,120,0.3)');
-  tint.addColorStop(1, 'rgba(58,40,120,0)');
+  tint.addColorStop(0, c(rgb, 0));
+  tint.addColorStop(0.18, c(rgb, 0.3));
+  tint.addColorStop(1, c(rgb, 0));
   g.fillStyle = tint;
   g.fillRect(0, 0, 256, 256);
   const n = 9;
@@ -228,11 +236,11 @@ const drawGloom = (g: CanvasRenderingContext2D) => {
     const x = 34 + (i * (256 - 68)) / (n - 1);
     const y0 = 10 + ((i * 37) % 30);
     const len = 120 + ((i * 53) % 80);
-    const line = g.createLinearGradient(0, y0, 0, y0 + len);
-    line.addColorStop(0, 'rgba(40,24,96,0)');
-    line.addColorStop(0.15, 'rgba(40,24,96,0.85)');
-    line.addColorStop(1, 'rgba(40,24,96,0)');
-    g.strokeStyle = line;
+    const stroke = g.createLinearGradient(0, y0, 0, y0 + len);
+    stroke.addColorStop(0, c(line, 0));
+    stroke.addColorStop(0.15, c(line, 0.85));
+    stroke.addColorStop(1, c(line, 0));
+    g.strokeStyle = stroke;
     g.lineWidth = i % 2 ? 3 : 4.5;
     g.beginPath();
     g.moveTo(x, y0);
@@ -250,6 +258,64 @@ const drawGloom = (g: CanvasRenderingContext2D) => {
   g.fillRect(0, 0, 256, 256);
   g.globalCompositeOperation = 'source-over';
 };
+const drawGloom = drawLines([58, 40, 120], [40, 24, 96]);
+const drawShade = drawLines([40, 110, 120], [20, 80, 96]);
+
+/** ？：蓝色、白描边，略带一点倾斜 */
+const drawQuestion = (g: CanvasRenderingContext2D) => {
+  const mark = () => {
+    g.beginPath();
+    g.moveTo(78, 86);
+    g.bezierCurveTo(78, 36, 178, 26, 182, 84);
+    g.bezierCurveTo(184, 122, 138, 128, 136, 164);
+    g.moveTo(152, 208);
+    g.arc(136, 208, 16, 0, Math.PI * 2);
+  };
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  mark();
+  g.strokeStyle = '#ffffff';
+  g.lineWidth = 50;
+  g.stroke();
+  mark();
+  g.strokeStyle = '#1f3f8f';
+  g.lineWidth = 34;
+  g.stroke();
+  mark();
+  g.strokeStyle = '#5b8cff';
+  g.lineWidth = 20;
+  g.stroke();
+  // 点要实心
+  g.beginPath();
+  g.arc(136, 208, 14, 0, Math.PI * 2);
+  g.fillStyle = '#5b8cff';
+  g.fill();
+};
+
+/** ✦：四角星，金色、白描边，中间亮 */
+const drawSparkle = (g: CanvasRenderingContext2D) => {
+  const star = () => {
+    g.beginPath();
+    g.moveTo(128, 14);
+    g.quadraticCurveTo(140, 116, 242, 128);
+    g.quadraticCurveTo(140, 140, 128, 242);
+    g.quadraticCurveTo(116, 140, 14, 128);
+    g.quadraticCurveTo(116, 116, 128, 14);
+    g.closePath();
+  };
+  g.lineJoin = 'round';
+  star();
+  g.strokeStyle = '#ffffff';
+  g.lineWidth = 18;
+  g.stroke();
+  star();
+  const grad = g.createRadialGradient(128, 128, 4, 128, 128, 110);
+  grad.addColorStop(0, '#fffbe0');
+  grad.addColorStop(0.35, '#ffd84a');
+  grad.addColorStop(1, '#f0a400');
+  g.fillStyle = grad;
+  g.fill();
+};
 
 // ---------------------------------------------------------------------------
 
@@ -262,6 +328,9 @@ interface Anchors {
   exclaim: THREE.Vector3;
   sweat: THREE.Vector3;
   noteFrom: THREE.Vector3;
+  question: THREE.Vector3;
+  /** 得意的闪光在哪一片闪：头的画面右侧、眼睛高度往上 */
+  sparkle: THREE.Vector3;
   /** 局部坐标里的"上""角色左侧" */
   up: THREE.Vector3;
   left: THREE.Vector3;
@@ -297,6 +366,10 @@ export class ManpuLayer {
   private vein: THREE.Sprite | null = null;
   private exclaim: THREE.Sprite | null = null;
   private sweat: THREE.Sprite | null = null;
+  private question: THREE.Sprite | null = null;
+  /** 嫌弃的发青竖线（和阴影竖线同一个位置、换一张图） */
+  private shade: THREE.Mesh | null = null;
+  private sparklePool: THREE.Sprite[] = [];
   private notePool: THREE.Sprite[] = [];
   private noteTextures: THREE.Texture[] = [];
   private tearPool: THREE.Mesh[] = [];
@@ -308,6 +381,11 @@ export class ManpuLayer {
   private gloomW = 0;
   private veinW = 0;
   private veinPop = 1;
+  private shadeW = 0;
+  private questionW = 0;
+  private questionPop = 1;
+  private sparkles: Floating[] = [];
+  private nextSparkle = 0;
   private notes: Floating[] = [];
   private tears: Tear[] = [];
   private nextNote = 0;
@@ -356,8 +434,10 @@ export class ManpuLayer {
     for (const t of this.textures) t.dispose();
     this.textures = [];
     this.blush = [];
-    this.gloom = this.vein = this.exclaim = this.sweat = null;
+    this.gloom = this.vein = this.exclaim = this.sweat = this.question = this.shade = null;
     this.notePool = [];
+    this.sparklePool = [];
+    this.sparkles = [];
     this.noteTextures = [];
     this.tearPool = [];
     this.tearPaths = [];
@@ -368,7 +448,11 @@ export class ManpuLayer {
 
   /** 立刻清掉所有符号（截图 / 预览用，和 ExpressionLayer.reset 配套） */
   reset() {
-    this.blushW = this.gloomW = this.veinW = 0;
+    this.blushW = this.gloomW = this.veinW = this.shadeW = this.questionW = 0;
+    this.nextSparkle = 0;
+    for (const p of this.sparkles) p.obj.visible = false;
+    this.sparkles = [];
+    if (this.question) this.question.visible = false;
     this.exclaimAge = this.sweatAge = Infinity;
     this.exclaimArmed = this.sweatArmed = true;
     this.nextNote = this.nextTear = 0;
@@ -386,6 +470,11 @@ export class ManpuLayer {
       this.sweatHold = false;
     } else if (kind === 'note') this.spawnNote(1);
     else if (kind === 'tear') this.spawnTear(1);
+    else if (kind === 'sparkle') this.spawnSparkles(1);
+    else if (kind === 'question') {
+      this.questionPop = 0;
+      this.questionW = 1;
+    }
   }
 
   /** 每帧：levels 是 Jev 给的情绪此刻的语义强度（0..1） */
@@ -394,8 +483,8 @@ export class ManpuLayer {
     if (!a) return;
     this.t += dt;
     const on = this.enabled ? 1 : 0;
-    const { happy, angry, sad, relaxed, surprised, shy } = levels;
-    const negative = sad + angry;
+    const { happy, angry, sad, relaxed, surprised, shy, smug, confused, disgusted } = levels;
+    const negative = sad + angry + disgusted;
 
     // ---- 持续的：脸红、阴影竖线、青筋 ----
     // 害羞一上来就红（脸红是害羞最主要的信号，阈值放低）；惊喜的混合、很强的开心淡淡地红一点
@@ -411,6 +500,13 @@ export class ManpuLayer {
     if (veinGoal > 0.05 && this.veinW < 0.05) this.veinPop = 0;
     this.veinW = damp(this.veinW, veinGoal, 6, dt);
     this.veinPop += dt;
+
+    // 嫌弃：发青竖线
+    this.shadeW = damp(this.shadeW, on * smooth(disgusted, 0.3, 0.65), 3, dt);
+    if (this.shade) {
+      (this.shade.material as THREE.MeshBasicMaterial).opacity = this.shadeW;
+      this.shade.visible = this.shadeW > 0.01;
+    }
 
     for (const m of this.blush) {
       (m.material as THREE.MeshBasicMaterial).opacity = this.blushW;
@@ -465,6 +561,21 @@ export class ManpuLayer {
     }
     this.updateNotes(dt, a);
 
+    // ---- 得意：头边闪一下，隔一两秒一次 ----
+    const doya = on * smooth(smug, 0.3, 0.7);
+    this.nextSparkle -= dt;
+    if (doya > 0.05 && this.nextSparkle <= 0) {
+      this.spawnSparkles(doya);
+      this.nextSparkle = THREE.MathUtils.lerp(2.2, 1.1, doya) * (0.85 + 0.3 * Math.random());
+    }
+    this.updateSparkles(dt, a);
+
+    // ---- 困惑：？ ----
+    const q = on * smooth(confused, 0.3, 0.6);
+    if (q > 0.05 && this.questionW < 0.05) this.questionPop = 0;
+    this.questionW = damp(this.questionW, q, 6, dt);
+    this.updateQuestion(dt, a);
+
     // ---- 眼泪：很强的难过 ----
     const cry = on * smooth(sad, 0.55, 0.85);
     const tearGap = THREE.MathUtils.lerp(3, 1.1, cry);
@@ -477,6 +588,72 @@ export class ManpuLayer {
   }
 
   // ---- 一次性符号 ----
+
+  private updateQuestion(dt: number, a: Anchors) {
+    const q = this.question;
+    if (!q) return;
+    this.questionPop += dt;
+    q.visible = this.questionW > 0.01;
+    if (!q.visible) return;
+    const s = (a.unit * 1.8 * backOut(this.questionPop / 0.3)) / a.scale;
+    q.scale.set(s * 0.85, s, 1);
+    // 挂着的时候左右轻轻晃，像在歪头想
+    q.material.rotation = -0.18 + Math.sin(this.t * 2.2) * 0.12;
+    const bob = Math.sin(this.t * 1.7) * a.unit * 0.06;
+    q.position.copy(a.question).addScaledVector(a.up, bob / a.scale);
+    q.material.opacity = Math.min(1, this.questionW * 1.4);
+  }
+
+  /** 一大一小两颗，前后差一点点亮起来 */
+  private spawnSparkles(strength: number) {
+    const a = this.a;
+    if (!a) return;
+    const spots: Array<[number, number, number, number]> = [
+      // [往外, 往上, 大小, 晚多久]
+      [0, 0, 1, 0],
+      [0.55 + 0.3 * Math.random(), -0.7 - 0.3 * Math.random(), 0.6, 0.12],
+    ];
+    for (const [dx, dy, k, delay] of spots) {
+      const obj = this.sparklePool.find((p) => !p.visible);
+      if (!obj) return;
+      obj.visible = true;
+      obj.material.opacity = 0;
+      const from = a.sparkle
+        .clone()
+        .addScaledVector(a.left, (dx * a.unit) / a.scale)
+        .addScaledVector(a.up, (dy * a.unit) / a.scale);
+      this.sparkles.push({
+        obj,
+        age: -delay,
+        life: 0.7,
+        from,
+        drift: new THREE.Vector3(),
+        size: a.unit * (1.2 + 0.5 * strength) * k,
+        sway: Math.random() * Math.PI,
+      });
+    }
+  }
+
+  private updateSparkles(dt: number, a: Anchors) {
+    for (let i = this.sparkles.length - 1; i >= 0; i--) {
+      const p = this.sparkles[i];
+      p.age += dt;
+      if (p.age < 0) continue;
+      const u = p.age / p.life;
+      if (u >= 1) {
+        p.obj.visible = false;
+        this.sparkles.splice(i, 1);
+        continue;
+      }
+      // 一下子亮到最大（带回弹），再缩回去；转小半圈
+      const grow = u < 0.35 ? backOut(u / 0.35) : 1 - smooth(u, 0.35, 1);
+      const s = (p.size * Math.max(0, grow)) / a.scale;
+      p.obj.position.copy(p.from);
+      p.obj.scale.set(s, s, 1);
+      p.obj.material.rotation = p.sway + u * 0.8;
+      p.obj.material.opacity = Math.min(1, u / 0.08);
+    }
+  }
 
   private updateExclaim(dt: number, a: Anchors) {
     const e = this.exclaim;
@@ -740,6 +917,9 @@ export class ManpuLayer {
       tear: tex(256, 256, drawDrop(true)),
       blush: tex(256, 128, drawBlush),
       gloom: tex(256, 256, drawGloom),
+      shade: tex(256, 256, drawShade),
+      question: tex(256, 256, drawQuestion),
+      sparkle: tex(256, 256, drawSparkle),
     };
     this.noteTextures = T.notes;
 
@@ -757,6 +937,8 @@ export class ManpuLayer {
     this.exclaim = sprite(T.exclaim);
     this.sweat = sprite(T.sweat);
     for (let i = 0; i < 5; i++) this.notePool.push(sprite(T.notes[0]));
+    this.question = sprite(T.question);
+    for (let i = 0; i < 6; i++) this.sparklePool.push(sprite(T.sparkle));
 
     // ---- 贴在脸上的：跟脸一起被头发挡 ----
     const faceMat = (map: THREE.Texture) =>
@@ -828,6 +1010,9 @@ export class ManpuLayer {
     // 阴影竖线：眼睛到额头，压在刘海前面
     this.gloom = card(unit * 3.6, unit * 1.9, T.gloom, 11);
     this.gloom.position.copy(toLocal(at(0, unit * 0.45, front + 0.004)));
+    // 嫌弃的竖线要垂到眼睛上（ドン引き 是整张脸"刷"一下发青），比难过的那片更长、更靠下
+    this.shade = card(unit * 3.4, unit * 2.6, T.shade, 11);
+    this.shade.position.copy(toLocal(at(0, unit * 0.05, front + 0.004)));
     // 眼泪：下眼角偏外 → 脸颊，两侧各一条路径
     for (const s of [1, -1]) {
       const path: THREE.Vector3[] = [];
@@ -853,6 +1038,10 @@ export class ManpuLayer {
       sweat: toLocal(at(-(halfW + unit * 0.15), topY * 0.4, front)),
       // 音符：从头的画面右侧往上飘
       noteFrom: toLocal(at(halfW + unit * 0.35, topY * 0.25, front)),
+      // 问号：头的画面左侧、偏上（头顶上方会被头发高的模型顶出画面）
+      question: toLocal(at(-(halfW + unit * 0.45), topY * 0.7, front)),
+      // 闪光：头的画面右侧（角色左侧）、眼睛往上一点，贴着头发外沿
+      sparkle: toLocal(at(halfW + unit * 0.5, unit * 0.9, front)),
       up: up.clone().applyQuaternion(headQInv),
       left: left.clone().applyQuaternion(headQInv),
     };

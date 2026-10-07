@@ -72,8 +72,9 @@ export class Mood {
   feed(probs: Probs, weight: number, turnStart: boolean) {
     const p = (e: Emotion) => Math.max(0, Math.min(1, probs[e] ?? 0)) * weight;
     // 害羞、放松算半个开心：被夸得不好意思，心情也是好的
-    const pos = Math.min(1, p('happy') + 0.6 * p('relaxed') + 0.7 * p('shy'));
-    const ang = p('angry');
+    // 得意也算开心；嫌弃算半个生气（被恶心到了，心情也不会好）。困惑不进心情
+    const pos = Math.min(1, p('happy') + 0.6 * p('relaxed') + 0.7 * p('shy') + 0.8 * p('smug'));
+    const ang = Math.min(1, p('angry') + 0.5 * p('disgusted'));
     const sad = p('sad');
 
     if (turnStart) {

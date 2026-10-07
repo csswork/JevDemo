@@ -65,12 +65,15 @@ export interface JevPayload {
  */
 export const EMOTION_CRITERIA: Record<Emotion, string> = {
   neutral: '平静、认真，或者在想事情，没有明显情绪',
-  happy: '开心、被逗笑、得意',
-  angry: '生气、不满、嫌弃、不耐烦',
+  happy: '开心、被逗笑',
+  angry: '生气、不满、不耐烦',
   sad: '难过、失落、委屈、歉意、同情对方',
   relaxed: '放松、温和、亲切、释然',
   surprised: '意外、吃惊、没想到、有点慌',
   shy: '害羞、不好意思、被夸得难为情、心动',
+  smug: '得意、自豪、小骄傲、炫耀，"我就说吧"',
+  confused: '困惑、疑问、没听懂、拿不准，"诶？什么意思"',
+  disgusted: '嫌弃、无语、受不了、看不上，"咦～"',
 };
 
 const GAZE_CRITERIA: Record<GazeTarget, string> = {
@@ -276,7 +279,8 @@ function derivePosture(probs: Record<string, number>, intensity: number): Postur
   const { dominant } = blendOf(probs);
   if (dominant === 'sad') return 'idle_low';
   if (dominant === 'angry' || (dominant === 'surprised' && intensity > 0.6)) return 'idle_alert';
-  if ((dominant === 'happy' || dominant === 'surprised') && intensity > 0.45) return 'idle_cheerful';
+  if (dominant === 'disgusted' && intensity > 0.45) return 'idle_alert';
+  if ((dominant === 'happy' || dominant === 'surprised' || dominant === 'smug') && intensity > 0.45) return 'idle_cheerful';
   return 'idle_neutral';
 }
 
