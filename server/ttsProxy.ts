@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { loadEnv } from 'vite';
+import { MINIMAX_VOICES, synthesizeMiniMax, type MiniMaxConfig } from './minimaxTts.ts';
 import { detectBase, lastDetectError, QWEN_VOICES, synthesize, type QwenConfig, type VoiceMeta } from './qwenTts.ts';
 
 /**
@@ -96,6 +97,7 @@ export function ttsProxy(): Plugin {
   let autostart = true;
   let backend: 'qwen' | 'local' = 'local';
   let qwen: QwenConfig | null = null;
+  let minimax: MiniMaxConfig | null = null;
   let root = process.cwd();
   /** 传给 Python 进程的配置。.env.local 里的值 Vite 不会放进 process.env，得显式传 */
   let childEnv: Record<string, string> = {};
@@ -120,6 +122,12 @@ export function ttsProxy(): Plugin {
             defaultVoice: (env.TTS_SPEAKER || 'Vivian').trim(),
           }
         : null;
+      // MiniMax 仅增加可选音色，不参与默认后端和默认音色的选择。
+      const minimaxKey = (env.MINIMAX_API_KEY || '').trim();
+      minimax = minimaxKey ? {
+        apiKey: minimaxKey,
+        baseUrl: (env.MINIMAX_BASE_URL || 'https://api.minimax.cn').trim(),
+      } : null;
       childEnv = Object.fromEntries(
         ['TTS_SPEAKER', 'TTS_MODEL', 'TTS_DESIGN_MODEL'].filter((k) => env[k]?.trim()).map((k) => [k, env[k].trim()]),
       );
@@ -191,7 +199,12 @@ export function ttsProxy(): Plugin {
               const chunks: Buffer[] = [];
               for await (const c of req) chunks.push(c as Buffer);
               const body = Buffer.concat(chunks);
-              if (backend === 'qwen') return await qwenSynth(JSON.parse(body.toString() || '{}'), res);
+              const params = JSON.parse(body.toString() || '{}');
+              if (typeof params.speaker === 'string' && params.speaker.startsWith('minimax:')) {
+                if (!minimax) throw new Error('没配 MINIMAX_API_KEY');
+                return await remoteSynth(params, res);
+              }
+              if (backend === 'qwen') return await remoteSynth(params, res);
               return await localSynth(body, res);
             }
             next();
@@ -212,7 +225,7 @@ export function ttsProxy(): Plugin {
           ready: !!base,
           backend,
           speaker: qwen.defaultVoice,
-          voices: QWEN_VOICES,
+          voices: [...QWEN_VOICES, ...(minimax ? MINIMAX_VOICES : [])],
           error: base ? null : lastDetectError(),
         };
       }
@@ -236,6 +249,7 @@ export function ttsProxy(): Plugin {
             disabled: !h.designed_ready,
           })),
         ];
+        voices.push(...(minimax ? MINIMAX_VOICES : []));
         return {
           ready: h.ready,
           backend,
@@ -247,35 +261,37 @@ export function ttsProxy(): Plugin {
         };
       }
 
-      async function qwenSynth(
+      async function remoteSynth(
         body: { text?: string; instruct?: string | null; speaker?: string; stream?: boolean },
         res: ServerResponse,
       ) {
         const text = String(body.text || '').trim();
         if (!text) throw new Error('缺少 text');
+        const useMiniMax = body.speaker?.startsWith('minimax:') ?? false;
+        if (!useMiniMax && !qwen) throw new Error('没配 DASHSCOPE_API_KEY');
+        const label = useMiniMax ? 'MiniMax Turbo' : '千问';
         const t = Date.now();
         let first = 0;
         const pcm: Buffer[] = [];
         let headerSent = false;
-        const { sampleRate } = await synthesize(
-          qwen!,
-          { text, voice: body.speaker, instructions: body.instruct },
-          (bytes) => {
-            const data = stripWavHeader(bytes);
-            if (!first) first = Date.now() - t;
-            if (body.stream) {
-              // 流式：第一块到了才写响应头（采样率要在这之前确定，千问固定 24kHz）
-              if (!headerSent) {
-                res.statusCode = 200;
-                res.setHeader('content-type', 'application/octet-stream');
-                res.setHeader('x-sample-rate', '24000');
-                headerSent = true;
-              }
-              res.write(data);
-            } else pcm.push(data);
-          },
-          AbortSignal.timeout(20000),
-        );
+        const onAudio = (bytes: Buffer) => {
+          const data = stripWavHeader(bytes);
+          if (!first) first = Date.now() - t;
+          if (body.stream) {
+            // 两个远程后端都使用 24kHz PCM，第一块到了才写响应头。
+            if (!headerSent) {
+              res.statusCode = 200;
+              res.setHeader('content-type', 'application/octet-stream');
+              res.setHeader('x-sample-rate', '24000');
+              headerSent = true;
+            }
+            res.write(data);
+          } else pcm.push(data);
+        };
+        const signal = AbortSignal.timeout(20000);
+        const { sampleRate } = useMiniMax
+          ? await synthesizeMiniMax(minimax!, { text, voice: body.speaker!, instructions: body.instruct }, onAudio, signal)
+          : await synthesize(qwen!, { text, voice: body.speaker, instructions: body.instruct }, onAudio, signal);
         const who = body.speaker || qwen!.defaultVoice;
         if (body.stream) {
           if (!headerSent) {
@@ -284,7 +300,7 @@ export function ttsProxy(): Plugin {
             res.setHeader('x-sample-rate', String(sampleRate));
           }
           res.end();
-          log.info(`[tts] 千问 ${((Date.now() - t) / 1000).toFixed(2)}s 首包 ${(first / 1000).toFixed(2)}s（流式） [${who}] 「${text}」 ${body.instruct ?? ''}`);
+          log.info(`[tts] ${label} ${((Date.now() - t) / 1000).toFixed(2)}s 首包 ${(first / 1000).toFixed(2)}s（流式） [${who}] 「${text}」 ${body.instruct ?? ''}`);
           return;
         }
         const all = Buffer.concat(pcm);
@@ -294,7 +310,7 @@ export function ttsProxy(): Plugin {
         res.setHeader('x-audio-seconds', seconds.toFixed(3));
         res.setHeader('x-gen-seconds', ((Date.now() - t) / 1000).toFixed(3));
         res.end(wavOf(all, sampleRate));
-        log.info(`[tts] 千问 ${((Date.now() - t) / 1000).toFixed(2)}s → ${seconds.toFixed(2)}s [${who}] 「${text}」 ${body.instruct ?? ''}`);
+        log.info(`[tts] ${label} ${((Date.now() - t) / 1000).toFixed(2)}s → ${seconds.toFixed(2)}s [${who}] 「${text}」 ${body.instruct ?? ''}`);
       }
 
       async function localSynth(body: Buffer, res: ServerResponse) {

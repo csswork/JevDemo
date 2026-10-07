@@ -939,7 +939,7 @@ export default function App() {
       .filter((v) => v.group === g)
       .map((v) => ({ id: v.id, label: v.name, desc: v.desc, group: g, disabled: v.disabled })),
   );
-  const voiceBackend = voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS';
+  const voiceBackend = activeSpeaker.startsWith('minimax:') ? 'MiniMax Turbo' : voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS';
 
   return (
     <div className={`app ui-${uiPhase}${backdrop === 'street' ? ' has-time' : ''}`}>

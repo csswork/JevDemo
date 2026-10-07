@@ -963,6 +963,21 @@ idle_loop 只有手腕、没有手指轨道，VRM 的静止姿势又是 T-pose �
 下面几节讲的是本地后端；"声音的语气和表情用同一个判断""时间轴跟着真实音频走"两种后端都一样。
 试过的方案对比、每种语气的试听见 `tts/bench.py` / `tts/listen.py`（生成 `tts/out/listen.html`）。
 
+### MiniMax Turbo（可选）
+
+在 `.env.local` 中添加 `MINIMAX_API_KEY`（MiniMax 开放平台 key），重启开发服务后，
+音色下拉框会追加「MiniMax 女声」分组，共 19 种普通话女性音色：少女、甜美、俏皮萌妹、
+温暖少女、清脆少女、柔和少女、淡雅学姐、甜心小玲、嗲嗲学妹、温柔学姐、温暖闺蜜、
+甜美女声、御姐、妩媚御姐、傲娇御姐、嚣张小姐、成熟女性、阅历姐姐、新闻女声。
+挑选依据是[官方系统音色列表](https://platform.minimax.cn/docs/faq/system-voice-id)，尚未逐个实听。
+选择其中一个音色时使用 `speech-2.8-turbo`；选择原有音色仍使用原有后端。
+只添加 key 不会改变默认后端、千问模型、角色默认音色或现有配置，不需要改 `TTS_BACKEND`。
+
+默认接口为国内 `https://api.minimax.cn`；海外开放平台 key 需另外设置
+`MINIMAX_BASE_URL=https://api.minimax.io`。key 仅由服务端读取，不进入浏览器。
+合成走 HTTP SSE，将 hex 音频转换成现有播放接口的 24kHz 单声道 PCM16；非流式请求包装为 WAV。
+Jev 的语气描述映射为最先出现的基本情绪，混合情绪和强度只做近似，不支持千问的完整自然语言指令。
+
 ### 本地后端：安装（一次）
 
 ```bash
