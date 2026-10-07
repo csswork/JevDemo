@@ -38,7 +38,9 @@ const RECIPES: Record<Feeling, Partial<Record<Shape, number>>> = {
   happy: { brow_happy: 0.6, eye_smile: 0.6, mouth_smile: 0.75, mouth_grin: 0.3 },
   relaxed: { brow_relaxed: 0.5, eye_smile: 0.28, mouth_smile: 0.6 },
   sad: { brow_sad: 0.95, eye_sad: 0.7, mouth_frown: 0.5, mouth_sad: 0.25 },
-  angry: { brow_angry: 0.9, eye_angry: 0.65, mouth_pout: 0.65 },
+  // 生气：眉头压到底、往中间挤；上眼皮压下来瞪人；嘴抿紧、嘴角往下（撅 + 抿）。
+  // 再加上低一点头、从眉毛底下瞪过来（character.ts），脸上气红（manpu.ts）
+  angry: { brow_angry: 1, brow_sad: 0.15, eye_angry: 0.85, mouth_pout: 0.5, mouth_frown: 0.45 },
   surprised: { brow_surprised: 1, eye_wide: 0.8, mouth_o: 0.45 },
   // 害羞：眉头微微皱起（困り眉）、眼睑往下收一点、半眯的笑眼、抿着嘴笑 —— 不张嘴。
   // 脸红不在脸型里，由漫符层（manpu.ts）画
@@ -46,10 +48,12 @@ const RECIPES: Record<Feeling, Partial<Record<Shape, number>>> = {
   // 得意（ドヤ顔）：眼睛眯成一半（笑眼 + 上眼皮压下来）、闭着嘴笑得很满。标志是漫符层的鼻息。
   // 只用笑眼会像开心，只压眼皮会像生气：两个各一半才是"哼哼"的那种眯
   smug: { brow_relaxed: 0.5, eye_smile: 0.5, eye_angry: 0.45, mouth_smile: 0.9 },
-  // 困惑：眉头往上皱（困り眉）、眼睛微微睁大、嘴微张抿着。标志是头边的 ？
-  confused: { brow_sad: 0.55, brow_surprised: 0.2, eye_wide: 0.2, mouth_frown: 0.35, mouth_o: 0.12 },
-  // 嫌弃（ジト目）：眉压低、眼皮压成一条缝、嘴角往下撇。标志是脸上一片发青的竖线
-  disgusted: { brow_angry: 0.55, eye_angry: 0.7, eye_sad: 0.15, mouth_frown: 0.6, mouth_sad: 0.2 },
+  // 困惑：皱眉（眉头往中间、往上挤）、眼睛照常（睁大就成了惊讶）、嘴微微张开一个小口。
+  // 标志是头边的 ？，再加上微微歪头（character.ts）
+  confused: { brow_sad: 0.6, brow_angry: 0.25, eye_sad: 0.12, mouth_o: 0.32 },
+  // 嫌弃（ジト目）：眉头狠狠皱起来（往下压 + 往中间挤）、眼皮压下来半眯着、嘴角往下撇、微微撅着。
+  // 再加上头扭开一点、眼睛斜着瞟回来（character.ts），标志是眼睛之间几道发青的细竖线
+  disgusted: { brow_angry: 0.65, brow_sad: 0.25, eye_angry: 0.85, eye_sad: 0.25, mouth_frown: 0.5, mouth_pout: 0.3 },
 };
 
 /**
@@ -93,7 +97,7 @@ const ACCENTS: Record<Feeling, Partial<Record<Shape, number>>> = {
   shy: { eye_smile: 0.6, brow_sad: 0.5 },
   relaxed: { eye_smile: 0.4, mouth_smile: 0.4 },
   smug: { eye_angry: 0.5, mouth_smile: 0.6 },
-  confused: { brow_sad: 0.5, eye_wide: 0.45 },
+  confused: { brow_sad: 0.5, brow_angry: 0.3 },
   disgusted: { eye_angry: 0.6, brow_angry: 0.5, mouth_frown: 0.5 },
 };
 const ACCENT_GAIN = 0.45;
@@ -176,7 +180,7 @@ const MICRO: Record<Emotion, Array<Partial<Record<Shape, number>>>> = {
   surprised: [{ eye_wide: 0.6 }, { mouth_o: 0.3 }],
   shy: [{ eye_smile: 0.4 }, { mouth_smile: 0.5 }, { brow_sad: 0.4 }],
   smug: [{ mouth_smile: 0.5 }, { eye_angry: 0.4 }, { brow_relaxed: 0.5 }],
-  confused: [{ brow_sad: 0.5 }, { eye_wide: 0.4 }, { mouth_frown: 0.4 }],
+  confused: [{ brow_sad: 0.5 }, { brow_angry: 0.3 }, { mouth_o: 0.25 }],
   disgusted: [{ eye_angry: 0.5 }, { mouth_frown: 0.5 }, { brow_angry: 0.4 }],
 };
 
@@ -202,10 +206,10 @@ const FALLBACK: Record<Emotion, Emotion[]> = {
   surprised: ['happy'],
   // 模型没有害羞槽（VRM 标准里就没有）：退回放松（温和的笑，不会像 happy 那样把眼睛笑闭）
   shy: ['relaxed', 'happy'],
-  // 下面三个 VRM 标准里也没有：得意退回开心（ceiling 压着，眼睛不笑闭），困惑退回惊讶（压得很低，只剩一点睁眼），
-  // 嫌弃退回生气
+  // 下面三个 VRM 标准里也没有：得意退回开心（ceiling 压着，眼睛不笑闭），困惑退回难过（压得很低，只剩皱眉 ——
+  // 退回惊讶的话就和惊讶一模一样），嫌弃退回生气
   smug: ['happy', 'relaxed'],
-  confused: ['surprised'],
+  confused: ['sad'],
   disgusted: ['angry'],
 };
 
@@ -943,7 +947,7 @@ export class ExpressionLayer {
         surprised: ['happy', 'angry'],
         shy: ['happy', 'relaxed'],
         smug: ['happy', 'relaxed'],
-        confused: ['surprised', 'sad'],
+        confused: ['sad', 'relaxed'],
         disgusted: ['angry', 'sad'],
       };
       const pool = adjacent[this.dominant];

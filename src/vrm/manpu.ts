@@ -11,7 +11,7 @@ import { damp } from './pose';
  * 这些符号的意思是固定的，不用看清脸也读得出来。
  *
  *   贴在脸上（跟着头走，被头发挡住时照样被挡）：
- *     脸红      害羞（Jev 的 shy；开心 + 惊讶的混合也会淡淡地红一点）、很强的开心
+ *     脸红      害羞（Jev 的 shy；开心 + 惊讶的混合也会淡淡地红一点）、很强的开心、气得很厉害
  *     阴影竖线  很强的难过：额头到眼睛那一片罩一层往下淡的竖线
  *     眼泪      很强的难过：从下眼角沿着脸颊往下滑
  *   挂在头边（永远画在最上面，不被头发挡）：
@@ -22,7 +22,7 @@ import { damp } from './pose';
  *     ？        困惑，蹦出来之后挂着轻轻晃
  *     ✦        得意（ドヤ），头边一闪一闪的四角星（试过鼻息：在 3D 脸上停在嘴角，像沾了牛奶）
  *   贴在脸上：
- *     发青竖线  嫌弃（ドン引き），和难过的阴影竖线同一个位置，颜色偏青
+ *     发青竖线  嫌弃（ドン引き），两眼之间、刘海里面，几道很细的线
  *
  * **情绪是什么、多强全部来自 Jev**：这里只读表情层此刻的语义情绪（weightOf，已经带着峰值回落、
  * 余韵和心情惯性），按阈值换算成符号，不多问 Jev 一个问题。
@@ -259,7 +259,31 @@ const drawLines = (rgb: [number, number, number], line: [number, number, number]
   g.globalCompositeOperation = 'source-over';
 };
 const drawGloom = drawLines([58, 40, 120], [40, 24, 96]);
-const drawShade = drawLines([40, 110, 120], [20, 80, 96]);
+/**
+ * 嫌弃（ドン引き）的发青细竖线：一排很细、很密的线，上浓下淡，没有底色（底色一铺就像脸脏了）。
+ * 只画在两眼之间、鼻梁上面那一小片，刘海挡住的部分就挡住
+ */
+const drawShade = (g: CanvasRenderingContext2D) => {
+  const n = 21;
+  for (let i = 0; i < n; i++) {
+    const x = 30 + (i * (256 - 60)) / (n - 1);
+    // 中间的长、两边的短
+    const mid = 1 - Math.abs(i - (n - 1) / 2) / ((n - 1) / 2);
+    const y0 = 6 + ((i * 29) % 22);
+    const len = 110 + 120 * mid + ((i * 41) % 30);
+    const stroke = g.createLinearGradient(0, y0, 0, y0 + len);
+    stroke.addColorStop(0, 'rgba(40,70,160,0)');
+    stroke.addColorStop(0.1, 'rgba(40,70,160,1)');
+    stroke.addColorStop(0.7, 'rgba(40,70,160,0.6)');
+    stroke.addColorStop(1, 'rgba(40,70,160,0)');
+    g.strokeStyle = stroke;
+    g.lineWidth = i % 2 ? 3 : 4;
+    g.beginPath();
+    g.moveTo(x, y0);
+    g.lineTo(x, y0 + len);
+    g.stroke();
+  }
+};
 
 /** ？：蓝色、白描边，略带一点倾斜 */
 const drawQuestion = (g: CanvasRenderingContext2D) => {
@@ -493,7 +517,9 @@ export class ManpuLayer {
       0.6 * smooth(Math.min(happy, surprised), 0.1, 0.32),
       0.55 * smooth(happy, 0.6, 0.9),
     );
-    this.blushW = damp(this.blushW, on * flush * (1 - smooth(negative, 0.3, 0.6)), 3, dt);
+    // 负面情绪压掉脸红；但气得很厉害时脸是气红的（单独算，不被压）
+    const angerFlush = 0.6 * smooth(angry, 0.5, 0.85);
+    this.blushW = damp(this.blushW, on * Math.max(flush * (1 - smooth(negative, 0.3, 0.6)), angerFlush), 3, dt);
     const M = this.mood;
     this.gloomW = damp(this.gloomW, on * Math.max(smooth(sad, 0.45, 0.8), 0.55 * smooth(M.gloom, 0.3, 0.8)), 2, dt);
     const veinGoal = on * Math.max(smooth(angry, 0.3, 0.65), 0.75 * smooth(M.anger, 0.35, 0.8));
@@ -1010,9 +1036,11 @@ export class ManpuLayer {
     // 阴影竖线：眼睛到额头，压在刘海前面
     this.gloom = card(unit * 3.6, unit * 1.9, T.gloom, 11);
     this.gloom.position.copy(toLocal(at(0, unit * 0.45, front + 0.004)));
-    // 嫌弃的竖线要垂到眼睛上（ドン引き 是整张脸"刷"一下发青），比难过的那片更长、更靠下
-    this.shade = card(unit * 3.4, unit * 2.6, T.shade, 11);
-    this.shade.position.copy(toLocal(at(0, unit * 0.05, front + 0.004)));
+    // 嫌弃的竖线画在脸上、刘海**里面**（贴着脸的一片，和脸红一样被头发挡住）：两眼之间、鼻梁上面那一小片，
+    // 从刘海底下垂到眼睛中间。挂在刘海前面那一版像挑染；铺满额头又像脸脏了
+    // 下沿到眼睛下面一点（鼻梁两侧）：刘海长的模型（夏夏、梅娜贝尔）只有这一截露在外面。
+    // 竖着只分一格：每根线是一条直线（分很多格时线会顺着额头、眼窝的起伏弯）；横着分几格，两侧还是贴着脸往后收
+    this.shade = patch(at(0, unit * 0.1, 0), unit * 3.0, unit * 1.6, 0.003, T.shade, 6, 1);
     // 眼泪：下眼角偏外 → 脸颊，两侧各一条路径
     for (const s of [1, -1]) {
       const path: THREE.Vector3[] = [];

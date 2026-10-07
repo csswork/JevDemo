@@ -54,6 +54,14 @@ export class Character {
   motionsEnabled = true;
   private hipsRest = new THREE.Vector3();
   private conversation: ConversationState = 'idle';
+  /** 困惑时歪头的角度（弧度，平滑过的） */
+  private tilt = 0;
+  /** 生气时低头瞪人的程度（0..1，平滑过的） */
+  private glare = 0;
+  /** 嫌弃时把头扭开的程度（0..1，平滑过的） */
+  private turnAway = 0;
+  /** VRM 0.x 的骨骼局部轴是反的（和 idle 层一样） */
+  private axisFlip = 1;
   /** 当前的待机姿态是心情摆的（不是 Jev 给这一句选的） */
   private moodPosed = false;
 
@@ -90,6 +98,7 @@ export class Character {
     });
 
     const metaVersion = vrmMetaVersion(vrm);
+    this.axisFlip = metaVersion === '0' ? -1 : 1;
     this.idle.setVrmVersion(metaVersion);
     this.hands.setVrmVersion(metaVersion);
     this.gaze.setVrmVersion(metaVersion);
@@ -255,6 +264,36 @@ export class Character {
       this.hands.setVoice(this.lipsync.openness);
       this.hands.update(dt, this.acc);
       this.gaze.update(dt, vrm, this.acc);
+      // 困惑：微微歪头（最多约 9°，头和脖子分着歪），跟着表情层的困惑强度走。上一帧的强度，差一帧无所谓
+      const confused = this.expression.weightOf('confused') / Math.max(0.05, this.expression.ceiling.confused ?? 1);
+      const tiltGoal = THREE.MathUtils.degToRad(9) * THREE.MathUtils.smoothstep(confused, 0.2, 0.65);
+      this.tilt += (tiltGoal - this.tilt) * (1 - Math.exp(-(tiltGoal > this.tilt ? 5 : 2.5) * dt));
+      if (this.tilt > 1e-4) {
+        this.acc.add('neck', 0, 0, -0.4 * this.tilt * this.axisFlip);
+        this.acc.add('head', 0, 0, -0.6 * this.tilt * this.axisFlip);
+      }
+      // 生气：低一点头（收下巴），眼睛照样盯着对方 —— 从眉毛底下瞪过来
+      const angry = this.expression.weightOf('angry') / Math.max(0.05, this.expression.ceiling.angry ?? 1);
+      const glareGoal = THREE.MathUtils.smoothstep(angry, 0.35, 0.75);
+      this.glare += (glareGoal - this.glare) * (1 - Math.exp(-(glareGoal > this.glare ? 4 : 2) * dt));
+      if (this.glare > 1e-3) {
+        this.acc.add('neck', THREE.MathUtils.degToRad(2.5) * this.glare * this.axisFlip, 0, 0);
+        this.acc.add('head', THREE.MathUtils.degToRad(4) * this.glare * this.axisFlip, 0, 0);
+      }
+      // 嫌弃：头扭开一点、低一点、往另一边歪一点；眼睛还由视线层盯着对方 —— 合起来就是斜着瞟过来的白眼
+      const disgusted = this.expression.weightOf('disgusted') / Math.max(0.05, this.expression.ceiling.disgusted ?? 1);
+      const awayGoal = THREE.MathUtils.smoothstep(disgusted, 0.3, 0.7);
+      this.turnAway += (awayGoal - this.turnAway) * (1 - Math.exp(-(awayGoal > this.turnAway ? 4 : 2) * dt));
+      if (this.turnAway > 1e-3) {
+        const k = this.turnAway;
+        this.acc.add('neck', THREE.MathUtils.degToRad(2) * k * this.axisFlip, THREE.MathUtils.degToRad(7) * k, 0);
+        this.acc.add(
+          'head',
+          THREE.MathUtils.degToRad(3) * k * this.axisFlip,
+          THREE.MathUtils.degToRad(9) * k,
+          THREE.MathUtils.degToRad(4) * k * this.axisFlip,
+        );
+      }
       this.acc.flush(vrm);
       // 上层动作（转圈、深蹲……）自己会动脚，按它的权重让出来；动捕待机淡入淡出时重新落脚
       const bw = this.motion.baseWeight;
