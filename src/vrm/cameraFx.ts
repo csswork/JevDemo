@@ -7,6 +7,7 @@ import { smoothstep } from './pose';
  *   推镜 —— 情绪到顶时镜头轻轻推近（视角收窄几度），回落时慢慢拉回
  *   一震 —— 惊讶的那一下画面短促地抖一抖（0.35s 衰减完）
  *   偏冷 —— 难过时画面褪一点色、蒙一层冷蓝，四周压暗
+ *   回应 —— 用户发完消息、倾听反应到了：镜头轻轻往前一点再回来（nudge）
  *
  * **不挪主相机**：视线层把主相机的位置当成"对话的人"站的地方，鼠标转镜也绑在它上面。
  * 这里只在渲染那一刻复制一台替身相机，收窄视角、叠上抖动，画完就扔。
@@ -35,6 +36,11 @@ const SHAKE_DEG = 0.55;
 const SHAKE_DECAY = 7;
 const SHAKE_HZ = 17;
 
+/** 回应的那一下：最多收窄多少、推上去 / 回来各用多久 */
+const BEAT_MAX = 0.045;
+const BEAT_IN = 0.25;
+const BEAT_OUT = 0.65;
+
 /** 偏冷：难过强度从多少开始、多少时满 */
 const COLD_FROM = 0.3;
 const COLD_SPAN = 0.45;
@@ -46,6 +52,9 @@ export class CameraFx {
   private push = 0;
   private trauma = 0;
   private cold = 0;
+  /** 回应的那一下（nudge）：0..1，快起慢落 */
+  private beat = 0;
+  private beatT = Infinity;
   private t = 0;
   private readonly fxCam = new THREE.PerspectiveCamera();
   private readonly overlay: HTMLDivElement | null = null;
@@ -72,13 +81,24 @@ export class CameraFx {
     this.overlay = el;
   }
 
+  /**
+   * 回应的那一下：镜头轻轻往前一点再回来（约 0.9s）。用户发完消息、倾听反应到了的时候用 ——
+   * 画面"点了一下头"，比一直推着更像"我听到了"
+   */
+  nudge(strength: number) {
+    if (!this.enabled) return;
+    this.beat = Math.min(1, Math.max(this.beat, 0.4 + 0.6 * strength));
+    this.beatT = 0;
+  }
+
   /** 当前的状态（调试面板 / 测试用） */
   get state() {
-    return { push: this.push, shake: this.trauma, cold: this.cold };
+    return { push: this.push, shake: this.trauma, cold: this.cold, beat: this.beatAmount() };
   }
 
   update(dt: number, s: FxSignals) {
     this.t += dt;
+    this.beatT += dt;
     const on = this.enabled;
     const L = s.levels;
 
@@ -103,6 +123,13 @@ export class CameraFx {
     this.applyGrade();
   }
 
+  /** 回应那一下此刻的幅度：0.25s 推上去，0.65s 回来 */
+  private beatAmount() {
+    const t = this.beatT;
+    if (t >= BEAT_IN + BEAT_OUT) return 0;
+    return this.beat * (t < BEAT_IN ? smoothstep(t / BEAT_IN) : smoothstep(1 - (t - BEAT_IN) / BEAT_OUT));
+  }
+
   /** 每帧刷 CSS 太浪费：变化超过 0.5% 才写 */
   private applyGrade() {
     const c = this.cold < 0.003 ? 0 : this.cold;
@@ -117,10 +144,11 @@ export class CameraFx {
    */
   camera(base: THREE.Camera): THREE.Camera {
     if (!(base instanceof THREE.PerspectiveCamera)) return base;
-    if (this.push < 1e-3 && this.trauma < 1e-3) return base;
+    const beat = this.beatAmount();
+    if (this.push < 1e-3 && this.trauma < 1e-3 && beat < 1e-3) return base;
     const cam = this.fxCam;
     cam.copy(base);
-    cam.fov = base.fov * (1 - PUSH_MAX * this.push);
+    cam.fov = base.fov * (1 - PUSH_MAX * this.push) * (1 - BEAT_MAX * beat);
     if (this.trauma > 1e-3) {
       // 几组不成倍数的正弦叠在一起当噪声：不重复、也不需要随机数
       const k = THREE.MathUtils.degToRad(SHAKE_DEG) * this.trauma * this.trauma;
@@ -138,6 +166,7 @@ export class CameraFx {
     this.push = 0;
     this.trauma = 0;
     this.cold = 0;
+    this.beatT = Infinity;
     this.applyGrade();
   }
 

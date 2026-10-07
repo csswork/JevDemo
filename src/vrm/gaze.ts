@@ -95,6 +95,18 @@ export class GazeLayer {
     this.thinkAway = !this.thinkAway;
   }
 
+  /**
+   * 想事情的中途给一个回应（倾听反应到了）：视线先落到 target 上停 hold 秒，再接着"想"。
+   * 不打断想事情的模式：停完之后照常移开、瞟回来
+   */
+  acknowledge(target: GazeTarget, hold: number) {
+    this.look(target);
+    if (this.thinking) {
+      this.thinkTimer = hold;
+      this.thinkAway = false;
+    }
+  }
+
   look(target: GazeTarget, hold?: number) {
     this.mode = target;
     this.desired.copy(this.cameraPos).add(OFFSETS[target] ?? OFFSETS.camera);

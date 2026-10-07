@@ -9,7 +9,7 @@ import { IDLE_BASE, MotionLayer, motionTalk } from './motion';
 import { GestureLayer } from './gestures';
 import { FootLock } from './feet';
 import { ManpuLayer } from './manpu';
-import { isProceduralMotion, type MotionId } from '../act/schema';
+import { isProceduralMotion, type Emotion, type MotionId } from '../act/schema';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
 import { LipSyncLayer } from './lipsync';
@@ -265,6 +265,28 @@ export class Character {
     this.lipsync.update(dt, vrm);
 
     vrm.update(dt);
+  }
+
+  /**
+   * 用户发完消息、还在"想"的时候，Jev 的倾听反应到了：先用视线和漫符回应一下（表情由调用方设）。
+   *   视线：多数情绪是转回来看着你（"听到了"）；害羞、难过是垂下眼
+   *   漫符：反应偏温和时自动的符号可能还没到阈值，这里补一个一次性的 ♪ / ！，保证有个看得见的回应
+   * 返回最强的那个情绪和强度（镜头的那一下用）
+   */
+  acknowledge(mix: Partial<Record<Emotion, number>>): { emo: Emotion; weight: number } | null {
+    let top: { emo: Emotion; weight: number } | null = null;
+    for (const [emo, w] of Object.entries(mix) as Array<[Emotion, number]>) {
+      if (emo !== 'neutral' && w > (top?.weight ?? 0)) top = { emo, weight: w };
+    }
+    if (!top || top.weight < 0.25) {
+      this.gaze.acknowledge('camera', 0.9);
+      return top;
+    }
+    const down = top.emo === 'shy' || top.emo === 'sad';
+    this.gaze.acknowledge(down ? 'down' : 'camera', down ? 1.1 : 1.3);
+    if (top.emo === 'happy' || top.emo === 'relaxed') this.manpu.trigger('note');
+    else if (top.emo === 'surprised' && top.weight < 0.45) this.manpu.trigger('exclaim');
+    return top;
   }
 
   /**

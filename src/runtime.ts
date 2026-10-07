@@ -468,7 +468,14 @@ export class Runtime {
   react(mix: Array<[Emotion, number]>) {
     const ch = this.character;
     if (!ch || this.judged) return;
-    ch.expression.setBlend(Object.fromEntries(mix), 0.3);
+    const m = Object.fromEntries(mix);
+    // 还在"想"（没开口）：除了表情，视线、漫符、镜头一起给个回应 —— 用户发完消息到她开口之间
+    // 有 1~3 秒，这是第一眼能看到的反馈。已经开口了就只换表情，别的交给台词
+    const thinking = ch.conversationState === 'thinking';
+    ch.expression.setBlend(m, 0.3);
+    if (!thinking) return;
+    const top = ch.acknowledge(m);
+    if (top && top.weight >= 0.25) this.stage?.fx.nudge(top.weight);
   }
 
   /** 整句判断是否已经到了（到了之后倾听反应作废） */
