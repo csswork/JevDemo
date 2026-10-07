@@ -1,5 +1,5 @@
 import { splitSegments, type Segment } from '../act/segments';
-import { DEFAULT_TONE } from '../act/voiceStyle';
+import { DEFAULT_TONE, type VoiceStyle } from '../act/voiceStyle';
 
 /**
  * 本地语音（Qwen3-TTS · Vivian）的一次说话。
@@ -88,6 +88,9 @@ export class VoiceSession {
   private buf = new Float32Array(1024);
   private tones: Array<string | null>;
   private fallback = DEFAULT_TONE;
+  /** 同一个判断的结构化版本（MiniMax 用；千问只看 tones 的中文指令） */
+  private styles: Array<VoiceStyle | null>;
+  private fallbackStyle: VoiceStyle | null = null;
   private judged: Promise<void>;
   private resolveJudged: () => void = () => {};
   private placed: Placed[] = [];
@@ -116,6 +119,7 @@ export class VoiceSession {
     this.speaker = speaker;
     this.segments = splitSegments(text);
     this.tones = this.segments.map(() => null);
+    this.styles = this.segments.map(() => null);
     this.judged = new Promise((r) => (this.resolveJudged = r));
     this.out = ctx.createGain();
     this.analyser = ctx.createAnalyser();
@@ -125,14 +129,18 @@ export class VoiceSession {
   }
 
   /** 整句判断回来之前用的语气（倾听反应） */
-  setFallbackTone(tone: string) {
+  setFallbackTone(tone: string, style?: VoiceStyle) {
     this.fallback = tone;
+    this.fallbackStyle = style ?? null;
   }
 
   /** Jev 的整句判断到了：每段的语气 */
-  setJudgedTones(tones: string[]) {
+  setJudgedTones(tones: string[], styles?: VoiceStyle[]) {
     tones.forEach((t, i) => {
       if (i < this.tones.length) this.tones[i] = t;
+    });
+    styles?.forEach((st, i) => {
+      if (i < this.styles.length) this.styles[i] = st;
     });
     this.resolveJudged();
   }
@@ -152,6 +160,7 @@ export class VoiceSession {
         body: JSON.stringify({
           text: this.segments[0].text,
           instruct: this.tones[0] ?? this.fallback,
+          style: this.styleAt(0),
           speaker: this.speaker,
           stream: true,
         }),
@@ -346,12 +355,19 @@ export class VoiceSession {
     this.onUpdate?.();
   }
 
+  /** 第 i 段的结构化语气：有整句判断用判断；没有用倾听反应的，但"情绪刚开始"只算第一段（叹气别每段来一次） */
+  private styleAt(i: number): VoiceStyle | null {
+    const own = this.styles[i];
+    if (own) return own;
+    return this.fallbackStyle ? { ...this.fallbackStyle, onset: this.fallbackStyle.onset && i === 0 } : null;
+  }
+
   private async fetchSegment(i: number, timeoutMs = 10000): Promise<AudioBuffer> {
     const seg = this.segments[i];
     const r = await fetch('/api/tts/synth', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text: seg.text, instruct: this.tones[i] ?? this.fallback, speaker: this.speaker }),
+      body: JSON.stringify({ text: seg.text, instruct: this.tones[i] ?? this.fallback, style: this.styleAt(i), speaker: this.speaker }),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!r.ok) throw new Error(`tts ${r.status}`);

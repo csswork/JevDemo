@@ -9,7 +9,7 @@ import type { ActDecider } from './jev/decider';
 import { baselineAct, fallbackAct, type ActScript } from './act/schema';
 import { isTestCommand, parseTestCommand } from './jev/testCommand';
 import { probeVoice, type VoiceSession, type VoiceStatus } from './speech/voice';
-import { DEFAULT_TONE, toneFor } from './act/voiceStyle';
+import { DEFAULT_TONE, styleFor, toneFor, type VoiceStyle } from './act/voiceStyle';
 import type { JevMeta as Meta } from './act/fromJev';
 import { MOTION_CREDIT, motionLabel, motionSource } from './vrm/motion';
 import { isGreeting } from './act/motionRules';
@@ -195,10 +195,27 @@ function segmentTones(meta: Meta | null | undefined): string[] | null {
   return meta.segments.map((s) => toneFor(s.probabilities, intensity));
 }
 
+/** 同一个判断的结构化版本（MiniMax 用）：这一段的主导情绪和上一段不一样才算"情绪刚开始" */
+function segmentStyles(meta: Meta | null | undefined): VoiceStyle[] | undefined {
+  if (!meta?.segments?.length) return undefined;
+  const intensity = (meta.intensity?.score ?? 1) / 2;
+  let prev: string | null = null;
+  return meta.segments.map((s) => {
+    const st = styleFor(s.probabilities, intensity, false);
+    st.onset = st.emotion !== prev;
+    prev = st.emotion;
+    return st;
+  });
+}
+
 /** 倾听反应 → 第一段的语气（整句判断还没回来时用） */
 function reactionTone(meta: Meta): string {
   const r = meta.reaction!;
   return toneFor(r.probabilities, r.intensity / 2);
+}
+function reactionStyle(meta: Meta): VoiceStyle {
+  const r = meta.reaction!;
+  return styleFor(r.probabilities, r.intensity / 2);
 }
 
 /**
@@ -209,12 +226,13 @@ async function voiced(
   speech: string,
   meta: Meta,
   fallback?: string,
+  fallbackStyle?: VoiceStyle,
 ): Promise<VoiceSession | null> {
   const session = rt.createVoice(speech);
   if (!session) return null;
   const tones = segmentTones(meta);
-  if (fallback) session.setFallbackTone(fallback);
-  if (tones) session.setJudgedTones(tones);
+  if (fallback) session.setFallbackTone(fallback, fallbackStyle);
+  if (tones) session.setJudgedTones(tones, segmentStyles(meta));
   return (await session.prepare()) ? session : null;
 }
 
@@ -547,7 +565,12 @@ export default function App() {
         voice.setFallbackTone(DEFAULT_TONE);
         const v = voice;
         if (judgeP) {
-          judgeP.then(() => v.setJudgedTones(segmentTones((decider as HttpDecider).lastMeta) ?? [])).catch(() => v.setJudgedTones([]));
+          judgeP
+            .then(() => {
+              const m = (decider as HttpDecider).lastMeta;
+              v.setJudgedTones(segmentTones(m) ?? [], segmentStyles(m));
+            })
+            .catch(() => v.setJudgedTones([]));
         } else v.setJudgedTones([]);
         if (!(await voice.prepare())) voice = null;
       }
@@ -817,7 +840,9 @@ export default function App() {
         await new Promise((r) => setTimeout(r, 900));
         rt.react(mix);
         const [session] = await Promise.all([
-          useVoice ? voiced(rt, cmd.act.speech, cmd.meta, toneFor(Object.fromEntries(mix), 0.6)) : null,
+          useVoice
+            ? voiced(rt, cmd.act.speech, cmd.meta, toneFor(Object.fromEntries(mix), 0.6), styleFor(Object.fromEntries(mix), 0.6))
+            : null,
           new Promise((r) => setTimeout(r, 1300)),
         ]);
         const compiled = rt.play(cmd.act, { voice: session });
@@ -867,7 +892,7 @@ export default function App() {
             reaction = r.mix;
             reactionMeta = r.meta;
             rt.react(r.mix);
-            if (r.meta.reaction) session?.setFallbackTone(reactionTone(r.meta));
+            if (r.meta.reaction) session?.setFallbackTone(reactionTone(r.meta), reactionStyle(r.meta));
           })
         : Promise.resolve();
       try {
@@ -879,11 +904,12 @@ export default function App() {
           const meta = reactionMeta as JevMeta | null;
           session = rt.createVoice(speech);
           if (session) {
-            session.setFallbackTone(meta?.reaction ? reactionTone(meta) : DEFAULT_TONE);
+            if (meta?.reaction) session.setFallbackTone(reactionTone(meta), reactionStyle(meta));
+            else session.setFallbackTone(DEFAULT_TONE);
             const s = session;
             // 判断失败（降级）也要通知：后面的段不必再等，直接用倾听反应的语气合成
             judgeP
-              .then(() => s.setJudgedTones(segmentTones(decider.lastMeta) ?? []))
+              .then(() => s.setJudgedTones(segmentTones(decider.lastMeta) ?? [], segmentStyles(decider.lastMeta)))
               .catch(() => s.setJudgedTones([]));
             if (!(await session.prepare())) session = null;
           }

@@ -66,3 +66,42 @@ export function toneFor(probs: Record<string, number>, intensity = 0.5): string 
   if (intensity > 0.75) return `用非常${words}的语气说`;
   return `用${words}的语气说`;
 }
+
+/**
+ * 同一个判断的结构化版本，给 MiniMax 用（server/minimaxTts.ts）。
+ *
+ * MiniMax 不认千问那种自然语言语气指令，只有一个 emotion 枚举 + 语速 / 音量 / 音高，
+ * 外加 (sighs) (gasps) 这类语气词标签。以前是服务端从中文语气描述里用正则猜一个情绪，
+ * 强度和混合都丢了；现在直接把 Jev 的分布和强度传过去，由服务端换算。
+ */
+export interface VoiceStyle {
+  /** 主导情绪及其概率 */
+  emotion: Emotion;
+  p: number;
+  /** 次要情绪（概率 ≥ 0.2 才给） */
+  second?: Emotion;
+  p2?: number;
+  /** 整句强度 0..1 */
+  intensity: number;
+  /** 这一段是不是这个情绪刚开始（第一段，或者主导情绪换了）：开口前的叹气、倒吸气只在这时候加 */
+  onset: boolean;
+}
+
+/** Jev 的分布 → 结构化语气。onset 由调用方按段的先后定 */
+export function styleFor(probs: Record<string, number>, intensity = 0.5, onset = true): VoiceStyle {
+  const ranked = (Object.entries(probs) as Array<[Emotion, number]>)
+    .filter(([k]) => k in WORDS)
+    .sort((a, b) => b[1] - a[1]);
+  const [top, second] = ranked;
+  const style: VoiceStyle = {
+    emotion: top?.[0] ?? 'neutral',
+    p: top?.[1] ?? 1,
+    intensity: Math.max(0, Math.min(1, intensity)),
+    onset,
+  };
+  if (second && second[1] >= 0.2) {
+    style.second = second[0];
+    style.p2 = second[1];
+  }
+  return style;
+}

@@ -5,6 +5,7 @@ import type { ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { loadEnv } from 'vite';
 import { MINIMAX_VOICES, synthesizeMiniMax, type MiniMaxConfig } from './minimaxTts.ts';
+import type { VoiceStyle } from '../src/act/voiceStyle.ts';
 import { detectBase, lastDetectError, QWEN_VOICES, synthesize, type QwenConfig, type VoiceMeta } from './qwenTts.ts';
 
 /**
@@ -278,7 +279,7 @@ export function ttsProxy(): Plugin {
       }
 
       async function remoteSynth(
-        body: { text?: string; instruct?: string | null; speaker?: string; stream?: boolean },
+        body: { text?: string; instruct?: string | null; style?: VoiceStyle | null; speaker?: string; stream?: boolean },
         res: ServerResponse,
       ) {
         const text = String(body.text || '').trim();
@@ -306,7 +307,7 @@ export function ttsProxy(): Plugin {
         };
         const signal = AbortSignal.timeout(20000);
         const { sampleRate } = useMiniMax
-          ? await synthesizeMiniMax(minimax!, { text, voice: body.speaker!, instructions: body.instruct }, onAudio, signal)
+          ? await synthesizeMiniMax(minimax!, { text, voice: body.speaker!, instructions: body.instruct, style: body.style }, onAudio, signal)
           : await synthesize(qwen!, { text, voice: body.speaker, instructions: body.instruct }, onAudio, signal);
         const who = body.speaker || qwen!.defaultVoice;
         if (body.stream) {
