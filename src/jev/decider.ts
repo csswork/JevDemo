@@ -1,5 +1,6 @@
 import type { ActScript } from '../act/schema';
 import type { SceneContext } from './scene';
+import type { MoodState } from '../act/mood';
 
 export interface DecideContext {
   /** 最近几轮对话，最新的在最后 */
@@ -11,6 +12,11 @@ export interface DecideContext {
   session?: string;
   /** 此刻在哪、几点了：输入层据此知道周围的环境（见 src/jev/scene.ts、server/scene.ts） */
   scene?: SceneContext;
+  /**
+   * 她此刻的心情（前几轮累积的，见 src/act/mood.ts）：输入层据此写台词 —— 还在生气就别一句话就热情起来。
+   * 只发数值，怎么跟模型说是服务端的事（server/mood.ts）
+   */
+  mood?: MoodState;
 }
 
 /**

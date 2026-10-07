@@ -262,6 +262,8 @@ export class ExpressionLayer {
   private peak: Partial<Record<Feeling, number>> = {};
   /** 最近的"冲过头"，给镜头层（cameraFx.ts）读，见 takeAccents */
   private accentLog: Array<{ emo: Feeling; strength: number; at: number }> = [];
+  /** 跨轮心情留在脸上的那点情绪（act/mood.ts 的 moodFace），不说话时脸回落到这里而不是归零 */
+  private resting: Mix = {};
 
   /** UI 试听用的手动覆盖，优先级最高 */
   private overrides = new Map<string, number>();
@@ -395,6 +397,21 @@ export class ExpressionLayer {
     for (const ch of this.channels.values()) {
       ch.value = 0;
       ch.vel = 0;
+    }
+  }
+
+  /**
+   * 跨轮心情留在脸上的底色（语义强度）。说完之后的余韵不会淡到它下面；
+   * 此刻正闲着（不说话、没在听、没有余韵在走）就直接慢慢换过去
+   */
+  setResting(mix: Mix) {
+    const scaled: Mix = {};
+    for (const [emo, w] of Object.entries(mix) as Array<[Emotion, number]>) {
+      if (w > 0.01) scaled[emo] = Math.min(1, w) * (this.ceiling[emo] ?? 1);
+    }
+    this.resting = scaled;
+    if (!this.speaking && this.state === 'idle' && this.releasePlan.length === 0) {
+      this.pushEntry({ ...scaled }, 2.5, false);
     }
   }
 
@@ -574,6 +591,10 @@ export class ExpressionLayer {
       const mix: Mix = {};
       for (const [emo, w] of Object.entries(base) as Array<[Emotion, number]>) {
         if (w * step.scale > 0.01) mix[emo] = w * step.scale;
+      }
+      // 淡到心情的底色为止
+      for (const [emo, w] of Object.entries(this.resting) as Array<[Emotion, number]>) {
+        if (w > (mix[emo] ?? 0)) mix[emo] = w;
       }
       this.pushEntry(mix, step.fade, false);
     }

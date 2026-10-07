@@ -7,6 +7,7 @@ import { writeSpeech } from './deepseek.ts';
 import { appendChat, loadChat, recentForModel, resetChat, validSession } from './chatStore.ts';
 import { personaOf, personaPrompt } from './personas.ts';
 import { scenePrompt } from './scene.ts';
+import { moodPrompt } from './mood.ts';
 import type { SceneContext } from '../src/jev/scene.ts';
 
 /**
@@ -125,6 +126,8 @@ interface DecideRequest {
   draft?: string;
   /** 此刻在哪、几点了（输入层用，见 server/scene.ts） */
   scene?: SceneContext;
+  /** 她此刻的心情（前几轮累积的，输入层用，见 server/mood.ts） */
+  mood?: unknown;
 }
 
 async function viaPassthrough(cfg: JevConfig, payload: DecideRequest): Promise<ActScript> {
@@ -154,7 +157,8 @@ async function viaPassthrough(cfg: JevConfig, payload: DecideRequest): Promise<A
 async function runSpeech(cfg: JevConfig, payload: DecideRequest): Promise<{ speech: string; scene: string | null }> {
   const session = validSession(payload.session) ? payload.session : null;
   const history = session ? recentForModel(loadChat(session)) : (payload.history ?? []).slice(-8);
-  const scene = scenePrompt(session, payload.scene);
+  // 场景和心情都是"此刻"的状态，合成一段 system prompt（调试面板"她感知到的场景"里也能看到心情这一段）
+  const scene = [scenePrompt(session, payload.scene), moodPrompt(payload.mood)].filter(Boolean).join('\n\n') || null;
   const speech =
     cfg.speechSource === 'deepseek' && cfg.deepseekKey
       ? await writeSpeech(

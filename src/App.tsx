@@ -605,6 +605,8 @@ export default function App() {
     rt.stop();
     setJevMeta(null);
     setJevError(null);
+    // 聊天记录清空了，之前的心情也一起放下
+    rt.resetMood();
     await showChat(session, () => resetChat(session));
   };
 
@@ -819,7 +821,7 @@ export default function App() {
     // 背景音和语音共用同一个 AudioContext，所以不开语音时也要解锁
     if (useVoice || ambient) rt.unlockAudio();
     const history = turns.slice(-6).map(({ role, text }) => ({ role, text }));
-    const ctx = { history, session, scene: sceneNow() };
+    const ctx = { history, session, scene: sceneNow(), mood: rt.moodState };
     // 台词不是服务端写的（规则模板、passthrough）时，由前端把这一轮记进聊天记录
     const record = (reply: string) => {
       if (!chatError) void appendChat(session, [{ role: 'user', text }, { role: 'character', text: reply }]).catch(() => {});
@@ -1299,6 +1301,11 @@ export default function App() {
                   <Track label="视线" value={live.gaze} />
                   <Track label="口型" value={live.speaking ? '说话中' : '闭合'} active={live.speaking} />
                   <Track label="姿态" value={live.posture} />
+                  <Track
+                    label="心情"
+                    value={moodText(live.mood)}
+                    active={Math.max(live.mood.joy, live.mood.anger, live.mood.gloom) >= 0.15}
+                  />
                   <Track label="动作" value={live.motion ? motionLabel(live.motion as MotionId) : '—'} active={!!live.motion} />
                 </div>
               </details>
@@ -1584,6 +1591,20 @@ export default function App() {
       />
     </div>
   );
+}
+
+/** 跨轮心情的一行字（调试面板）：只列明显的 */
+function moodText(m: LiveState['mood']): string {
+  const parts = (
+    [
+      ['开心', m.joy],
+      ['生气', m.anger],
+      ['低落', m.gloom],
+    ] as Array<[string, number]>
+  )
+    .filter(([, v]) => v >= 0.05)
+    .map(([k, v]) => `${k} ${v.toFixed(2)}`);
+  return parts.length ? parts.join('  ') : '平静';
 }
 
 function Track({ label, value, active }: { label: string; value: string; active?: boolean }) {

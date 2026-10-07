@@ -10,6 +10,7 @@ import { GestureLayer } from './gestures';
 import { FootLock } from './feet';
 import { ManpuLayer } from './manpu';
 import { isProceduralMotion, type Emotion, type MotionId } from '../act/schema';
+import { moodArousal, moodFace, moodPosture, type MoodState } from '../act/mood';
 import { GazeLayer } from './gaze';
 import { ExpressionLayer, type ConversationState } from './expressions';
 import { LipSyncLayer } from './lipsync';
@@ -53,6 +54,8 @@ export class Character {
   motionsEnabled = true;
   private hipsRest = new THREE.Vector3();
   private conversation: ConversationState = 'idle';
+  /** 当前的待机姿态是心情摆的（不是 Jev 给这一句选的） */
+  private moodPosed = false;
 
   constructor(cameraPos: THREE.Vector3) {
     this.gaze = new GazeLayer(cameraPos);
@@ -131,6 +134,7 @@ export class Character {
   apply(ev: TimelineEvent) {
     switch (ev.kind) {
       case 'posture':
+        this.moodPosed = false;
         this.idle.setPosture(ev.posture);
         this.hands.setPosture(ev.posture);
         break;
@@ -287,6 +291,25 @@ export class Character {
     if (top.emo === 'happy' || top.emo === 'relaxed') this.manpu.trigger('note');
     else if (top.emo === 'surprised' && top.weight < 0.45) this.manpu.trigger('exclaim');
     return top;
+  }
+
+  /**
+   * 跨轮心情（act/mood.ts）：不说话时脸上的底色、漫符。
+   * settle = 现在是闲着的时候（说完了 / 心情刚变）：顺便把待机姿态和节奏也换成心情的
+   */
+  setMood(m: MoodState, settle: boolean) {
+    this.expression.setResting(moodFace(m));
+    this.manpu.setMood(m);
+    if (!settle || this.conversation === 'speaking') return;
+    const p = moodPosture(m);
+    if (p || this.moodPosed) {
+      // 心情过去了：心情摆出来的姿态回到中性（Jev 给这一句选的姿态不动）
+      this.idle.setPosture(p ?? 'idle_neutral');
+      this.hands.setPosture(p ?? 'idle_neutral');
+      this.moodPosed = !!p;
+    }
+    const a = moodArousal(m);
+    if (a != null) this.setArousal(a);
   }
 
   /**

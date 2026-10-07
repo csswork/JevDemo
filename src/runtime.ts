@@ -13,6 +13,7 @@ import { GESTURES } from './vrm/gestures';
 import { pickChineseVoice, speak, ttsAvailable, type SpeakHandle } from './speech/tts';
 import { VoiceSession } from './speech/voice';
 import { AmbiencePlayer } from './speech/ambience';
+import { Mood, type MoodState } from './act/mood';
 
 const _head = new THREE.Vector3();
 const _side = new THREE.Vector3();
@@ -26,7 +27,11 @@ export interface LiveState {
   expressions: Array<[string, number]>;
   speaking: boolean;
   progress: number;
+  /** 跨轮心情（act/mood.ts） */
+  mood: MoodState;
 }
+
+const nowSec = () => performance.now() / 1000;
 
 /**
  * 把 stage / character / 时间轴 / TTS 串起来的运行时。
@@ -61,6 +66,18 @@ export class Runtime {
   private fpsFrames = 0;
   private fps = 0;
   private stateTimer = 0;
+
+  /**
+   * 跨轮心情（act/mood.ts）。每一轮喂 Jev 的判断：倾听反应（权重 1）+ 整句判断（有倾听反应时 0.4）。
+   * 换角色时清零：心情是这个角色的
+   */
+  readonly mood = new Mood(nowSec());
+  /** 这一轮已经喂过（下一份判断不再做"每轮的自然回落"） */
+  private moodFed = false;
+  /** 这一轮喂过倾听反应（整句判断就只算 0.4） */
+  private moodReacted = false;
+  private moodTimer = 0;
+  private moodShown: MoodState = { joy: 0, anger: 0, gloom: 0 };
 
   /** 系统语音（Web Speech）。本地语音可用时不用它 */
   ttsEnabled = false;
@@ -212,6 +229,7 @@ export class Runtime {
     }
     stage.scene.add(vrm.scene);
     this.character = next;
+    this.resetMood();
     this.frameCharacter(next);
     this.onSpeechText?.('');
     return true;
@@ -437,6 +455,49 @@ export class Runtime {
     if (ev.kind === 'speech_start') this.ambience?.setDucked(true);
     else if (ev.kind === 'speech_end') this.ambience?.setDucked(false);
     this.character?.apply(ev);
+    if (ev.kind === 'speech_end') this.endTurnMood();
+  }
+
+  // ---- 跨轮心情 ----
+
+  /** 当前心情（给输入层的上下文、调试面板） */
+  get moodState(): MoodState {
+    this.mood.decay(nowSec());
+    return this.mood.state;
+  }
+
+  /** 清空心情（换角色、清空聊天记录时） */
+  resetMood() {
+    this.mood.reset(nowSec());
+    this.moodFed = this.moodReacted = false;
+    this.pushMood(true);
+  }
+
+  private feedMood(probs: Partial<Record<Emotion, number>>, weight: number) {
+    this.mood.decay(nowSec());
+    this.mood.feed(probs, weight, !this.moodFed);
+    this.moodFed = true;
+  }
+
+  /** 说完一句：把她这句话的情绪也算进心情，这一轮结束；姿态换成心情的 */
+  private endTurnMood() {
+    const act = this.act;
+    if (act) {
+      const probs: Partial<Record<Emotion, number>> = {};
+      for (const b of act.tracks.expression) {
+        if (b.preset !== 'neutral') probs[b.preset] = Math.max(probs[b.preset] ?? 0, b.weight);
+      }
+      this.feedMood(probs, this.moodReacted ? 0.4 : 1);
+    }
+    this.moodFed = this.moodReacted = false;
+    this.pushMood(true);
+  }
+
+  /** 心情交给角色。settle = 闲着的时候（顺便换待机姿态） */
+  private pushMood(settle: boolean) {
+    const m = this.moodState;
+    this.moodShown = m;
+    this.character?.setMood(m, settle);
   }
 
   // ---- 对话状态 ----
@@ -457,6 +518,7 @@ export class Runtime {
     if (!ch) return;
     // 新的一轮开始了，上一轮的"已判断"作废，这一轮的倾听反应才能上脸
     this.judged = false;
+    this.moodFed = this.moodReacted = false;
     ch.setConversation('thinking');
     ch.expression.cue('boundary');
   }
@@ -473,6 +535,12 @@ export class Runtime {
     // 有 1~3 秒，这是第一眼能看到的反馈。已经开口了就只换表情，别的交给台词
     const thinking = ch.conversationState === 'thinking';
     ch.expression.setBlend(m, 0.3);
+    // 对方说的话让她怎样：心情的主要来源。只算这一轮的第一份倾听反应
+    if (!this.moodReacted) {
+      this.feedMood(m, 1);
+      this.moodReacted = true;
+      this.pushMood(false);
+    }
     if (!thinking) return;
     const top = ch.acknowledge(m);
     if (top && top.weight >= 0.25) this.stage?.fx.nudge(top.weight);
@@ -676,6 +744,16 @@ export class Runtime {
     this.lastTime = now;
 
     this.step(dt);
+    // 心情随时间慢慢回落：隔几秒对一次，变了才交给角色（闲着时姿态也跟着换）
+    this.moodTimer += dt;
+    if (this.moodTimer >= 3) {
+      this.moodTimer = 0;
+      const m = this.moodState;
+      const s = this.moodShown;
+      if (Math.abs(m.joy - s.joy) + Math.abs(m.anger - s.anger) + Math.abs(m.gloom - s.gloom) > 0.03) {
+        this.pushMood(character.conversationState === 'idle');
+      }
+    }
     stage.fx.update(dt, { levels: character.emotionLevels(), accents: character.expression.takeAccents() });
     stage.render();
 
@@ -706,6 +784,7 @@ export class Runtime {
         expressions: character.expression.snapshot(),
         speaking: character.lipsync.isActive,
         progress: this.compiled ? Math.min(1, this.elapsed / this.compiled.duration) : 0,
+        mood: this.moodShown,
       });
     }
   }

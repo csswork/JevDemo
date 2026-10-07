@@ -318,6 +318,14 @@ export class ManpuLayer {
   private sweatAge = Infinity;
   private sweatHold = false;
   private sweatArmed = true;
+  /** 跨轮心情（act/mood.ts）：不说话时也留着符号，说话时符号更勤 */
+  private mood = { joy: 0, anger: 0, gloom: 0 };
+  private nextIdleNote = 6;
+
+  /** 跨轮心情。开心 → 隔一阵冒个 ♪、说话时音符更密；生气 → 💢 一直挂着直到哄好；低落 → 阴影竖线 */
+  setMood(m: { joy: number; anger: number; gloom: number }) {
+    this.mood = { ...m };
+  }
 
   bind(vrm: VRM) {
     this.dispose();
@@ -397,8 +405,9 @@ export class ManpuLayer {
       0.55 * smooth(happy, 0.6, 0.9),
     );
     this.blushW = damp(this.blushW, on * flush * (1 - smooth(negative, 0.3, 0.6)), 3, dt);
-    this.gloomW = damp(this.gloomW, on * smooth(sad, 0.45, 0.8), 2, dt);
-    const veinGoal = on * smooth(angry, 0.3, 0.65);
+    const M = this.mood;
+    this.gloomW = damp(this.gloomW, on * Math.max(smooth(sad, 0.45, 0.8), 0.55 * smooth(M.gloom, 0.3, 0.8)), 2, dt);
+    const veinGoal = on * Math.max(smooth(angry, 0.3, 0.65), 0.75 * smooth(M.anger, 0.35, 0.8));
     if (veinGoal > 0.05 && this.veinW < 0.05) this.veinPop = 0;
     this.veinW = damp(this.veinW, veinGoal, 6, dt);
     this.veinPop += dt;
@@ -441,11 +450,18 @@ export class ManpuLayer {
     // ---- 音符：开心（放松时少一些）----
     const joy = on * Math.max(smooth(happy, 0.42, 0.85), 0.5 * smooth(relaxed, 0.55, 0.9)) * (1 - smooth(negative, 0.2, 0.5));
     // 间隔按此刻的强度算：刚过阈值时放出的第一个音符间隔很长，强度上来之后要能马上跟上
-    const noteGap = THREE.MathUtils.lerp(2.4, 0.8, joy);
+    const noteGap = THREE.MathUtils.lerp(2.4, 0.8, joy) * (1 - 0.35 * M.joy);
     this.nextNote = Math.min(this.nextNote - dt, noteGap);
     if (joy > 0.05 && this.nextNote <= 0) {
       this.spawnNote(joy);
       this.nextNote = noteGap * (0.8 + 0.4 * Math.random());
+    }
+    // 心情好的时候，闲着也隔一阵冒一个
+    const glad = on * smooth(M.joy, 0.3, 0.85) * (1 - smooth(M.anger + M.gloom, 0.2, 0.5));
+    this.nextIdleNote -= dt;
+    if (glad > 0.05 && joy < 0.05 && this.nextIdleNote <= 0) {
+      this.spawnNote(0.4 + 0.4 * glad);
+      this.nextIdleNote = THREE.MathUtils.lerp(10, 4, glad) * (0.8 + 0.4 * Math.random());
     }
     this.updateNotes(dt, a);
 
