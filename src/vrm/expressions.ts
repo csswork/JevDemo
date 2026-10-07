@@ -23,6 +23,8 @@ import { damp, smoothstep } from './pose';
  *      变成一片空白，而是留着大部分笑意、在这句话里慢慢收。只在当前段本身情绪很弱时
  *      起作用，新来的强情绪不会被上一个情绪污染
  *   8. 微表情、眨眼、倾听 / 思考时的神态
+ *   9. 漫画节奏 —— 换情绪的一瞬间先冲过头再落回来（惊讶时眼睛猛地一睁）；情绪很强时放开上限，
+ *      笑眼能闭成 ^^、嘴能张成 O、露出虎牙
  *
  * 模型没有分部位形状时（faceRig 返回 null），退回整脸预设，第 2~4 条随之失效，
  * 其他照常。
@@ -68,6 +70,50 @@ const SHAPE_CAP: Partial<Record<Shape, number>> = {
 };
 const EYE_SMILE_CAP_SPEAKING = 0.5;
 const PART_CAP = 1.15;
+
+/**
+ * 漫画节奏 ①：冲过头再回落（accent）。
+ *
+ * 换主情绪（或同一个情绪猛地变强）的那一下，在目标之上再叠一个快起慢落的脉冲：
+ * 约 0.1s 冲到顶，0.6s 内落回。它是"表演"，不受 SHAPE_CAP 管 —— 惊讶时眼睛就是要睁到比平时更大。
+ * 部位错峰照旧：眉先、眼、嘴最后。
+ */
+const ACCENTS: Record<Feeling, Partial<Record<Shape, number>>> = {
+  surprised: { eye_wide: 1, brow_surprised: 0.7, mouth_o: 0.55 },
+  happy: { eye_smile: 0.7, brow_happy: 0.6, mouth_grin: 0.6 },
+  angry: { brow_angry: 0.8, eye_angry: 0.7, mouth_pout: 0.5 },
+  sad: { brow_sad: 0.8, eye_sad: 0.5, mouth_sad: 0.5 },
+  shy: { eye_smile: 0.6, brow_sad: 0.5 },
+  relaxed: { eye_smile: 0.4, mouth_smile: 0.4 },
+};
+const ACCENT_GAIN = 0.45;
+const ACCENT_DURATION = 0.6;
+const ACCENT_ATTACK = 0.18;
+
+/**
+ * 漫画节奏 ②：情绪很强时放开上限。
+ *
+ * 峰值度 = 语义强度在 PEAK_FROM 往上 PEAK_SPAN 这一段里的位置（0..1）。语义强度带着峰值回落（×0.84），
+ * 所以 Jev 给 0.9 时持续段约 0.5、给 1.0 时约 1；0.8 以下基本不触发 —— 日常的"明显但克制"不会变成颜艺。
+ */
+const PEAK_FROM = 0.66;
+const PEAK_SPAN = 0.18;
+/** 峰值时额外加上的形状 */
+const PEAK_ADD: Partial<Record<Feeling, Partial<Record<Shape, number>>>> = {
+  happy: { eye_smile: 0.5, mouth_grin: 0.35, fang: 1 },
+  surprised: { eye_wide: 0.2, mouth_o: 0.6 },
+  angry: { fang: 0.8 },
+};
+/** 峰值时上限放到多少：[看哪个情绪的峰值度, 放开后的上限] */
+const PEAK_CAP: Partial<Record<Shape, [Feeling, number]>> = {
+  eye_smile: ['happy', 1],
+  mouth_grin: ['happy', 0.8],
+  mouth_o: ['surprised', 0.95],
+};
+/** 说话时笑眼的上限在峰值时放到多少（不到 1：边说边完全闭眼像在打哈欠） */
+const EYE_SMILE_CAP_SPEAKING_PEAK = 0.75;
+/** 不计入部位总量的形状（只改牙齿，不占嘴型） */
+const NO_TOTAL: Partial<Record<Shape, true>> = { fang: true };
 
 /**
  * 感知曲线（模型标定）：语义强度 w → 上脸的幅度 w^γ。
@@ -179,6 +225,8 @@ interface Pulse {
   t: number;
   /** 起 / 落的分界（0..1） */
   attack: number;
+  /** 表演脉冲（冲过头）：叠在封顶之后，不受 SHAPE_CAP 管 */
+  free?: boolean;
 }
 
 /** 临界阻尼弹簧（Game Programming Gems 4 的 SmoothDamp）。起止速度为零，不会过冲 */
@@ -210,6 +258,8 @@ export class ExpressionLayer {
   private mouthActivity = 0;
   private speaking = false;
   private mood = new Map<Feeling, number>();
+  /** 各情绪的峰值度（0..1），见 PEAK_FROM */
+  private peak: Partial<Record<Feeling, number>> = {};
 
   /** UI 试听用的手动覆盖，优先级最高 */
   private overrides = new Map<string, number>();
@@ -260,6 +310,7 @@ export class ExpressionLayer {
       }
       this.resolved.set(emo, key);
     }
+    this.peak = {};
     this.blinkKey = find('blink');
     this.blinkLeftKey = find('blinkLeft');
     this.blinkRightKey = find('blinkRight');
@@ -307,6 +358,14 @@ export class ExpressionLayer {
     const top = topOf(scaled);
     const prevTop = topOf(prev);
     if (top && top[1] > 0.15) this.dominant = top[0];
+    // 冲过头再回落：换了主情绪，或者同一个情绪猛地变强
+    if (top && top[1] >= 0.35) {
+      const rise = top[1] - (prev[top[0]] ?? 0);
+      if (top[0] !== prevTop?.[0] || rise > 0.3) {
+        const semantic = top[1] / Math.max(0.05, this.ceiling[top[0]] ?? 1);
+        this.accent(top[0] as Feeling, semantic * Math.min(1, rise / 0.5));
+      }
+    }
     // 换了主情绪就补一次眨眼 —— 真人几乎不会睁着眼把一个表情"渐变"成另一个
     if (top && prevTop && top[0] !== prevTop[0] && top[1] > 0.25 && prevTop[1] > 0.25) {
       if (Math.random() < 0.7) this.blink();
@@ -329,6 +388,7 @@ export class ExpressionLayer {
     this.pulses.length = 0;
     this.releasePlan.length = 0;
     this.mood.clear();
+    this.peak = {};
     this.semantic.clear();
     for (const ch of this.channels.values()) {
       ch.value = 0;
@@ -393,6 +453,30 @@ export class ExpressionLayer {
         this.pulses.push(this.makePulse({ eye_smile: 1, mouth_grin: 0.8 }, 0.15, 0.28, 0.4, -0.3));
         break;
     }
+  }
+
+  /** 冲过头再回落。strength 是语义强度（已乘上"这次变化有多猛"） */
+  private accent(emo: Feeling, strength: number) {
+    if (strength < 0.2) return;
+    if (this.rig) {
+      // 每个部位一个脉冲，按部位错峰起跳
+      for (const part of ['brow', 'eye', 'mouth'] as FacePart[]) {
+        const recipe: Partial<Record<Shape, number>> = {};
+        for (const [shape, v] of Object.entries(ACCENTS[emo]) as Array<[Shape, number]>) {
+          if (SHAPES[shape] === part) recipe[shape] = v;
+        }
+        const p = this.makePulse(recipe, ACCENT_GAIN * strength, ACCENT_DURATION, ACCENT_ATTACK, -PART_DELAY[part]);
+        p.free = true;
+        if (p.shapes.size) this.pulses.push(p);
+      }
+    } else {
+      this.flick(emo, 0.3 * strength, 0.55);
+    }
+  }
+
+  /** 各情绪的峰值度（调试 / 漫符用） */
+  peakOf(emo: Emotion): number {
+    return emo === 'neutral' ? 0 : (this.peak[emo] ?? 0);
   }
 
   // ---- 查询 ----
@@ -482,6 +566,10 @@ export class ExpressionLayer {
 
     this.scheduleMicro(dt);
     this.updateMood(dt);
+    for (const f of FEELINGS) {
+      const s = (this.semantic.get(f) ?? 0) / Math.max(0.05, this.ceiling[f] ?? 1);
+      this.peak[f] = smoothstep((s - PEAK_FROM) / PEAK_SPAN);
+    }
 
     // --- 目标值：每个部位读自己延迟后的那一条混合 ---
     const targets = new Map<string, number>();
@@ -546,8 +634,9 @@ export class ExpressionLayer {
       this.channels.set(key, ch);
     }
 
-    // --- 叠加层：微表情 / 信号 ---
+    // --- 叠加层：微表情 / 信号 / 表演脉冲 ---
     const additive = new Map<string, number>();
+    const free = new Map<string, number>();
     for (let i = this.pulses.length - 1; i >= 0; i--) {
       const p = this.pulses[i];
       p.t += dt;
@@ -558,30 +647,30 @@ export class ExpressionLayer {
       if (p.t < 0) continue;
       const k = p.t / p.duration;
       const env = k < p.attack ? smoothstep(k / p.attack) : smoothstep(1 - (k - p.attack) / (1 - p.attack));
-      for (const [key, peak] of p.shapes) additive.set(key, (additive.get(key) ?? 0) + peak * env);
+      const into = p.free ? free : additive;
+      for (const [key, peak] of p.shapes) into.set(key, (into.get(key) ?? 0) + peak * env);
     }
     for (const [key, v] of this.stateAdd) additive.set(key, (additive.get(key) ?? 0) + v);
 
     // --- 写入 ---
-    const written = new Set<string>();
+    const finals = new Map<string, number>();
     for (const [key, ch] of this.channels) {
-      const ov = this.overrides.get(key);
       // 上限只卡叠加层。主值的目标在 compose 里已经封顶，超出的部分（比如开口说话那一刻
       // 笑眼的上限从 0.85 降到 0.5）交给弹簧慢慢回落，写入时硬卡会让眼睛一帧跳开
       const cap = this.rig ? Math.max(this.capOf(key.replace('part:', '') as Shape), ch.value) : 1;
-      const value = ov != null ? ov : Math.min(cap, ch.value + (additive.get(key) ?? 0));
-      mgr.setValue(key, value);
-      written.add(key);
+      finals.set(key, Math.min(cap, ch.value + (additive.get(key) ?? 0)));
     }
     for (const [key, v] of additive) {
-      if (written.has(key)) continue;
+      if (finals.has(key)) continue;
       const cap = this.rig ? this.capOf(key.replace('part:', '') as Shape) : 1;
-      mgr.setValue(key, this.overrides.get(key) ?? Math.min(cap, v));
-      written.add(key);
+      finals.set(key, Math.min(cap, v));
     }
+    // 表演脉冲叠在封顶之后
+    for (const [key, v] of free) finals.set(key, Math.min(1, (finals.get(key) ?? 0) + v));
+    for (const [key, v] of finals) mgr.setValue(key, this.overrides.get(key) ?? v);
     // 只被 override 钉住、别处没写的槽（比如 Extra）
     for (const [key, w] of this.overrides) {
-      if (!written.has(key)) mgr.setValue(key, w);
+      if (!finals.has(key)) mgr.setValue(key, w);
     }
 
     this.updateBlink(dt, mgr);
@@ -668,6 +757,14 @@ export class ExpressionLayer {
         if (SHAPES[shape] !== part) continue;
         shapes.set(shape, (shapes.get(shape) ?? 0) + w * bias * amount);
       }
+      // 情绪很强：放开的那一截（^^、O 嘴、虎牙）
+      const pk = this.peak[emo] ?? 0;
+      if (pk > 0) {
+        for (const [shape, amount] of Object.entries(PEAK_ADD[emo] ?? {}) as Array<[Shape, number]>) {
+          if (SHAPES[shape] !== part) continue;
+          shapes.set(shape, NO_TOTAL[shape] ? Math.max(shapes.get(shape) ?? 0, pk * amount) : (shapes.get(shape) ?? 0) + pk * amount);
+        }
+      }
     }
 
     if (part === 'mouth') {
@@ -694,16 +791,18 @@ export class ExpressionLayer {
       }
     }
 
-    // 部位总量封顶：几种形状叠满会把脸拉坏
+    // 部位总量封顶：几种形状叠满会把脸拉坏。情绪到顶时放宽一些（^^ 加大笑本来就该叠满）
     let total = 0;
-    for (const v of shapes.values()) total += v;
-    const k = total > PART_CAP ? PART_CAP / total : 1;
+    for (const [s, v] of shapes) if (!NO_TOTAL[s]) total += v;
+    const maxPeak = Math.max(0, ...FEELINGS.map((f) => this.peak[f] ?? 0));
+    const partCap = PART_CAP + 0.4 * maxPeak;
+    const k = total > partCap ? partCap / total : 1;
 
     const out = new Map<string, number>();
     for (const [shape, v] of shapes) {
       const key = rig.keys[shape];
       if (!key) continue;
-      out.set(key, Math.min(this.capOf(shape), v * k));
+      out.set(key, Math.min(this.capOf(shape), NO_TOTAL[shape] ? v : v * k));
     }
     return out;
   }
@@ -713,14 +812,23 @@ export class ExpressionLayer {
     const out = new Map<string, number>();
     for (const [emo, w] of Object.entries(mix) as Array<[Emotion, number]>) {
       const key = this.resolved.get(emo);
-      if (key && emo !== 'neutral') out.set(key, Math.min(1, (out.get(key) ?? 0) + w));
+      if (!key || emo === 'neutral') continue;
+      // 情绪到顶时把 ceiling 压掉的那截还回来：happy 的整脸预设拉满就是 ^^，surprised 就是 O 嘴
+      const ceil = Math.max(0.05, this.ceiling[emo] ?? 1);
+      const lift = 1 + (this.peak[emo] ?? 0) * (1 / ceil - 1);
+      out.set(key, Math.min(1, (out.get(key) ?? 0) + w * lift));
     }
     return out;
   }
 
   private capOf(shape: Shape): number {
-    if (shape === 'eye_smile' && this.speaking) return EYE_SMILE_CAP_SPEAKING;
-    return SHAPE_CAP[shape] ?? 1;
+    const lift = PEAK_CAP[shape];
+    const pk = lift ? (this.peak[lift[0]] ?? 0) : 0;
+    if (shape === 'eye_smile' && this.speaking) {
+      return EYE_SMILE_CAP_SPEAKING + (EYE_SMILE_CAP_SPEAKING_PEAK - EYE_SMILE_CAP_SPEAKING) * pk;
+    }
+    const base = SHAPE_CAP[shape] ?? 1;
+    return lift ? base + (lift[1] - base) * pk : base;
   }
 
   private valueOf(shape: Shape): number {

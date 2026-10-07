@@ -47,6 +47,11 @@ export const SHAPES = {
   mouth_sad: 'mouth',
   /** O 型 */
   mouth_o: 'mouth',
+  /**
+   * 虎牙（VRoid 的 Fcl_HA_Fung1，单颗小虎牙；Fung2 是一排鲨鱼牙，太凶不用）。
+   * 只改牙齿，张嘴时才看得见，不占嘴型
+   */
+  fang: 'mouth',
 } as const satisfies Record<string, FacePart>;
 
 export type Shape = keyof typeof SHAPES;
@@ -64,13 +69,15 @@ const VROID_NAMES: Record<Shape, string[]> = {
   eye_smile_r: ['Fcl_EYE_Joy_R'],
   eye_sad: ['Fcl_EYE_Sorrow'],
   eye_wide: ['Fcl_EYE_Surprised'],
-  eye_squeeze: ['Fcl_EYE_Extra', 'Fcl_EYE_Spread'],
+  // 只认 Extra：Fcl_EYE_Spread 是把眼睛睁大（AvatarSample_B 上实测），不是 ><
+  eye_squeeze: ['Fcl_EYE_Extra'],
   mouth_smile: ['Fcl_MTH_Fun'],
   mouth_grin: ['Fcl_MTH_Joy'],
   mouth_pout: ['Fcl_MTH_Angry'],
   mouth_frown: ['Fcl_MTH_Neutral', 'Fcl_MTH_Small'],
   mouth_sad: ['Fcl_MTH_Sorrow'],
   mouth_o: ['Fcl_MTH_Surprised'],
+  fang: ['Fcl_HA_Fung1'],
 };
 
 /**
@@ -113,6 +120,7 @@ const INDEX_TABLES: Array<{
       mouth_grin: 26,
       mouth_sad: 27,
       mouth_o: 28,
+      fang: 34,
     },
   },
 ];
