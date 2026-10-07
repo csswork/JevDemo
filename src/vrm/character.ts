@@ -28,6 +28,7 @@ import { decryptModel, fetchBytes, isProtected } from './protect';
  * 程序生成的表演动作（gestures.ts）：身体是叠加的偏移，手碰脸的那只胳膊在 flush 之后用 IK 覆盖。
  * 漫符（manpu.ts）：脸红、阴影竖线、眼泪、💢、♪、！、汗滴，按 Jev 给的情绪挂在头上，跟着头走。
  * 待机时脚踩住地面（feet.ts）：胯部的晃动由膝盖和大腿吸收，脚不跟着滑。
+ * 镜头配合（推镜、一震、偏冷）不在这里，在 stage 的 cameraFx.ts：它读 emotionLevels() 和表情层的 takeAccents()。
  *
  * 换渲染引擎（Live2D / Unity / AnimeActEngine）时，需要重写的只有这个文件和 vrm/ 目录；
  * act/ 和 jev/ 两层原样保留。
@@ -259,21 +260,29 @@ export class Character {
 
     this.expression.setMouthActivity(this.lipsync.openness);
     this.expression.update(dt, vrm);
-    // 漫符读的是 Jev 定的语义强度：整脸预设的模型上表情层按 ceiling 压过幅度，这里还原回来
+    this.manpu.update(dt, this.emotionLevels());
+    this.lipsync.setMouthRoom(1 - 0.6 * this.expression.mouthOcclusion());
+    this.lipsync.update(dt, vrm);
+
+    vrm.update(dt);
+  }
+
+  /**
+   * 各情绪此刻的语义强度（0..1），漫符和镜头都读它。
+   * 是 Jev 定的强度：整脸预设的模型上表情层按 ceiling 压过幅度，这里还原回来
+   */
+  emotionLevels() {
     const ex = this.expression;
-    const level = (e: 'happy' | 'angry' | 'sad' | 'relaxed' | 'surprised' | 'shy') => ex.weightOf(e) / Math.max(0.05, ex.ceiling[e] ?? 1);
-    this.manpu.update(dt, {
+    const level = (e: 'happy' | 'angry' | 'sad' | 'relaxed' | 'surprised' | 'shy') =>
+      Math.min(1, ex.weightOf(e) / Math.max(0.05, ex.ceiling[e] ?? 1));
+    return {
       happy: level('happy'),
       angry: level('angry'),
       sad: level('sad'),
       relaxed: level('relaxed'),
       surprised: level('surprised'),
       shy: level('shy'),
-    });
-    this.lipsync.setMouthRoom(1 - 0.6 * this.expression.mouthOcclusion());
-    this.lipsync.update(dt, vrm);
-
-    vrm.update(dt);
+    };
   }
 
   dispose() {

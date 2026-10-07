@@ -260,6 +260,8 @@ export class ExpressionLayer {
   private mood = new Map<Feeling, number>();
   /** 各情绪的峰值度（0..1），见 PEAK_FROM */
   private peak: Partial<Record<Feeling, number>> = {};
+  /** 最近的"冲过头"，给镜头层（cameraFx.ts）读，见 takeAccents */
+  private accentLog: Array<{ emo: Feeling; strength: number; at: number }> = [];
 
   /** UI 试听用的手动覆盖，优先级最高 */
   private overrides = new Map<string, number>();
@@ -458,6 +460,8 @@ export class ExpressionLayer {
   /** 冲过头再回落。strength 是语义强度（已乘上"这次变化有多猛"） */
   private accent(emo: Feeling, strength: number) {
     if (strength < 0.2) return;
+    this.accentLog.push({ emo, strength, at: this.now });
+    if (this.accentLog.length > 8) this.accentLog.shift();
     if (this.rig) {
       // 每个部位一个脉冲，按部位错峰起跳
       for (const part of ['brow', 'eye', 'mouth'] as FacePart[]) {
@@ -472,6 +476,16 @@ export class ExpressionLayer {
     } else {
       this.flick(emo, 0.3 * strength, 0.55);
     }
+  }
+
+  /**
+   * 取走最近的"冲过头"（镜头层每帧调一次）。只给 0.25s 以内的：
+   * 调试工具逐帧推进时没人来取，攒下的旧事件不该在下一帧补一次震动
+   */
+  takeAccents(): Array<{ emo: Feeling; strength: number }> {
+    const out = this.accentLog.filter((a) => this.now - a.at < 0.25);
+    this.accentLog.length = 0;
+    return out;
   }
 
   /** 各情绪的峰值度（调试 / 漫符用） */

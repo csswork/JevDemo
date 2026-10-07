@@ -10,6 +10,7 @@ import { createPark } from './scenes/park';
 import { createStreet } from './scenes/street';
 import {createStreetSky,DEFAULT_SKY_SETTINGS,updateSkySettings,type SkySettings} from './sky/streetSky';
 import { TimeOfDay, type TimeMode } from './timeOfDay';
+import { CameraFx } from './cameraFx';
 
 /**
  * 背景：none = 原来的纯色渐变（CSS 画的，画布透明）；cafe = 咖啡店店内（scenes/cafe.ts）；
@@ -293,6 +294,9 @@ export function createStage(canvas: HTMLCanvasElement) {
    */
   const view: { camera: THREE.PerspectiveCamera | null } = { camera: null };
 
+  /** 镜头配合情绪（推镜 / 一震 / 偏冷），见 cameraFx.ts。调试的替身相机不吃这些 */
+  const fx = new CameraFx(canvas);
+
   // 防穿墙：转到背面时吧台、桌椅会挡在镜头和角色之间（最远能拉到 4.3m）。
   // 从转轴往相机方向打一条射线，碰到东西就用一台替身相机放在障碍物前面渲染 ——
   // 不改主相机：鼠标的距离不会被"吃掉"，转开之后自动回到原来的远近
@@ -366,7 +370,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     const state=effectiveTime();
     backdrop?.update?.(dt, state);
     controls.update();followZoom();
-    const cam=renderCamera();
+    const cam=view.camera?renderCamera():fx.camera(renderCamera());
     streetSky?.update(state,dt,cam);
     streetOcean?.update(state,dt,cam);
     applyLighting();
@@ -379,6 +383,7 @@ export function createStage(canvas: HTMLCanvasElement) {
   }
 
   function dispose() {
+    fx.dispose();
     streetOcean?.dispose();
     streetSky?.dispose();
     backdrop?.dispose();
@@ -395,6 +400,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     camera,
     controls,
     view,
+    fx,
     lookTarget,
     frame,
     getView,

@@ -669,6 +669,7 @@ export class Runtime {
     this.lastTime = now;
 
     this.step(dt);
+    stage.fx.update(dt, { levels: character.emotionLevels(), accents: character.expression.takeAccents() });
     stage.render();
 
     // 环境音的音量可能随时间变（街景夜里调低）：每秒对一次，变了才推（播放层 0.4 秒平滑过去，不会重播）
