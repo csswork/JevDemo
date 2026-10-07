@@ -713,3 +713,26 @@ fieldset.workspace {border:0;margin:0;padding:0;min-width:0}
 .axis input.axis-number {flex:none;width:60px;padding:5px;font-size:10px}
 
 .viewport:focus {outline:2px solid #8ba476;outline-offset:-2px}
+
+.iterate .inherit {display:flex;gap:6px;align-items:center;font-size:10px;margin:10px 0 12px}
+.plan small {font-size:10px;color:#a3ac98}
+.plan-changes {font-size:11px;line-height:1.7;color:#55654a;background:#f1f4ea;border-radius:6px;padding:8px 10px;margin:0 0 12px}
+.plan-old {font-size:11px;line-height:1.7;color:#8d9681;text-decoration:line-through;text-decoration-color:#c8cfbd;margin:4px 0 12px}
+
+.compare-block {margin:0 0 12px}
+.compare-block small {display:block;font-size:10px;color:#a3ac98;margin-bottom:4px}
+.compare-block p {margin:0;font-size:11px;line-height:1.7}
+.compare .muted {color:#a3ac98}
+.prompt-diff ins {background:#e1ecd2;color:#3f5a2a;text-decoration:none;border-radius:2px}
+.prompt-diff del {color:#b07a6a;text-decoration-color:#d4a99b}
+.compare-table {width:100%;border-collapse:collapse;font-size:11px;margin:0 0 4px}
+.compare-table th {text-align:left;font-weight:400;color:#7b8b6d;padding:4px 6px 4px 0;white-space:nowrap}
+.compare-table td {padding:4px 0;color:#8d9681}
+.compare-table tr.changed td:last-child {color:#3f5a2a}
+.compare-table tr + tr {border-top:1px solid #edf0e7}
+.bone-change {display:flex;gap:6px;align-items:baseline;width:100%;text-align:left;border:0;background:transparent;padding:4px 0;font-size:11px;cursor:pointer;border-top:1px solid #edf0e7}
+.bone-change strong {font-weight:500;white-space:nowrap}
+.bone-change span:last-child {color:#7a8d67;font-size:10px}
+.bone-kind {font-size:9px;color:#5d7a43;background:#eef3e6;border-radius:3px;padding:1px 4px;white-space:nowrap}
+.bone-kind.removed {color:#a0614f;background:#f6ece8}
+.plan-shots img {display:block;width:100%;border-radius:4px;margin-top:6px;border:1px solid #e3e7dc}

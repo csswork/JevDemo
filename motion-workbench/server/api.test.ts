@@ -76,6 +76,15 @@ test('API isolates local access, serializes jobs, downloads results, and resumes
     assert.equal((await failing.request(`/${m.id}`, 'DELETE')).status, 200);
     assert.equal((await failing.request(`/${m.id}/restore`, 'POST')).status, 200);
     const missing = await failing.request(`/${m.id}/asset/not-a-version`); assert.equal(missing.status, 400);
+    // Iterating from a reviewed version: invalid requests submit nothing; a valid one records lineage and carries edits.
+    assert.equal((await failing.request(`/${m.id}/generate`, 'POST', { parentId: 'missing', feedback: '手抬高' })).status, 400);
+    assert.equal((await failing.request(`/${m.id}/generate`, 'POST', { parentId: revised.value.id, feedback: ' ' })).status, 400);
+    assert.match((await failing.request(`/${m.id}/iterate/${revised.value.id}`, 'POST', { feedback: '手抬高', duration: 4 })).value.error, /DEEPSEEK/);
+    assert.equal(submits, 2);
+    const iteration = await failing.request(`/${m.id}/generate`, 'POST', { parentId: revised.value.id, feedback: '手抬高', edits: revised.value.edits });
+    assert.equal(iteration.status, 202); assert.equal(iteration.value.parentId, revised.value.id);
+    assert.equal(iteration.value.feedback, '手抬高'); assert.equal(iteration.value.edits.speed, .5);
+    await new Promise(r => setTimeout(r, 20)); assert.equal(submits, 3);
   } finally {
     servers.forEach(server => server.emit('close')); globalThis.fetch = originalFetch; fs.rmSync(dir, { recursive: true });
   }

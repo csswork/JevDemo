@@ -13,6 +13,8 @@ export interface Version {
   source: 'generated' | 'imported'; status: Status;
   jobId?: string; asset?: string; error?: string;
   edits: Edits; notes: string; parentId?: string;
+  /** Review feedback on the parent that this regeneration answers. Only on iteration versions. */
+  feedback?: string;
 }
 export interface Motion {
   id: string; name: string; prompt: string; details?: string; duration: number; rewrite: boolean;
@@ -21,3 +23,7 @@ export interface Motion {
 }
 export interface Library { motions: Motion[]; configured: boolean; aiConfigured?: boolean }
 export interface PromptExpansion { prompt: string; details: string; keyframes: Array<{ time: number; pose: string }> }
+/** AI rewrite of the previous version's description that answers review feedback. */
+export interface PromptRevision extends PromptExpansion { changes: string }
+/** One generation round, oldest first, for the AI to avoid undoing earlier fixes. */
+export interface IterationStep { label: string; prompt: string; feedback?: string; notes?: string }

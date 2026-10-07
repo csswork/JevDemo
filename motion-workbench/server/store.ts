@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { defaultEdits, type Motion, type Version, type Edits } from '../shared.ts';
+import { defaultEdits, type Motion, type Version, type Edits, type IterationStep } from '../shared.ts';
 
 export class InputError extends Error { status = 400; }
 export function checkDraft(value: unknown): { name: string; prompt: string; details: string; duration: number; rewrite: boolean; ready: boolean } {
@@ -27,6 +27,14 @@ export function checkEdits(value: unknown): Edits {
     }
   }
   return structuredClone(e);
+}
+export interface Iteration { parentId: string; feedback: string; edits?: Edits }
+/** Optional body of a generate request: regenerate from a reviewed version with feedback, optionally carrying its edits over. */
+export function checkIteration(value: unknown): Iteration | undefined {
+  if (value === undefined || value === null) return undefined;
+  const v = value as Partial<Iteration>;
+  if (typeof v.parentId !== 'string' || typeof v.feedback !== 'string' || !v.feedback.trim() || v.feedback.length > 2000) throw new InputError('迭代反馈不能为空，最多 2000 字');
+  return { parentId: v.parentId, feedback: v.feedback.trim(), edits: v.edits === undefined ? undefined : checkEdits(v.edits) };
 }
 export class Store {
   motions: Motion[];
@@ -70,9 +78,11 @@ export class Store {
     m.ready = ready; if (ready) m.readyVersionId = vid; else delete m.readyVersionId;
     this.touch(m); return m;
   }
-  addVersion(id: string, source: Version['source']) {
+  addVersion(id: string, source: Version['source'], from?: Iteration) {
     const m = this.motion(id);
-    const v: Version = { id: randomUUID(), label: `版本 ${m.versions.length + 1}`, createdAt: new Date().toISOString(), prompt: m.prompt, details: m.details ?? '', duration: m.duration, rewrite: m.rewrite, source, status: source === 'generated' ? 'submitting' : 'DONE', edits: defaultEdits(), notes: '' };
+    if (from) this.version(id, from.parentId);
+    const v: Version = { id: randomUUID(), label: `版本 ${m.versions.length + 1}`, createdAt: new Date().toISOString(), prompt: m.prompt, details: m.details ?? '', duration: m.duration, rewrite: m.rewrite, source, status: source === 'generated' ? 'submitting' : 'DONE', edits: from?.edits ? structuredClone(from.edits) : defaultEdits(), notes: '' };
+    if (from) { v.parentId = from.parentId; v.feedback = from.feedback; }
     m.versions.push(v); m.ready = false; delete m.readyVersionId; this.touch(m); return v;
   }
   revise(id: string, vid: string, data: { edits: unknown; notes: unknown; label: unknown }) {
@@ -81,7 +91,19 @@ export class Store {
     if (typeof data.notes !== 'string' || data.notes.length > 4000 || typeof data.label !== 'string' || !data.label.trim() || data.label.length > 80) throw new InputError('版本名或备注无效');
     const m = this.motion(id);
     const v: Version = { ...structuredClone(old), id: randomUUID(), parentId: vid, label: data.label.trim(), notes: data.notes, edits: checkEdits(data.edits), createdAt: new Date().toISOString() };
+    delete v.feedback;
     m.versions.push(v); m.ready = false; delete m.readyVersionId; this.touch(m); return v;
+  }
+  /** Generation rounds leading to a version (edit-only revisions folded into their source), oldest first. */
+  lineage(id: string, vid: string, limit = 6): IterationStep[] {
+    const m = this.motion(id); const steps: IterationStep[] = [];
+    for (let v = m.versions.find(x => x.id === vid); v; v = m.versions.find(x => x.id === v!.parentId)) {
+      // An edit-only revision keeps its source's prompt and has no feedback of its own: fold it into that round.
+      const newer = steps[0];
+      if (newer && newer.prompt === v.prompt && !newer.feedback) { newer.label = v.label; newer.feedback = v.feedback; newer.notes ||= v.notes || undefined; continue; }
+      steps.unshift({ label: v.label, prompt: v.prompt, feedback: v.feedback, notes: v.notes || undefined });
+    }
+    return steps.slice(-limit);
   }
   assetPath(asset: string) {
     if (!/^[a-f0-9-]{36}\.fbx$/.test(asset)) throw new InputError('无效的文件名');

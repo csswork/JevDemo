@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as THREE from 'three';
-import { Store, checkDraft, checkEdits } from './store.ts';
+import { Store, checkDraft, checkEdits, checkIteration } from './store.ts';
 import { defaultEdits } from '../shared.ts';
 import { trimClip } from '../src/editClip.ts';
 import { bakeClip } from '../src/bakeClip.ts';
@@ -100,4 +100,29 @@ test('FBX fixture exports a reloadable GLB containing exact edited boundary pose
     const translation = baked.tracks.at(-1)!;
     assert.ok(Math.abs(translation.values.at(-3)! + .4) < 1e-6);
   } finally { globalThis.FileReader = oldReader; }
+});
+
+test('regenerating from feedback carries edits and lineage; edit revisions fold into their round', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'motion-test-'));
+  try {
+    const store = new Store(dir); const motion = store.create(draft);
+    const first = store.addVersion(motion.id, 'generated'); Object.assign(first, { status: 'DONE', asset: `${first.id}.fbx` });
+    const tuned = store.revise(motion.id, first.id, { edits: { ...defaultEdits(), speed: .8, offsets: { L_Elbow: [0, 10, 0] } }, label: '版本 1 · 调整', notes: '手肘收一点' });
+    store.update(motion.id, { ...draft, prompt: '站在原地，右手抬过头顶挥手' });
+    const second = store.addVersion(motion.id, 'generated', checkIteration({ parentId: tuned.id, feedback: '手抬得不够高', edits: tuned.edits }));
+    assert.equal(second.parentId, tuned.id); assert.equal(second.feedback, '手抬得不够高');
+    assert.deepEqual(second.edits, tuned.edits); assert.notEqual(second.edits, tuned.edits);
+    assert.equal(second.prompt, '站在原地，右手抬过头顶挥手');
+    Object.assign(second, { status: 'DONE', asset: `${second.id}.fbx` });
+    const third = store.revise(motion.id, second.id, { edits: second.edits, label: '版本 3', notes: '' });
+    assert.equal(third.feedback, undefined, 'an edit revision is not a feedback round');
+    assert.deepEqual(store.lineage(motion.id, third.id), [
+      { label: first.label, prompt: draft.prompt, feedback: undefined, notes: '手肘收一点' },
+      { label: second.label, prompt: '站在原地，右手抬过头顶挥手', feedback: '手抬得不够高', notes: undefined },
+    ]);
+    assert.equal(checkIteration(undefined), undefined);
+    assert.throws(() => checkIteration({ parentId: first.id, feedback: '' }), /反馈/);
+    assert.throws(() => store.addVersion(motion.id, 'generated', { parentId: 'missing', feedback: 'x' }), /版本不存在/);
+    assert.equal(motion.versions.length, 4);
+  } finally { fs.rmSync(dir, { recursive: true }); }
 });

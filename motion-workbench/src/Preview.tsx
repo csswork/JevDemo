@@ -13,7 +13,9 @@ import { retargetSmpl } from './retargetSmpl';
 import { trimClip } from './editClip';
 import type { Edits } from '../shared';
 
-export interface PreviewHandle { exportGlb: () => Promise<ArrayBuffer>; }
+/** JPEG data URLs: the paused frame, and a contact sheet of evenly spaced frames labelled with their time. */
+export interface PreviewShots { current: string; sheet: string }
+export interface PreviewHandle { exportGlb: () => Promise<ArrayBuffer>; capture: () => PreviewShots; }
 interface Props {
   url?: string; edits: Edits; target: string; playing: boolean; time: number; skeleton: boolean;
   boneEditing: boolean; bone: string; boneMode: 'rotate' | 'drag';
@@ -29,16 +31,20 @@ export function Preview(props: Props) {
   const current = useRef(props);
   useLayoutEffect(() => { current.current = props; });
   const exporter = useRef<(() => Promise<ArrayBuffer>) | null>(null);
+  const capturer = useRef<(() => PreviewShots) | null>(null);
   useImperativeHandle(props.handle, () => ({ exportGlb: async () => {
     if (!exporter.current) throw new Error('预览尚未加载');
     return exporter.current();
+  }, capture: () => {
+    if (!capturer.current) throw new Error('预览尚未加载');
+    return capturer.current();
   } }), []);
   const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
   useEffect(() => {
     // Report the resource captured by this effect; cancelled loads never unlock a newer one.
     const onLoadState = current.current.onLoadState;
     onLoadState(props.url ? 'loading' : 'ready');
-    exporter.current = null;
+    exporter.current = null; capturer.current = null;
     const el = mount.current!; let disposed = false; let frame = 0;
     let renderer: THREE.WebGLRenderer;
     try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }
@@ -330,8 +336,63 @@ export function Preview(props: Props) {
           if (!exportSnapshot) throw new Error('动作还没有加载');
           return exportMotion(exportSnapshot, current.current.edits);
         };
+        capturer.current = () => capture(current.current.edits);
       } catch (e) { if (!disposed) setError(e instanceof Error ? e.message : '加载失败'); }
       finally { if (!disposed) { setLoading(false); controls.enabled = succeeded; onLoadState(succeeded ? 'ready' : 'error'); } }
+    }
+    /**
+     * Renders portrait frames framed on the whole body, looking from the user's current viewing direction,
+     * without editor overlays. The renderer is resized off-screen for the shots and the WebGL buffer is copied
+     * right after each render in the same task (no preserveDrawingBuffer); the view is restored before returning.
+     */
+    function capture(edits: Edits): PreviewShots {
+      if (!clip) throw new Error('动作还没有加载');
+      const length = clip.duration; const columns = 4; const rows = 2;
+      const times = Array.from({ length: columns * rows }, (_, i) => length * i / (columns * rows - 1));
+      // Frame the space the body occupies across the whole clip, so all cells share one scale.
+      const box = new THREE.Box3();
+      for (const t of [playTime, ...times]) { pose(t, edits); for (const node of joints.values()) box.expandByPoint(node.getWorldPosition(new THREE.Vector3())); }
+      const size = box.getSize(new THREE.Vector3()); const height = Math.max(size.y, .5);
+      box.max.y += height * .12; box.min.y -= height * .04; box.expandByVector(new THREE.Vector3(height * .06, 0, height * .06));
+      const center = box.getCenter(new THREE.Vector3()); box.getSize(size);
+      const shotCamera = new THREE.PerspectiveCamera(camera.fov, 3 / 4, .01, 100);
+      const half = THREE.MathUtils.degToRad(camera.fov / 2); const width = Math.hypot(size.x, size.z);
+      const distance = Math.max(size.y / 2 / Math.tan(half), width / 2 / (Math.tan(half) * shotCamera.aspect)) + width / 2;
+      const direction = camera.position.clone().sub(controls.target).normalize();
+      shotCamera.position.copy(center).addScaledVector(direction, distance); shotCamera.lookAt(center); shotCamera.updateMatrixWorld();
+
+      const overlays = ([markers, transformHelper, helper] as Array<THREE.Object3D | undefined>).filter((o): o is THREE.Object3D => !!o?.visible);
+      const canvas = renderer.domElement; const ratio = renderer.getPixelRatio(); const viewSize = renderer.getSize(new THREE.Vector2());
+      const surface = (w: number, h: number) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')!] as const; };
+      const shot = (t: number, w: number, h: number, ctx: CanvasRenderingContext2D, x: number, y: number) => {
+        pose(t, edits); renderer.setSize(w, h, false); renderer.render(scene, shotCamera); ctx.drawImage(canvas, x, y, w, h);
+      };
+      overlays.forEach(o => { o.visible = false; });
+      renderer.setPixelRatio(1);
+      try {
+        const [big, bigCtx] = surface(600, 800);
+        shot(playTime, 600, 800, bigCtx, 0, 0);
+        label(bigCtx, `当前帧 ${playTime.toFixed(2)}s / ${length.toFixed(2)}s`, 0, 0, 18);
+        const cellW = 300; const cellH = 400;
+        const [sheet, ctx] = surface(cellW * columns, cellH * rows);
+        times.forEach((t, i) => {
+          const x = (i % columns) * cellW; const y = Math.floor(i / columns) * cellH;
+          shot(t, cellW, cellH, ctx, x, y);
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, cellW - 2, cellH - 2);
+          label(ctx, `${i + 1} · ${t.toFixed(2)}s`, x, y, 15);
+        });
+        return { current: big.toDataURL('image/jpeg', .85), sheet: sheet.toDataURL('image/jpeg', .85) };
+      } finally {
+        overlays.forEach(o => { o.visible = true; });
+        renderer.setPixelRatio(ratio); renderer.setSize(viewSize.x, viewSize.y, false);
+        pose(playTime, current.current.edits); renderer.render(scene, camera);
+      }
+    }
+    function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number) {
+      ctx.font = `600 ${size}px system-ui, sans-serif`;
+      const w = ctx.measureText(text).width + size;
+      ctx.fillStyle = 'rgba(40, 48, 34, .78)'; ctx.fillRect(x + 4, y + 4, w, size * 1.7);
+      ctx.fillStyle = '#ffffff'; ctx.fillText(text, x + 4 + size / 2, y + 4 + size * 1.25);
     }
     void load();
     function draw(now: number) {
@@ -358,7 +419,7 @@ export function Preview(props: Props) {
     }
     frame = requestAnimationFrame(draw);
     return () => {
-      disposed = true; clearKeys(); el.removeEventListener('keydown', keyDown); el.removeEventListener('keyup', keyUp); el.removeEventListener('blur', clearKeys); window.removeEventListener('blur', clearKeys); cancelAnimationFrame(frame); resize.disconnect(); exporter.current = null;
+      disposed = true; clearKeys(); el.removeEventListener('keydown', keyDown); el.removeEventListener('keyup', keyUp); el.removeEventListener('blur', clearKeys); window.removeEventListener('blur', clearKeys); cancelAnimationFrame(frame); resize.disconnect(); exporter.current = null; capturer.current = null;
       for (const { binding } of bindings) binding.unbind(); controls.dispose(); transform.detach(); transform.dispose(); proxy.removeFromParent(); renderer.domElement.removeEventListener('pointerdown', pointerDown, true); renderer.domElement.removeEventListener('pointermove', pointerMove, true); renderer.domElement.removeEventListener('pointerup', pointerUp, true); renderer.domElement.removeEventListener('pointercancel', pointerCancel, true); helper?.dispose(); disposeTree(scene);
       if (source && avatar) disposeTree(source);
       renderer.dispose(); renderer.domElement.remove();

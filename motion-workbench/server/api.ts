@@ -3,10 +3,10 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { loadEnv, type Plugin } from 'vite';
-import { Store, InputError } from './store.ts';
+import { Store, InputError, checkIteration } from './store.ts';
 import { submitMotion, describeMotion, type TencentCreds } from './tencent3d.ts';
 import type { Version } from '../shared.ts';
-import { expandPrompt } from './expandPrompt.ts';
+import { expandPrompt, reviseFromFeedback } from './expandPrompt.ts';
 
 async function body(req: IncomingMessage, limit = 1024 * 1024) {
   const parts: Buffer[] = []; let size = 0;
@@ -104,6 +104,11 @@ export function workbenchApi(project: string): Plugin {
           res.setHeader('Content-Type', 'application/octet-stream'); res.setHeader('Content-Disposition', `attachment; filename="${v.id}.fbx"`);
           fs.createReadStream(store.assetPath(v.asset)).on('error', () => { res.destroy(); }).pipe(res); return;
         }
+        if (req.method === 'POST' && action === 'iterate') {
+          // Plan only: rewrites the description from review feedback. Nothing is saved or submitted.
+          const v = store.version(id, vid); const data = JSON.parse((await body(req, 12 * 1024 * 1024)).toString());
+          json(res, await reviseFromFeedback({ apiKey: env.DEEPSEEK_API_KEY ?? '', baseUrl: env.DEEPSEEK_BASE_URL, model: env.DEEPSEEK_MODEL }, { prompt: v.prompt, details: v.details, duration: data.duration, feedback: data.feedback, history: store.lineage(id, vid), images: data.images })); return;
+        }
         if (req.method === 'POST' && action === 'revisions') {
           json(res, store.revise(id, vid, JSON.parse((await body(req)).toString())), 201); return;
         }
@@ -126,7 +131,8 @@ export function workbenchApi(project: string): Plugin {
           if (!configured) throw new InputError('项目 .env.local 中未配置腾讯云密钥');
           if (active()) throw new InputError('已有任务正在生成，请等待结束');
           const m = store.motion(id); if (!m.prompt.trim()) throw new InputError('请先填写动作描述');
-          const v = store.addVersion(id, 'generated'); json(res, v, 202);
+          const raw = (await body(req)).toString();
+          const v = store.addVersion(id, 'generated', checkIteration(raw.trim() ? JSON.parse(raw) : undefined)); json(res, v, 202);
           void (async (v: Version) => {
             try { v.jobId = await submitMotion(creds, { prompt: v.prompt, duration: v.duration, rewrite: v.rewrite, mesh: true }); v.status = 'WAIT'; }
             catch (e) { v.status = 'FAIL'; v.error = e instanceof Error ? e.message : '提交失败'; }

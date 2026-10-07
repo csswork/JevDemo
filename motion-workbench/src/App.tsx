@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Edits, Library, Motion, Version, PromptExpansion } from '../shared';
+import type { Edits, Library, Motion, Version, PromptExpansion, PromptRevision } from '../shared';
 import { defaultEdits } from '../shared';
 import { BONE_GROUPS, BONE_LABELS } from './boneEditing';
-import { Preview, type PreviewHandle } from './Preview';
+import { Preview, type PreviewHandle, type PreviewShots } from './Preview';
+import { compareVersions } from './compareVersions';
 
 const API = '/api/workbench';
 async function api<T>(url = '', method = 'GET', data?: unknown): Promise<T> {
@@ -37,13 +38,30 @@ export default function App() {
   const [aiWorking, setAiWorking] = useState(false);
   const [aiBackup, setAiBackup] = useState<{ prompt: string; details: string } | null>(null);
   const [customModel, setCustomModel] = useState('');
+  // Next round: review feedback → AI rewrites the description → user confirms → regenerate, carrying edits over.
+  const [feedback, setFeedback] = useState(''); const [inherit, setInherit] = useState(true);
+  const [plan, setPlan] = useState<PromptRevision | null>(null);
+  const [attachShots, setAttachShots] = useState(true); const [shots, setShots] = useState<PreviewShots | null>(null);
+  const seen = useRef(new Map<string, Version['status']>());
   const file = useRef<HTMLInputElement>(null); const model = useRef<HTMLInputElement>(null); const preview = useRef<PreviewHandle | null>(null);
   const motion = library.motions.find(m => m.id === selected);
   const version = motion?.versions.find(v => v.id === vid);
+  const parent = version?.parentId ? motion?.versions.find(v => v.id === version.parentId) : undefined;
   const editDirty = !!version && (JSON.stringify(edits) !== JSON.stringify(version.edits) || notes !== version.notes || label !== version.label);
   const draftDirty = !!motion && (['name', 'prompt', 'duration', 'rewrite', 'ready'].some(k => draft[k as keyof typeof draft] !== motion[k as keyof Motion]) || draft.details !== (motion.details ?? ''));
   const active = library.motions.some(m => m.versions.some(v => ['submitting', 'WAIT', 'RUN'].includes(v.status)));
   async function refresh() { const data = await api<Library>(); setLibrary(data); return data; }
+  useEffect(() => {
+    // Announce finished generations and open them when the user isn't in the middle of something.
+    for (const m of library.motions) for (const v of m.versions) {
+      const before = seen.current.get(v.id); seen.current.set(v.id, v.status);
+      if (!before || !['submitting', 'WAIT', 'RUN'].includes(before) || before === v.status) continue;
+      if (v.status === 'DONE') {
+        setNotice(`「${m.name}」${v.label} 已生成${m.id === selected ? '，已打开供审阅' : ''}`);
+        if (m.id === selected && v.id !== vid && !editDirty && !plan) loadVersion(v);
+      } else if (v.status === 'FAIL') setError(`「${m.name}」${v.label} 生成失败：${v.error ?? '未知原因'}`);
+    }
+  }, [library]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     void api<Library>().then(setLibrary).catch(e => setError(e.message));
     const interval = setInterval(() => { void refresh().catch(e => setError(e.message)); }, 3000);
@@ -55,7 +73,7 @@ export default function App() {
   }, [editDirty, draftDirty]);
   useEffect(() => () => { if (customModel) URL.revokeObjectURL(customModel); }, [customModel]);
   function loadVersion(v?: Version) {
-    setPreviewMode(mode => mode === 'skeleton' ? mode : 'none'); setVid(v?.id ?? ''); setEdits(v ? structuredClone(v.edits) : defaultEdits()); setNotes(v?.notes ?? ''); setLabel(v?.label ?? ''); setTime(0); setPlaying(false); if (v?.id !== vid) { setDuration(0); setEditedDuration(0); }
+    setPreviewMode(mode => mode === 'skeleton' ? mode : 'none'); setVid(v?.id ?? ''); setFeedback(''); setPlan(null); setShots(null); setEdits(v ? structuredClone(v.edits) : defaultEdits()); setNotes(v?.notes ?? ''); setLabel(v?.label ?? ''); setTime(0); setPlaying(false); if (v?.id !== vid) { setDuration(0); setEditedDuration(0); }
   }
   function choose(m: Motion) {
     if ((editDirty || draftDirty) && !confirm('有尚未保存的修改，放弃后切换？')) return;
@@ -71,6 +89,26 @@ export default function App() {
     await run(async () => {
       const v = await api<Version>(`/${selected}/revisions/${vid}`, 'POST', { edits, notes, label: editDirty && label === version?.label ? `${label} · 调整` : label });
       await refresh(); setDraft(d => ({ ...d, ready: false })); loadVersion(v); setNotice('已另存为新版本，原版本保留');
+    });
+  }
+  async function planIteration() {
+    await run(async () => {
+      // Screenshots show the edits currently on screen, from the camera angle the user is reviewing with.
+      const captured = attachShots && previewReady && preview.current ? preview.current.capture() : null;
+      setShots(captured);
+      const result = await api<PromptRevision>(`/${selected}/iterate/${vid}`, 'POST', { feedback, duration: draft.duration, images: captured ? [captured.current, captured.sheet] : undefined });
+      setPlan({ ...result, details: `${result.details}\n\n关键姿态\n${result.keyframes.map(f => `${f.time.toFixed(2)}s · ${f.pose}`).join('\n')}` });
+    });
+  }
+  async function confirmIteration() {
+    if (!plan || !version) return;
+    if (editDirty && !inherit && !confirm('当前版本有未保存的调整，且没有勾选沿用，提交后这些调整会丢弃。继续？')) return;
+    await run(async () => {
+      const next = { ...draft, prompt: plan.prompt, details: plan.details, ready: false };
+      await api<Motion>(`/${selected}`, 'PUT', next);
+      const v = await api<Version>(`/${selected}/generate`, 'POST', { parentId: version.id, feedback, edits: inherit ? edits : undefined });
+      await refresh(); setDraft(next); setAiBackup(null); loadVersion(v);
+      setNotice(`已提交 ${v.label}，生成完成后会自动打开`);
     });
   }
   const filtered = library.motions.filter(m => !!m.deletedAt === trash && m.name.toLowerCase().includes(query.toLowerCase()));
@@ -98,7 +136,7 @@ export default function App() {
         <div className="preview-toolbar"><div><strong>{motion?.name ?? '动作预览'}</strong><span>{version ? ` / ${version.label}` : ' / 尚未选择版本'}</span></div><div className="preview-options"><select aria-label="预览角色" value={target} onChange={e => setTarget(e.target.value)}><option value={`${API}/model/mannequin`}>素体 · VRoid 女性</option><option value={`${API}/model/xiaxia`}>夏夏 · 项目角色</option><option value="source">原始动作</option><option value={`${API}/model/sample`}>示例 VRM 角色</option>{customModel && <option value={customModel}>自选 VRM 角色</option>}</select><button onClick={() => model.current?.click()}>载入角色</button>{([['skeleton', '显示骨架'], ['rotate', '圆环微调'], ['drag', '拖动微调']] as const).map(([mode, text]) => <label key={mode}><input type="checkbox" checked={previewMode === mode} disabled={!previewReady} onChange={e => choosePreviewMode(e.target.checked ? mode : 'none')}/>{text}</label>)}</div></div>
         <Preview url={previewUrl} target={target} edits={edits} time={time} playing={playing} skeleton={skeleton} boneEditing={boneEditing} bone={bone} boneMode={boneMode} onBones={setAvailableBones} onSelectBone={id => { setBone(id); setPlaying(false); }} onBoneEdits={patch => { setPlaying(false); setEdits(e => ({ ...e, offsets: { ...e.offsets, ...patch.offsets }, ...(patch.positions ? { positions: { ...e.positions, ...patch.positions } } : {}) })); }} onTime={setTime} onLoadState={status => { setPreviewState({ key: previewKey, status }); if (status === 'loading') setPlaying(false); }} onDuration={(raw, edited) => { setDuration(raw); setEditedDuration(edited); }} handle={preview}/>
         <div className="transport"><button className="play-button" aria-label={playing ? '暂停' : '播放'} disabled={!previewReady || boneEditing} onClick={() => { if (time >= editedDuration) setTime(0); setPlaying(!playing); }}>{playing ? 'Ⅱ' : '▶'}</button><button disabled={!previewReady} title="回到开头" onClick={() => setTime(0)}>↶</button><input aria-label="播放进度" type="range" min="0" max={editedDuration || 1} step="0.01" value={Math.min(time, editedDuration)} disabled={!previewReady} onChange={e => { setPlaying(false); setTime(+e.target.value); }}/><span className="time">{time.toFixed(2)} / {editedDuration.toFixed(2)}s</span><label><input type="checkbox" checked={edits.loop} onChange={e => adjust({ loop: e.target.checked })}/>循环</label></div>
-        <section className="versions"><div className="section-heading"><h2>版本记录</h2><span>{editDirty ? '有未保存的调整' : '每次生成与保存，都留下一个版本'}</span></div><div className="version-list">{motion?.versions.slice().reverse().map((v, i) => <button key={v.id} disabled={busy} className={`version ${v.id === vid ? 'selected' : ''}`} onClick={() => { if (editDirty && !confirm('放弃未保存调整并切换版本？')) return; loadVersion(v); }}><div className="version-index">{String((motion?.versions.length ?? 0) - i).padStart(2, '0')}</div><div><strong>{v.label}</strong><small>{v.parentId ? '编辑调整' : v.source === 'imported' ? 'FBX 导入' : 'HY-Motion 生成'} · {new Date(v.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</small></div><span className={`version-status ${v.status === 'FAIL' ? 'failed' : ''}`}>{motion.readyVersionId === v.id && motion.ready ? '已成熟' : statusText[v.status]}</span></button>)}{!motion?.versions.length && <p className="empty-versions">生成或导入后，版本会出现在这里。</p>}</div></section>
+        <section className="versions"><div className="section-heading"><h2>版本记录</h2><span>{editDirty ? '有未保存的调整' : '每次生成与保存，都留下一个版本'}</span></div><div className="version-list">{motion?.versions.slice().reverse().map((v, i) => <button key={v.id} disabled={busy} className={`version ${v.id === vid ? 'selected' : ''}`} onClick={() => { if (editDirty && !confirm('放弃未保存调整并切换版本？')) return; loadVersion(v); }}><div className="version-index">{String((motion?.versions.length ?? 0) - i).padStart(2, '0')}</div><div><strong>{v.label}</strong><small title={v.feedback}>{v.feedback ? `迭代生成 ← ${motion.versions.find(p => p.id === v.parentId)?.label ?? '已删除版本'}` : v.parentId ? '编辑调整' : v.source === 'imported' ? 'FBX 导入' : 'HY-Motion 生成'} · {new Date(v.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</small></div><span className={`version-status ${v.status === 'FAIL' ? 'failed' : ''}`}>{motion.readyVersionId === v.id && motion.ready ? '已成熟' : statusText[v.status]}</span></button>)}{!motion?.versions.length && <p className="empty-versions">生成或导入后，版本会出现在这里。</p>}</div></section>
       </main>
       <aside className="inspector">
         {!motion ? <div className="inspector-empty"><strong>从一个简单的动作开始</strong><p>写描述，生成候选；剪掉多余片段，调整姿态，再保存新版本。</p><button className="primary" onClick={create} disabled={busy}>＋ 添加动作</button><button className="text-button full" style={{ marginTop: 12 }} disabled={busy} onClick={() => run(async () => { const m = await api<Motion>('/demo', 'POST'); await refresh(); choose(m); setTrash(false); setNotice('已载入免费演示骨架，可直接试用编辑与导出'); })}>载入免费演示动作</button></div> : motion.deletedAt ? <div className="inspector-empty"><strong>{motion.name}</strong><p>动作及所有版本都保留在回收站中。</p><button className="primary" disabled={busy} onClick={() => run(async () => { await api(`/${selected}/restore`, 'POST'); await refresh(); setTrash(false); setSelected(''); loadVersion(); })}>恢复动作</button></div> : <>
@@ -138,8 +176,44 @@ export default function App() {
               <label className="field">迭代备注<textarea rows={2} maxLength={4000} placeholder="记录这版改了什么、还有哪里要调整…" value={notes} onChange={e => setNotes(e.target.value)}/></label>
               <button className="primary full" disabled={busy || !editDirty || !label.trim() || edits.start >= duration || (edits.end !== 0 && (edits.end <= edits.start || edits.end > duration))} onClick={revise}>保存为新版本</button>
               <button className="text-button full" disabled={!editDirty} onClick={() => loadVersion(version)}>还原当前版本</button>
-              <details className="source-detail"><summary>生成描述与参数</summary><p>{version.prompt || '本地导入'}</p>{version.details && <p className="saved-details">{version.details}</p>}<small>{version.duration}s · {version.rewrite ? '开启扩写' : '关闭扩写'}{version.jobId ? ` · ${version.jobId}` : ''}</small></details>
+              <details className="source-detail"><summary>生成描述与参数</summary>{version.feedback && <p className="saved-details">本轮反馈：{version.feedback}</p>}<p>{version.prompt || '本地导入'}</p>{version.details && <p className="saved-details">{version.details}</p>}<small>{version.duration}s · {version.rewrite ? '开启扩写' : '关闭扩写'}{version.jobId ? ` · ${version.jobId}` : ''}</small></details>
             </>}
+          </section>}
+          {version && parent && (() => {
+            const c = compareVersions(parent, version, version.status === 'DONE' ? edits : version.edits);
+            const changed = c.rows.filter(r => r.changed); const same = c.rows.filter(r => !r.changed);
+            return <section className="compare"><div className="section-heading"><h2>与上一版对比</h2><span>{parent.label} → {editDirty ? '当前（未保存）' : version.label}</span></div>
+              {c.feedback && <div className="compare-block"><small>本轮反馈</small><p>{c.feedback}</p></div>}
+              <div className="compare-block"><small>生成描述{c.prompt ? '' : ' · 未改变'}{c.detailsChanged ? ' · 动作细节也有修改' : ''}</small>
+                {c.prompt ? <p className="prompt-diff">{c.prompt.map((seg, i) => seg.type === 'same' ? <span key={i}>{seg.text}</span> : seg.type === 'add' ? <ins key={i}>{seg.text}</ins> : <del key={i}>{seg.text}</del>)}</p> : <p className="muted">{version.prompt || '（本地导入）'}</p>}
+              </div>
+              <table className="compare-table"><tbody>
+                {changed.map(r => <tr key={r.label} className="changed"><th>{r.label}</th><td>{r.before}</td><td>→ {r.after}</td></tr>)}
+                {!changed.length && <tr><td className="muted" colSpan={3}>时长、裁剪、速度等参数都相同</td></tr>}
+              </tbody></table>
+              {!!same.length && !!changed.length && <p className="hint">相同：{same.map(r => `${r.label} ${r.after}`).join(' · ')}</p>}
+              <div className="compare-block"><small>骨骼微调{c.bones.length ? ` · ${c.bones.length} 处变化` : ' · 没有变化'}</small>
+                {c.bones.map(b => <button key={b.bone} className="bone-change" onClick={() => { setBone(b.bone); setPlaying(false); }} title="选中这根骨骼"><span className={`bone-kind ${b.kind === '移除' ? 'removed' : ''}`}>{b.kind}</span><strong>{b.label}</strong><span>{b.detail}</span></button>)}
+              </div>
+            </section>;
+          })()}
+          {ready && <section className="iterate"><div className="section-heading"><h2>下一轮迭代</h2><span>基于 {version.label}</span></div>
+            {!plan ? <>
+              <label className="field">这一版哪里需要改<textarea rows={3} maxLength={2000} disabled={busy} placeholder="例如：挥手太快，手只抬到胸口；希望抬过头顶，挥三下后慢慢放下。" value={feedback} onChange={e => setFeedback(e.target.value)}/></label>
+              <label className="inherit"><input type="checkbox" checked={inherit} onChange={e => setInherit(e.target.checked)}/>新版本沿用当前的裁剪、速度和骨骼微调</label>
+              <label className="inherit"><input type="checkbox" checked={attachShots} disabled={!previewReady} onChange={e => setAttachShots(e.target.checked)}/>附带截图给 AI：当前帧 + 整段 8 帧（按当前镜头角度）</label>
+              <button className="primary full" disabled={busy || !feedback.trim() || !library.aiConfigured || !version.prompt} onClick={planIteration}>{busy ? '处理中…' : '✦ AI 按反馈改写描述'}</button>
+              <button className="text-button full" disabled={busy || !feedback.trim()} onClick={() => setPlan({ prompt: version.prompt, details: version.details ?? '', keyframes: [], changes: '手动改写：在上一版描述上直接修改。' })}>不用 AI，手动改写描述</button>
+              <p className="hint">{!library.aiConfigured ? '未配置 DEEPSEEK_API_KEY，可手动改写。' : !version.prompt ? '导入的版本没有生成描述，请手动改写。' : `AI 只改反馈涉及的部分，并参考之前几轮的反馈。${attachShots && previewReady ? '先把镜头转到能看清问题的角度、停在出问题的那一帧，截图更有用。' : ''}改写完成后会先给你确认，不会自动扣积分。`}</p>
+            </> : <div className="plan">
+              <p className="plan-changes">{plan.changes}</p>
+              {shots && <details className="plan-shots"><summary>AI 看到的截图</summary><img src={shots.current} alt="当前帧截图"/><img src={shots.sheet} alt="整段动作 8 帧截图"/></details>}
+              <small>上一版描述</small><p className="plan-old">{version.prompt || '（无）'}</p>
+              <label className="field">新描述 · 可修改<textarea rows={4} disabled={busy} value={plan.prompt} onChange={e => setPlan({ ...plan, prompt: e.target.value })}/><small className={[...plan.prompt].length > 128 ? 'invalid' : ''}>{[...plan.prompt].length} / 128 字 · {draft.duration} 秒</small></label>
+              <details className="motion-details"><summary>动作细节与关键姿态</summary><textarea rows={8} maxLength={8000} disabled={busy} value={plan.details} onChange={e => setPlan({ ...plan, details: e.target.value })}/></details>
+              <button className="primary full" disabled={busy || active || !library.configured || !plan.prompt.trim() || [...plan.prompt].length > 128} onClick={confirmIteration}>{active ? '生成任务进行中…' : '确认生成下一版 ↗（消耗积分）'}</button>
+              <button className="text-button full" disabled={busy} onClick={() => setPlan(null)}>返回修改反馈</button>
+            </div>}
           </section>}
           {ready && <section><div className="section-heading"><h2>完成与导出</h2></div><label className="mature-toggle"><input type="checkbox" checked={!!motion.ready && motion.readyVersionId === vid} disabled={busy || editDirty} onChange={e => { const mature = e.target.checked; void run(async () => { await saveDraft(); await api(`/${selected}/mature/${vid}`, 'POST', { ready: mature }); await refresh(); setDraft(d => ({ ...d, ready: mature })); }); }}/>标记动作为成熟</label><div className="export-row"><button disabled={busy || !previewReady} onClick={() => run(async () => { if (!preview.current) throw new Error('预览尚未加载'); const bytes = await preview.current.exportGlb(); download(bytes, 'model/gltf-binary', `${safeName}-${vid.slice(0, 8)}.glb`); setNotice('已导出当前调整的动作骨架 GLB，包含裁剪、速度、手指与位置调整'); })}>导出调整后的 GLB</button><button disabled={editDirty} onClick={() => download(JSON.stringify({ schema: 1, motion: { id: selected, name: motion.name }, version, sourceFile: `${version.id}.fbx`, coordinates: 'source-local', fps: 30, exportedAt: new Date().toISOString() }, null, 2), 'application/json', `${safeName}-${vid.slice(0, 8)}.json`)}>编辑记录 JSON</button></div><a className="file-link" href={url} download={`${version.id}.fbx`}>下载原始 FBX ↓</a><p className="hint">GLB 导出当前调整后的动作骨架，可在任意角色预览下导出，不包含预览人物。保存为新版本后可导出对应编辑记录。</p></section>}
           <button className="delete-button" disabled={busy} onClick={() => { if (confirm(`将「${motion.name}」及所有版本移到回收站？`)) void run(async () => { await api(`/${selected}`, 'DELETE'); await refresh(); setSelected(''); loadVersion(); setNotice('已移到回收站，可恢复'); }); }}>删除动作</button>
