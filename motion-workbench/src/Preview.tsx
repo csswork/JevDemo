@@ -4,7 +4,7 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { exportMotion } from './exportMotion';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { applyBoneEdits, avatarBoneName, BONE_LABELS, offsetQuaternion, rotationOffset } from './boneEditing';
+import { beginPositionDrag, applyAvatarPositions, applyBoneEdits, avatarBoneName, BONE_LABELS, offsetQuaternion, rotationOffset } from './boneEditing';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VRMUtils, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
 import { avatarLoader } from './avatarLoader';
@@ -15,7 +15,6 @@ import type { Edits } from '../shared';
 export interface PreviewHandle { exportGlb: () => Promise<ArrayBuffer>; }
 interface Props {
   url?: string; edits: Edits; target: string; playing: boolean; time: number; skeleton: boolean;
-  viewMode: 'rotate' | 'pan';
   boneEditing: boolean; bone: string; boneMode: 'rotate' | 'translate';
   onSelectBone: (bone: string) => void; onBones: (bones: string[]) => void;
   onBoneEdit: (bone: string, mode: 'rotate' | 'translate', values: [number, number, number]) => void;
@@ -68,6 +67,27 @@ export function Preview(props: Props) {
     const joints = new Map<string, THREE.Object3D>(); const dots = new Map<string, THREE.Mesh>();
     const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
     let loaded = false; let attached = ''; let dragBone = ''; let dragMode: 'rotate' | 'translate' = 'rotate';
+    const panKeys: Record<string, [number, number]> = { ArrowUp: [0, 1], KeyW: [0, 1], ArrowDown: [0, -1], KeyS: [0, -1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
+    const heldKeys = new Set<string>();
+    function panView(x: number, y: number, amount: number) {
+      const distance = camera.position.distanceTo(controls.target);
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+      const shift = right.multiplyScalar(-x).add(up.multiplyScalar(-y)).multiplyScalar(distance * amount);
+      camera.position.add(shift); controls.target.add(shift);
+    }
+    const clearKeys = () => { heldKeys.clear(); };
+    const keyDown = (e: KeyboardEvent) => {
+      if (document.activeElement !== el || e.target !== el || !loaded || directDrag || transform.dragging || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) { clearKeys(); return; }
+      const direction = panKeys[e.code]; if (!direction) return;
+      e.preventDefault(); e.stopPropagation();
+      if (!heldKeys.has(e.code)) panView(...direction, .025);
+      heldKeys.add(e.code);
+    };
+    const keyUp = (e: KeyboardEvent) => { if (heldKeys.delete(e.code)) { e.preventDefault(); e.stopPropagation(); } };
+    el.addEventListener('keydown', keyDown); el.addEventListener('keyup', keyUp); el.addEventListener('blur', clearKeys);
+    window.addEventListener('blur', clearKeys);
+
     const dragBaseQ = new THREE.Quaternion(); const dragBaseP = new THREE.Vector3();
     const resolveBone = (name: string) => avatar ? avatar.humanoid.getNormalizedBoneNode(avatarBoneName(name) as VRMHumanBoneName) : source?.getObjectByName(name);
     transform.addEventListener('dragging-changed', e => { controls.enabled = loaded && !e.value; });
@@ -82,20 +102,52 @@ export function Preview(props: Props) {
       current.current.onBoneEdit(dragBone, dragMode, values);
     });
     let pointerStart: [number, number] | undefined;
-    const pointerDown = (e: PointerEvent) => { pointerStart = [e.clientX, e.clientY]; };
-    const pointerUp = (e: PointerEvent) => {
-      if (!loaded || !current.current.boneEditing || transform.axis || !pointerStart || Math.hypot(e.clientX - pointerStart[0], e.clientY - pointerStart[1]) > 4) return;
+    let directDrag: { pointerId: number; bone: string; move: (ray: THREE.Ray) => [number, number, number] | null } | undefined;
+    const pointerRay = (e: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect(); pointer.set((e.clientX - rect.left) / rect.width * 2 - 1, -(e.clientY - rect.top) / rect.height * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects([...dots.values()], false)[0];
+      return raycaster;
+    };
+    const pointerDown = (e: PointerEvent) => {
+      if (loaded) el.focus({ preventScroll: true });
+      pointerStart = [e.clientX, e.clientY];
+      const p = current.current;
+      if (!loaded || !p.boneEditing || p.boneMode !== 'translate' || e.button !== 0) return;
+      const hit = pointerRay(e).intersectObjects([...dots.values()], false)[0]; if (!hit) return;
+      const id = hit.object.userData.bone as string; const node = joints.get(id)!;
+      const move = beginPositionDrag(node, raycaster.ray, camera.getWorldDirection(new THREE.Vector3()), p.edits.positions?.[id] ?? [0, 0, 0], avatar ? 1 : 100);
+      if (!move) return;
+      directDrag = { pointerId: e.pointerId, bone: id, move }; controls.enabled = false;
+      renderer.domElement.setPointerCapture(e.pointerId); current.current.onSelectBone(id);
+      e.preventDefault(); e.stopImmediatePropagation();
+    };
+    const pointerMove = (e: PointerEvent) => {
+      if (!directDrag || e.pointerId !== directDrag.pointerId) return;
+      const values = directDrag.move(pointerRay(e).ray);
+      if (values) current.current.onBoneEdit(directDrag.bone, 'translate', values);
+      e.preventDefault(); e.stopImmediatePropagation();
+    };
+    const endDirectDrag = (e: PointerEvent) => {
+      if (!directDrag || e.pointerId !== directDrag.pointerId) return false;
+      directDrag = undefined; controls.enabled = loaded;
+      if (renderer.domElement.hasPointerCapture(e.pointerId)) renderer.domElement.releasePointerCapture(e.pointerId);
+      e.preventDefault(); e.stopImmediatePropagation(); return true;
+    };
+    const pointerUp = (e: PointerEvent) => {
+      if (endDirectDrag(e)) return;
+      if (!loaded || !current.current.boneEditing || transform.axis || !pointerStart || Math.hypot(e.clientX - pointerStart[0], e.clientY - pointerStart[1]) > 4) return;
+      const hit = pointerRay(e).intersectObjects([...dots.values()], false)[0];
       if (hit) current.current.onSelectBone(hit.object.userData.bone);
     };
-    renderer.domElement.addEventListener('pointerdown', pointerDown); renderer.domElement.addEventListener('pointerup', pointerUp);
+    const pointerCancel = (e: PointerEvent) => { endDirectDrag(e); };
+    renderer.domElement.addEventListener('pointerdown', pointerDown, true); renderer.domElement.addEventListener('pointermove', pointerMove, true);
+    renderer.domElement.addEventListener('pointerup', pointerUp, true); renderer.domElement.addEventListener('pointercancel', pointerCancel, true);
     function syncEditor() {
       const p = current.current; markers.visible = loaded && p.boneEditing;
       if (!loaded || !p.boneEditing || !joints.has(p.bone)) { transform.detach(); transform.enabled = false; attached = ''; return; }
       const node = joints.get(p.bone)!;
-      if (!transform.dragging) {
+      if (p.boneMode === 'translate') { transform.detach(); transform.enabled = false; attached = ''; }
+      else if (!transform.dragging) {
         if (proxy.parent !== node.parent) node.parent!.add(proxy);
         proxy.position.copy(node.position); proxy.quaternion.copy(node.quaternion); proxy.scale.set(1, 1, 1); proxy.updateMatrixWorld(true);
         transform.setMode(p.boneMode); transform.attach(proxy); transform.enabled = true; attached = p.bone;
@@ -127,7 +179,7 @@ export function Preview(props: Props) {
       root.position.set(0, 0, 0);
       for (const { binding, interpolant } of bindings) binding.setValue(interpolant.evaluate(THREE.MathUtils.clamp(t, 0, clip.duration)), 0);
       applyBoneEdits(edits, resolveBone, avatar ? 1 : 100);
-      avatar?.humanoid.update(); root.updateMatrixWorld(true);
+      avatar?.humanoid.update(); if (avatar) applyAvatarPositions(avatar, edits); root.updateMatrixWorld(true);
       const pos = pelvis()?.getWorldPosition(new THREE.Vector3());
       if (edits.inPlace && pos) { root.position.x = initialRoot.x - pos.x; root.position.z = initialRoot.z - pos.z; }
       if (edits.ground) root.position.y = -ground;
@@ -223,7 +275,7 @@ export function Preview(props: Props) {
       frame = requestAnimationFrame(draw);
       const p = current.current; const dt = Math.min((now - lastTime) / 1000, .1); lastTime = now;
       const key = JSON.stringify(p.edits);
-      if (key !== editKey && !transform.dragging) { rebuild(p.edits); editKey = key; }
+      if (key !== editKey && !transform.dragging && !directDrag) { rebuild(p.edits); editKey = key; }
       if (clip) {
         if (Math.abs(p.time - lastSent) > .025) playTime = p.time;
         if (p.playing && !p.boneEditing) playTime = p.edits.loop ? (playTime + dt) % clip.duration : Math.min(clip.duration, playTime + dt);
@@ -231,20 +283,27 @@ export function Preview(props: Props) {
         if (p.playing && !p.boneEditing) { lastSent = playTime; p.onTime(playTime); }
       }
       if (helper) helper.visible = p.skeleton || (loaded && p.boneEditing);
-      avatar?.update(dt); syncEditor(); controls.mouseButtons.LEFT = p.viewMode === 'pan' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE; controls.update(); renderer.render(scene, camera);
+      avatar?.update(dt); syncEditor(); renderer.domElement.style.cursor = p.boneEditing && p.boneMode === 'translate' ? directDrag ? 'grabbing' : 'grab' : '';  if (!directDrag && !transform.dragging) {
+        if (loaded && document.activeElement === el && heldKeys.size) {
+          const directions = [...heldKeys].map(code => panKeys[code]);
+          const x = Math.sign(directions.reduce((sum, value) => sum + value[0], 0)); const y = Math.sign(directions.reduce((sum, value) => sum + value[1], 0));
+          panView(x, y, dt * .5 / (x && y ? Math.SQRT2 : 1));
+        }
+        controls.update();
+      } renderer.render(scene, camera);
     }
     frame = requestAnimationFrame(draw);
     return () => {
-      disposed = true; cancelAnimationFrame(frame); resize.disconnect(); exporter.current = null;
-      for (const { binding } of bindings) binding.unbind(); controls.dispose(); transform.detach(); transform.dispose(); proxy.removeFromParent(); renderer.domElement.removeEventListener('pointerdown', pointerDown); renderer.domElement.removeEventListener('pointerup', pointerUp); helper?.dispose(); disposeTree(scene);
+      disposed = true; clearKeys(); el.removeEventListener('keydown', keyDown); el.removeEventListener('keyup', keyUp); el.removeEventListener('blur', clearKeys); window.removeEventListener('blur', clearKeys); cancelAnimationFrame(frame); resize.disconnect(); exporter.current = null;
+      for (const { binding } of bindings) binding.unbind(); controls.dispose(); transform.detach(); transform.dispose(); proxy.removeFromParent(); renderer.domElement.removeEventListener('pointerdown', pointerDown, true); renderer.domElement.removeEventListener('pointermove', pointerMove, true); renderer.domElement.removeEventListener('pointerup', pointerUp, true); renderer.domElement.removeEventListener('pointercancel', pointerCancel, true); helper?.dispose(); disposeTree(scene);
       if (source && avatar) disposeTree(source);
       renderer.dispose(); renderer.domElement.remove();
     };
   }, [props.url, props.target]);
-  return <div className="viewport" ref={mount}>
+  return <div className="viewport" ref={mount} tabIndex={0} role="region" aria-label="动作预览，可聚焦后使用方向键或 WASD 平移视图">
     {!props.url && <div className="stage-message"><span className="stage-icon">↗</span><strong>让动作有自己的迭代空间</strong><span>添加一个动作，生成或导入 FBX 开始预览</span></div>}
     {loading && <div className="stage-message loading-message" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/><strong>Loading…</strong><span>正在加载模型与动作，请稍候</span></div>}
     {error && <div className="preview-error">{error}</div>}
-    <div className="stage-caption">{props.boneEditing ? `${BONE_LABELS[props.bone]} · 点击关节选择 · 拖动${props.boneMode === 'rotate' ? '圆环旋转' : '箭头移动'}` : props.viewMode === 'pan' ? '拖动上下 / 左右平移 · 滚轮缩放' : '拖动旋转 · 滚轮缩放 · 右键 / Shift＋拖动上下左右平移'}</div>
+    <div className="stage-caption">{props.boneEditing ? `${BONE_LABELS[props.bone]} · 点击关节选择 · 拖动${props.boneMode === 'rotate' ? '圆环旋转' : '关节点直接移动'}` : '鼠标拖动旋转 · 滚轮缩放 · 点击预览聚焦后，方向键 / WASD 上下左右平移'}</div>
   </div>;
 }

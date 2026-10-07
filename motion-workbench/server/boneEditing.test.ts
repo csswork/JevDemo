@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { applyBoneEdits, offsetQuaternion, rotationOffset } from '../src/boneEditing.ts';
+import { beginPositionDrag, applyBoneEdits, offsetQuaternion, rotationOffset } from '../src/boneEditing.ts';
 import { BONE_NAMES } from '../src/editClip.ts';
 import { defaultEdits } from '../shared.ts';
 import { checkEdits } from './store.ts';
@@ -27,4 +27,17 @@ test('finger mapping covers all 30 joints and position edits use meters across V
   assert.throws(() => checkEdits({ ...edits, positions: { R_Index2: [NaN, 0, 0] } }));
   assert.throws(() => checkEdits({ ...edits, positions: { R_Index2: [3, 0, 0] } }));
   assert.equal(checkEdits(defaultEdits()).positions, undefined);
+});
+
+test('direct joint dragging follows the screen plane without a jump, preserving offsets under parent rotation and scale', () => {
+  const parent = new THREE.Group(); parent.rotation.z = Math.PI / 2; parent.scale.setScalar(.01);
+  const node = new THREE.Bone(); node.position.set(3, 4, 5); parent.add(node); parent.updateMatrixWorld(true);
+  const world = node.getWorldPosition(new THREE.Vector3());
+  const ray = new THREE.Ray(world.clone().add(new THREE.Vector3(.005, 0, 1)), new THREE.Vector3(0, 0, -1));
+  const drag = beginPositionDrag(node, ray, new THREE.Vector3(0, 0, -1), [.01, .02, 0], 100)!;
+  assert.deepEqual(drag(ray), [.01, .02, 0]);
+  const movedRay = new THREE.Ray(ray.origin.clone().add(new THREE.Vector3(0, .1, 0)), ray.direction);
+  assert.deepEqual(drag(movedRay), [.11, .02, 0]);
+  assert.deepEqual(node.position.toArray(), [3, 4, 5]);
+  assert.equal(drag(new THREE.Ray(ray.origin, new THREE.Vector3(1, 0, 0))), null);
 });

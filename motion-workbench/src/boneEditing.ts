@@ -25,3 +25,35 @@ export function applyBoneEdits(edits: Edits, resolve: (name: string) => THREE.Ob
   for (const [bone, offset] of Object.entries(edits.positions ?? {})) resolve(bone)?.position.add(new THREE.Vector3(...offset).multiplyScalar(positionScale));
 }
 export function avatarBoneName(name: string) { return BONE_NAMES[name] ?? name; }
+
+/** A camera-facing drag plane keeps grab offset and parent transform fixed for the whole gesture. */
+export function beginPositionDrag(node: THREE.Object3D, ray: THREE.Ray, cameraDirection: THREE.Vector3, offset: number[], positionScale: number) {
+  node.updateWorldMatrix(true, false);
+  const world = node.getWorldPosition(new THREE.Vector3());
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(cameraDirection, world);
+  const first = ray.intersectPlane(plane, new THREE.Vector3());
+  if (!first) return null;
+  const grab = world.clone().sub(first);
+  const parentInverse = node.parent?.matrixWorld.clone().invert() ?? new THREE.Matrix4();
+  const base = node.position.clone().sub(new THREE.Vector3(...offset).multiplyScalar(positionScale));
+  return (nextRay: THREE.Ray): [number, number, number] | null => {
+    const point = nextRay.intersectPlane(plane, new THREE.Vector3());
+    if (!point) return null;
+    return point.add(grab).applyMatrix4(parentInverse).sub(base).divideScalar(positionScale).toArray().map(v => Math.max(-2, Math.min(2, Math.round(v * 10000) / 10000))) as [number, number, number];
+  };
+}
+
+/** three-vrm forwards normalized rotations and hip translation, but not other joint translations. */
+export function applyAvatarPositions(avatar: import('@pixiv/three-vrm').VRM, edits: Edits) {
+  for (const [name, offset] of Object.entries(edits.positions ?? {})) {
+    const bone = avatarBoneName(name) as import('@pixiv/three-vrm').VRMHumanBoneName;
+    if (bone === 'hips') continue; // Humanoid.update already transfers this translation.
+    const normalized = avatar.humanoid.getNormalizedBoneNode(bone);
+    const raw = avatar.humanoid.getRawBoneNode(bone);
+    if (!normalized?.parent || !raw?.parent) continue;
+    normalized.parent.updateWorldMatrix(true, false); raw.parent.updateWorldMatrix(true, false);
+    const matrix = raw.parent.matrixWorld.clone().invert().multiply(normalized.parent.matrixWorld);
+    const delta = new THREE.Vector3(...offset).applyMatrix3(new THREE.Matrix3().setFromMatrix4(matrix));
+    raw.position.add(delta);
+  }
+}

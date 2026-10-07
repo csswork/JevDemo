@@ -1,3 +1,5 @@
+import { applyAvatarPositions, applyBoneEdits } from '../src/boneEditing.ts';
+import { defaultEdits } from '../shared.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -38,4 +40,15 @@ test('local VRoid female mannequin loads as humanoid and FBX motion deforms the 
   let displacement = 0;
   for (let i = 0; i < attr.count; i++) displacement = Math.max(displacement, before[i].distanceTo(mesh.applyBoneTransform(i, new THREE.Vector3().fromBufferAttribute(attr, i))));
   assert.ok(displacement > .1, `Expected visible skinned motion, got ${displacement}m`);
+  const rawArm = avatar.humanoid.getRawBoneNode('rightLowerArm');
+  const rawBefore = rawArm.getWorldPosition(new THREE.Vector3());
+  const vertices = Array.from({ length: attr.count }, (_, i) => mesh.applyBoneTransform(i, new THREE.Vector3().fromBufferAttribute(attr, i)));
+  const edits = { ...defaultEdits(), positions: { R_Elbow: [.05, 0, 0] as [number, number, number] } };
+  applyBoneEdits(edits, name => avatar.humanoid.getNormalizedBoneNode(BONE_NAMES[name]), 1);
+  avatar.humanoid.update(); applyAvatarPositions(avatar, edits); avatar.scene.updateMatrixWorld(true);
+  assert.ok(Math.abs(rawBefore.distanceTo(rawArm.getWorldPosition(new THREE.Vector3())) - .05) < 1e-5);
+  let moved = 0;
+  for (let i = 0; i < attr.count; i++) moved = Math.max(moved, vertices[i].distanceTo(mesh.applyBoneTransform(i, new THREE.Vector3().fromBufferAttribute(attr, i))));
+  assert.ok(moved > .01, `Joint translation must move the skinned body, got ${moved}`);
+
 });

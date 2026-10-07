@@ -706,3 +706,5 @@ fieldset.workspace {border:0;margin:0;padding:0;min-width:0}
 .bone-modes button {flex:1;font-size:11px}
 .bone-modes .selected {background:#e7eedf;border-color:#adc29a}
 .axis input.axis-number {flex:none;width:60px;padding:5px;font-size:10px}
+
+.viewport:focus {outline:2px solid #8ba476;outline-offset:-2px}
