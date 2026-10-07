@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ServerResponse } from 'node:http';
@@ -42,6 +43,18 @@ const LOCAL_VOICES: VoiceMeta[] = [
   ['ono_anna', 'Ono Anna', '俏皮女声，轻快（母语日语，中文带口音）'],
   ['sohee', 'Sohee', '温暖女声，情感丰富（母语韩语，中文带口音）'],
 ].map(([id, name, desc]) => ({ id, name, desc, group: '预设音色' }));
+
+/**
+ * MiniMax 的逐字时间戳，按合成请求的 id 暂存（响应头 x-tts-id）。
+ * 流式响应的头在第一块音频时就发出去了，那时还没有字幕（字幕在最后一块里），
+ * 所以前端收完音频之后再来取：GET /api/tts/times?id=…。取过就删，没人取的一分钟后清掉
+ */
+const subtitleTimes = new Map<string, { times: Array<{ c: number; t: number }>; at: number }>();
+function keepTimes(id: string, times: Array<{ c: number; t: number }>) {
+  const now = Date.now();
+  for (const [k, v] of subtitleTimes) if (now - v.at > 60_000) subtitleTimes.delete(k);
+  subtitleTimes.set(id, { times, at: now });
+}
 
 let child: ChildProcess | null = null;
 let exitHooked = false;
@@ -208,6 +221,12 @@ export function ttsProxy(): Plugin {
               if (minimaxOnly) return send(200, minimaxHealth());
               return send(200, backend === 'qwen' ? await qwenHealth() : await localHealth());
             }
+            if (req.method === 'GET' && req.url?.startsWith('/times')) {
+              const id = new URL(req.url, 'http://x').searchParams.get('id') ?? '';
+              const hit = subtitleTimes.get(id);
+              subtitleTimes.delete(id);
+              return send(200, { times: hit?.times ?? null });
+            }
             if (req.method === 'POST' && req.url?.startsWith('/synth')) {
               const chunks: Buffer[] = [];
               for await (const c of req) chunks.push(c as Buffer);
@@ -291,6 +310,9 @@ export function ttsProxy(): Plugin {
         let first = 0;
         const pcm: Buffer[] = [];
         let headerSent = false;
+        // 只有 MiniMax 有逐字时间戳
+        const id = useMiniMax ? randomUUID() : null;
+        if (id) res.setHeader('x-tts-id', id);
         const onAudio = (bytes: Buffer) => {
           const data = stripWavHeader(bytes);
           if (!first) first = Date.now() - t;
@@ -306,9 +328,10 @@ export function ttsProxy(): Plugin {
           } else pcm.push(data);
         };
         const signal = AbortSignal.timeout(20000);
-        const { sampleRate } = useMiniMax
+        const { sampleRate, times } = useMiniMax
           ? await synthesizeMiniMax(minimax!, { text, voice: body.speaker!, instructions: body.instruct, style: body.style }, onAudio, signal)
-          : await synthesize(qwen!, { text, voice: body.speaker, instructions: body.instruct }, onAudio, signal);
+          : { ...(await synthesize(qwen!, { text, voice: body.speaker, instructions: body.instruct }, onAudio, signal)), times: undefined };
+        if (id && times) keepTimes(id, times);
         const who = body.speaker || qwen!.defaultVoice;
         if (body.stream) {
           if (!headerSent) {

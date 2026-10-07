@@ -47,13 +47,72 @@ const SOUNDS: Array<[RegExp, (w: string) => string]> = [
  *      （见 leadFor）。开心本身不自动加笑声 —— 只有台词里写了笑才笑
  */
 export function textForMiniMax(text: string, style?: VoiceStyle | null): string {
-  let out = text;
+  return prepareMiniMaxText(text, style).text;
+}
+
+/**
+ * 同上，外加位置映射：map[i] = 发送文本第 i 个 UTF-16 单元对应原台词的哪个位置（-1 = 开口前加的那一声，
+ * 原台词里没有）；末尾多一个哨兵 = 原台词长度。字幕时间戳按发送文本的位置给，靠它换回原台词。
+ * 标签里的每个字符都指向被替换的那个词的开头（"唉"→"(sighs)"：叹气的时候气泡点亮"唉"）。
+ */
+export function prepareMiniMaxText(text: string, style?: VoiceStyle | null): { text: string; map: number[] } {
+  const reps: Array<{ at: number; len: number; tag: string }> = [];
   for (const [word, tag] of SOUNDS) {
     const re = new RegExp(`(^|[${EDGE}])(${word.source})(?=$|[${EDGE}])`, 'g');
-    out = out.replace(re, (_m, edge: string, w: string) => `${edge}${tag(w)}`);
+    for (const m of text.matchAll(re)) reps.push({ at: m.index! + m[1].length, len: m[2].length, tag: tag(m[2]) });
   }
-  const lead = leadFor(style, text);
-  return lead && !out.trimStart().startsWith('(') ? `${lead}${out}` : out;
+  reps.sort((a, b) => a.at - b.at);
+  // 台词自己已经以语气词开头（原文就是标签，或者第一个词被换成了标签）就不再叠一声
+  const first = text.length - text.trimStart().length;
+  const lead = text.trimStart().startsWith('(') || reps.some((r) => r.at === first) ? undefined : leadFor(style, text);
+  let out = '';
+  const map: number[] = [];
+  const push = (str: string, from: number | ((i: number) => number)) => {
+    for (let i = 0; i < str.length; i++) map.push(typeof from === 'number' ? from : from(i));
+    out += str;
+  };
+  if (lead) push(lead, -1);
+  let i = 0;
+  for (const r of reps) {
+    push(text.slice(i, r.at), (k) => i + k);
+    push(r.tag, r.at);
+    i = r.at + r.len;
+  }
+  push(text.slice(i), (k) => i + k);
+  map.push(text.length);
+  return { text: out, map };
+}
+
+/** 一个字幕词：在发送文本里的位置、在音频里的起止（毫秒） */
+interface SubtitleWord {
+  word_begin: number;
+  word_end: number;
+  time_begin: number;
+  time_end: number;
+}
+
+/**
+ * 字幕时间戳 → 原台词里的"第几个字 ↔ 第几秒"（字按码点数，和前端的分段一致；秒相对这段音频的开头）。
+ * 开口前加的那一声不对应任何字，跳过 —— 第一个字的时间就落在那一声之后，气泡不会提前亮。
+ * 结果严格递增（字和时间都不回退），最后一个点是最后一个字说完的时刻
+ */
+export function timesFromSubtitles(words: SubtitleWord[], map: number[], text: string): Array<{ c: number; t: number }> {
+  const cp = (i: number) => [...text.slice(0, i)].length;
+  const out: Array<{ c: number; t: number }> = [];
+  const add = (c: number, t: number) => {
+    const last = out[out.length - 1];
+    if (!last || (c > last.c && t >= last.t)) out.push({ c, t });
+  };
+  let end: { c: number; t: number } | null = null;
+  for (const w of [...words].sort((a, b) => a.time_begin - b.time_begin)) {
+    const b = map[w.word_begin];
+    if (b == null || b < 0) continue;
+    const e = map[Math.min(w.word_end, map.length - 1)];
+    add(cp(b), w.time_begin / 1000);
+    if (e != null && e > b) end = { c: cp(e), t: w.time_end / 1000 };
+  }
+  if (end) add(end.c, end.t);
+  return out;
 }
 
 /** 开口前的一声（只在情绪刚开始的那一段、强度高的时候） */
@@ -159,15 +218,19 @@ export async function synthesizeMiniMax(
   params: { text: string; voice: string; instructions?: string | null; style?: VoiceStyle | null },
   onAudio: (bytes: Buffer) => void,
   signal?: AbortSignal,
-): Promise<{ sampleRate: number }> {
+): Promise<{ sampleRate: number; times?: Array<{ c: number; t: number }> }> {
   if (!MINIMAX_VOICES.some((v) => v.id === params.voice)) throw new Error('未知 MiniMax 音色');
   const { emotion, speed, vol, pitch } = deliveryFor(params.style, params.instructions);
+  const prepared = prepareMiniMaxText(params.text, params.style);
   const r = await fetch(`${cfg.baseUrl.replace(/\/+$/, '')}/v1/t2a_v2`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'speech-2.8-turbo',
-      text: textForMiniMax(params.text, params.style),
+      text: prepared.text,
+      // 逐字时间戳：气泡逐字点亮、表情锚点按真实发音的时刻走（开口前的叹气 / 倒吸气会占零点几秒）
+      subtitle_enable: true,
+      subtitle_type: 'word',
       stream: true,
       stream_options: { exclude_aggregated_audio: true },
       voice_setting: { voice_id: params.voice.slice('minimax:'.length), speed, vol, pitch, ...(emotion ? { emotion } : {}) },
@@ -189,16 +252,26 @@ export async function synthesizeMiniMax(
   }
   let received = false;
   let complete = false;
+  /** 字幕：一段的字幕在它最后一块音频里给，结束事件里再给一份汇总（有汇总以汇总为准） */
+  let words: SubtitleWord[] = [];
+  let summary: SubtitleWord[] | null = null;
   const consume = (event: string) => {
     const data = event.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
     if (!data || data === '[DONE]') return;
     const json = JSON.parse(data) as {
       base_resp?: { status_code?: number; status_msg?: string };
-      data?: { audio?: string; status?: number };
+      data?: {
+        audio?: string;
+        status?: number;
+        subtitle?: { timestamped_words?: SubtitleWord[] };
+        subtitles?: Array<{ timestamped_words?: SubtitleWord[] }>;
+      };
     };
     check(json);
     // status=2 是结束事件；不播放可能包含的整段聚合音频，避免重复朗读。
     if (json.data?.status === 2) complete = true;
+    if (json.data?.subtitles) summary = json.data.subtitles.flatMap((x) => x.timestamped_words ?? []);
+    else if (json.data?.subtitle?.timestamped_words) words = words.concat(json.data.subtitle.timestamped_words);
     if (json.data?.status === 1 && json.data.audio) {
       if (!/^(?:[\da-f]{2})+$/i.test(json.data.audio)) throw new Error('MiniMax 返回了无效音频编码');
       onAudio(Buffer.from(json.data.audio, 'hex'));
@@ -219,5 +292,8 @@ export async function synthesizeMiniMax(
   if (pending.trim()) consume(pending);
   if (!received) throw new Error('MiniMax 未返回音频');
   if (!complete) throw new Error('MiniMax 语音流提前结束');
-  return { sampleRate: MINIMAX_SAMPLE_RATE };
+  const stamped = summary ?? words;
+  return stamped.length
+    ? { sampleRate: MINIMAX_SAMPLE_RATE, times: timesFromSubtitles(stamped, prepared.map, params.text) }
+    : { sampleRate: MINIMAX_SAMPLE_RATE };
 }

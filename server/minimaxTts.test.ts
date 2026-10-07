@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { deliveryFor, emotionFor, MINIMAX_VOICES, synthesizeMiniMax, textForMiniMax } from './minimaxTts.ts';
+import { deliveryFor, emotionFor, MINIMAX_VOICES, prepareMiniMaxText, synthesizeMiniMax, textForMiniMax, timesFromSubtitles } from './minimaxTts.ts';
 import type { VoiceStyle } from '../src/act/voiceStyle.ts';
 
 const cfg = { apiKey: 'test-key', baseUrl: 'https://example.invalid/' };
@@ -127,4 +127,66 @@ test('韵律按强度微调，幅度都在小范围内', () => {
     const d = deliveryFor(style({ emotion: e, p: 1, intensity: 1 }));
     assert.ok(d.speed >= 0.9 && d.speed <= 1.06 && Math.abs(d.pitch) <= 2 && d.vol >= 0.85 && d.vol <= 1.15, e);
   }
+});
+
+test('发送文本到原台词的位置映射：标签指向被替换的词，开口前那一声是 -1', () => {
+  const { text, map } = prepareMiniMaxText('唉，好。', null);
+  assert.equal(text, '(sighs)，好。');
+  assert.deepEqual(map, [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4]);
+  const lead = prepareMiniMaxText('我没事。', style({ emotion: 'sad', p: 0.7, intensity: 0.8 }));
+  assert.equal(lead.text, '(sighs)我没事。');
+  assert.deepEqual(lead.map, [-1, -1, -1, -1, -1, -1, -1, 0, 1, 2, 3, 4]);
+});
+
+test('字幕时间戳换回原台词：跳过开口前那一声，第一个字落在它之后', () => {
+  const { map } = prepareMiniMaxText('我没事。', style({ emotion: 'sad', p: 0.7, intensity: 0.8 }));
+  const words = [
+    { word: '(sighs)', word_begin: 0, word_end: 7, time_begin: 40, time_end: 600 },
+    { word: '我', word_begin: 7, word_end: 8, time_begin: 600, time_end: 760 },
+    { word: '没', word_begin: 8, word_end: 9, time_begin: 760, time_end: 900 },
+    { word: '事', word_begin: 9, word_end: 10, time_begin: 900, time_end: 1200 },
+    { word: '。', word_begin: 10, word_end: 11, time_begin: 1200, time_end: 1400 },
+  ];
+  assert.deepEqual(timesFromSubtitles(words, map, '我没事。'), [
+    { c: 0, t: 0.6 },
+    { c: 1, t: 0.76 },
+    { c: 2, t: 0.9 },
+    { c: 3, t: 1.2 },
+    { c: 4, t: 1.4 },
+  ]);
+  // 替换成标签的"唉"：叹气的时候点亮"唉"
+  const sigh = prepareMiniMaxText('唉，好。', null);
+  const t2 = timesFromSubtitles(
+    [
+      { word_begin: 0, word_end: 7, time_begin: 0, time_end: 500 },
+      { word_begin: 7, word_end: 8, time_begin: 500, time_end: 600 },
+      { word_begin: 8, word_end: 9, time_begin: 600, time_end: 800 },
+    ],
+    sigh.map,
+    '唉，好。',
+  );
+  assert.deepEqual(t2[0], { c: 0, t: 0 });
+  assert.deepEqual(t2[1], { c: 1, t: 0.5 });
+});
+
+test('流里的字幕：请求打开逐字时间戳，结束事件的汇总换算成原台词的时间', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(init.body as string);
+    assert.equal(body.subtitle_enable, true);
+    assert.equal(body.subtitle_type, 'word');
+    const words = [
+      { word: '你', word_begin: 0, word_end: 1, time_begin: 0, time_end: 200 },
+      { word: '好', word_begin: 1, word_end: 2, time_begin: 200, time_end: 450 },
+    ];
+    return streamResponse(
+      event({ data: { status: 1, audio: '01000200', subtitle: { timestamped_words: words } } }) +
+        event({ data: { status: 2, subtitles: [{ timestamped_words: words }] } }),
+    );
+  });
+  const r = await synthesizeMiniMax(cfg, { text: '你好', voice: MINIMAX_VOICES[0].id }, () => {});
+  assert.deepEqual(r.times, [
+    { c: 0, t: 0 },
+    { c: 1, t: 0.2 },
+    { c: 2, t: 0.45 },
+  ]);
 });

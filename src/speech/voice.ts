@@ -59,6 +59,11 @@ interface Placed {
   start: number;
   duration: number;
   source: AudioBufferSourceNode;
+  /**
+   * 逐字时间戳（MiniMax 的字幕）：这一段里第 c 个字（码点）在这段音频的第 t 秒开始说。
+   * 有了它这一段就不再按首尾两点线性插值 —— 开口前的叹气、拖长的字、句中的停顿都对得上
+   */
+  times?: Array<{ c: number; t: number }>;
 }
 
 /** 段与段之间的停顿：句末标点长一点，省略号更长（和 tts/bench.py 的试听版本一致） */
@@ -91,6 +96,8 @@ export class VoiceSession {
   /** 同一个判断的结构化版本（MiniMax 用；千问只看 tones 的中文指令） */
   private styles: Array<VoiceStyle | null>;
   private fallbackStyle: VoiceStyle | null = null;
+  /** 第一段（流式）合成请求的 id：收完之后拿它取逐字时间戳 */
+  private firstId: string | null = null;
   private judged: Promise<void>;
   private resolveJudged: () => void = () => {};
   private placed: Placed[] = [];
@@ -168,6 +175,7 @@ export class VoiceSession {
       });
       if (!r.ok || !r.body) throw new Error(`tts ${r.status}`);
       this.streamSr = Number(r.headers.get('x-sample-rate')) || 24000;
+      this.firstId = r.headers.get('x-tts-id');
       this.reader = r.body.getReader();
       while (this.pendingSeconds < 0.3 && !this.streamDone) await this.readChunk();
       clearTimeout(timer);
@@ -216,7 +224,17 @@ export class VoiceSession {
     const out: Array<{ charIndex: number; time: number }> = [];
     for (const p of this.placed) {
       const seg = this.segments[p.index];
-      out.push({ charIndex: seg.start, time: p.start - this.t0 });
+      if (p.times) {
+        // 逐字：每个字开口的时刻。第一个字落在开口前那一声之后；
+        // 下标 0 的点会被 Runtime 当成"整句开头"滤掉，挪一点点，让气泡在叹气的时候不亮字
+        // 最后一个点是"说完最后一个字"：排在下面的段尾点（段长 - 0.01）之前，字和时间都不回退
+        const len = [...seg.text].length;
+        for (const { c, t } of p.times) {
+          const at = Math.min(t, p.duration);
+          const ci = c === 0 ? 0.001 : Math.min(c, len - 0.02);
+          out.push({ charIndex: seg.start + ci, time: p.start - this.t0 + at });
+        }
+      } else out.push({ charIndex: seg.start, time: p.start - this.t0 });
       // 结束点往前错开一点点：它和下一段的开始是同一个字符下标，中间隔着一段停顿。
       // 不错开的话，下一段开头的锚点会被换算成这一段的结束时刻，表情比声音早约 0.2s
       out.push({ charIndex: seg.start + [...seg.text].length - 0.01, time: p.start - this.t0 + p.duration });
@@ -316,6 +334,7 @@ export class VoiceSession {
     const source = this.sources[this.sources.length - 1];
     this.placed.push({ index: 0, start: this.t0, duration: this.cursor - this.t0, source });
     this.onUpdate?.();
+    if (this.firstId) void this.fetchTimes(0, this.firstId);
     void this.pump();
   }
 
@@ -331,15 +350,16 @@ export class VoiceSession {
         await Promise.race([this.judged, new Promise((r) => setTimeout(r, wait))]);
       }
       if (this.stopped) return;
-      let buffer: AudioBuffer;
+      let got: { buffer: AudioBuffer; id: string | null };
       try {
-        buffer = await this.fetchSegment(i);
+        got = await this.fetchSegment(i);
       } catch {
         // 中途失败：后面的不说了，时间轴按已有的收尾
         break;
       }
       if (this.stopped) return;
-      this.place(i, buffer, Math.max(startAt, this.ctx.currentTime + 0.02));
+      this.place(i, got.buffer, Math.max(startAt, this.ctx.currentTime + 0.02));
+      if (got.id) void this.fetchTimes(i, got.id);
     }
     this.finished = true;
     this.onUpdate?.();
@@ -362,7 +382,21 @@ export class VoiceSession {
     return this.fallbackStyle ? { ...this.fallbackStyle, onset: this.fallbackStyle.onset && i === 0 } : null;
   }
 
-  private async fetchSegment(i: number, timeoutMs = 10000): Promise<AudioBuffer> {
+  /** 取这一段的逐字时间戳（音频收完之后服务端才有）。取不到就算了，照旧按首尾插值 */
+  private async fetchTimes(index: number, id: string) {
+    try {
+      const r = await fetch(`/api/tts/times?id=${encodeURIComponent(id)}`);
+      const { times } = (await r.json()) as { times: Array<{ c: number; t: number }> | null };
+      const p = this.placed.find((x) => x.index === index);
+      if (!times?.length || !p || this.stopped) return;
+      p.times = times;
+      this.onUpdate?.();
+    } catch {
+      // 时间戳只是锦上添花
+    }
+  }
+
+  private async fetchSegment(i: number, timeoutMs = 10000): Promise<{ buffer: AudioBuffer; id: string | null }> {
     const seg = this.segments[i];
     const r = await fetch('/api/tts/synth', {
       method: 'POST',
@@ -371,6 +405,6 @@ export class VoiceSession {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!r.ok) throw new Error(`tts ${r.status}`);
-    return await this.ctx.decodeAudioData(await r.arrayBuffer());
+    return { buffer: await this.ctx.decodeAudioData(await r.arrayBuffer()), id: r.headers.get('x-tts-id') };
   }
 }
