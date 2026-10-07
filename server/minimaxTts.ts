@@ -18,9 +18,8 @@ export const MINIMAX_VOICES: VoiceMeta[] = [
   ['wumei_yujie', '妩媚御姐', '妩媚的御姐角色女声'],
   ['Chinese (Mandarin)_Mature_Woman', '傲娇御姐', '傲娇风格的御姐女声'],
   ['Arrogant_Miss', '嚣张小姐', '个性鲜明的小姐角色女声'],
-  ['female-chengshu', '成熟女性', '成熟的女性声线'],
-  ['Chinese (Mandarin)_Wise_Women', '阅历姐姐', '有阅历的姐姐女声'],
-  ['Chinese (Mandarin)_News_Anchor', '新闻女声', '适合清晰播报的女声'],
+  ['female-shaonv-jingpin', '少女（Beta）', '官方少女音色的 Beta 版本'],
+  ['female-tianmei-jingpin', '甜美（Beta）', '官方甜美女声音色的 Beta 版本'],
 ].map(([id, name, desc]) => ({ id: `minimax:${id}`, name, desc, group: 'MiniMax 女声' }));
 
 export interface MiniMaxConfig {
@@ -29,6 +28,14 @@ export interface MiniMaxConfig {
 }
 
 export const MINIMAX_SAMPLE_RATE = 24000;
+
+/** 仅转换独立的笑声词，保留字幕原文；开心情绪本身不自动添加笑声。 */
+export function textForMiniMax(text: string): string {
+  return text.replace(
+    /(^|[\s，,。.!！?？…～~：:；;、「」『』“”"'（()）—])(哈{2,}|嘿{2,}|嘻{2,})(?=$|[\s，,。.!！?？…～~：:；;、「」『』“”"'（()）—])/g,
+    (_match, boundary: string, laugh: string) => `${boundary}${laugh.startsWith('哈') ? '(laughs)' : '(chuckle)'}`,
+  );
+}
 
 /** MiniMax 不接收千问的自然语言指令；取描述中最先出现的基本情绪。混合情绪近似处理。 */
 export function emotionFor(instructions?: string | null): string | undefined {
@@ -62,7 +69,7 @@ export async function synthesizeMiniMax(
     headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'speech-2.8-turbo',
-      text: params.text,
+      text: textForMiniMax(params.text),
       stream: true,
       stream_options: { exclude_aggregated_audio: true },
       voice_setting: { voice_id: params.voice.slice('minimax:'.length), speed: 1, vol: 1, pitch: 0, ...(emotion ? { emotion } : {}) },

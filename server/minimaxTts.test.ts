@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { emotionFor, MINIMAX_VOICES, synthesizeMiniMax } from './minimaxTts.ts';
+import { emotionFor, MINIMAX_VOICES, synthesizeMiniMax, textForMiniMax } from './minimaxTts.ts';
 
 const cfg = { apiKey: 'test-key', baseUrl: 'https://example.invalid/' };
 const params = { text: '你好呀！', voice: MINIMAX_VOICES[0].id, instructions: '用开心、轻快的语气说' };
 const event = (data: unknown) => `data: ${JSON.stringify(data)}\r\n\r\n`;
+
+test('独立笑声转为表演标签，普通词语、引用和现有标签不误改', () => {
+  assert.equal(textForMiniMax('哈哈哈，这个太好笑了！'), '(laughs)，这个太好笑了！');
+  assert.equal(textForMiniMax('真的？嘿嘿，嘻嘻。'), '真的？(chuckle)，(chuckle)。');
+  assert.equal(textForMiniMax('看这个哈哈镜。'), '看这个哈哈镜。');
+  assert.equal(textForMiniMax('你说的哈哈是什么意思？'), '你说的哈哈是什么意思？');
+  assert.equal(textForMiniMax('今天很开心！'), '今天很开心！');
+  assert.equal(textForMiniMax('(laughs) 好好笑！'), '(laughs) 好好笑！');
+});
 
 function streamResponse(text: string) {
   const bytes = new TextEncoder().encode(text);
