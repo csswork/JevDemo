@@ -16,10 +16,12 @@ export const BONE_LABELS = Object.assign({}, ...Object.values(BONE_GROUPS)) as R
 export function offsetQuaternion(angles: number[]) {
   return new THREE.Quaternion().setFromEuler(new THREE.Euler(...angles.map(THREE.MathUtils.degToRad) as [number, number, number], 'XYZ'));
 }
-export function rotationOffset(base: THREE.Quaternion, changed: THREE.Quaternion): [number, number, number] {
-  const e = new THREE.Euler().setFromQuaternion(base.clone().invert().multiply(changed), 'XYZ');
-  return [e.x, e.y, e.z].map(v => Math.round(THREE.MathUtils.radToDeg(v) * 10) / 10) as [number, number, number];
+export function quaternionAngles(q: THREE.Quaternion): [number, number, number] {
+  const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+  return [e.x, e.y, e.z].map(v => Math.round(THREE.MathUtils.radToDeg(v) * 10) / 10 || 0) as [number, number, number];
 }
+export function rotationOffset(base: THREE.Quaternion, changed: THREE.Quaternion) { return quaternionAngles(base.clone().invert().multiply(changed)); }
+export const roundPosition = (v: THREE.Vector3) => v.toArray().map(x => Math.max(-2, Math.min(2, Math.round(x * 10000) / 10000)) || 0) as [number, number, number];
 export function applyBoneEdits(edits: Edits, resolve: (name: string) => THREE.Object3D | null | undefined, positionScale: number) {
   for (const [bone, angles] of Object.entries(edits.offsets)) resolve(bone)?.quaternion.multiply(offsetQuaternion(angles));
   for (const [bone, offset] of Object.entries(edits.positions ?? {})) resolve(bone)?.position.add(new THREE.Vector3(...offset).multiplyScalar(positionScale));
@@ -39,8 +41,56 @@ export function beginPositionDrag(node: THREE.Object3D, ray: THREE.Ray, cameraDi
   return (nextRay: THREE.Ray): [number, number, number] | null => {
     const point = nextRay.intersectPlane(plane, new THREE.Vector3());
     if (!point) return null;
-    return point.add(grab).applyMatrix4(parentInverse).sub(base).divideScalar(positionScale).toArray().map(v => Math.max(-2, Math.min(2, Math.round(v * 10000) / 10000))) as [number, number, number];
+    return roundPosition(point.add(grab).applyMatrix4(parentInverse).sub(base).divideScalar(positionScale));
   };
+}
+
+/**
+ * Edits are stored in the source FBX's local bone axes, which is what GLB export bakes.
+ * VRM normalized bones are the FBX rest pose rotated into world space (q_vrm = P · q · R⁻¹, see retargetSmpl),
+ * so a local offset O becomes R · O · R⁻¹ there, and a local translation turns by the parent's rest matrix.
+ * VRM 0.x is additionally flipped 180° about Y.
+ */
+export class AvatarEditSpace {
+  private rest = new Map<string, THREE.Quaternion>();
+  private parent = new Map<string, THREE.Matrix3>();
+  constructor(fbx: THREE.Object3D, vrm0: boolean, scale: number) {
+    fbx.updateMatrixWorld(true);
+    const flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), vrm0 ? Math.PI : 0);
+    for (const name of Object.keys(BONE_NAMES)) {
+      const node = fbx.getObjectByName(name); if (!node) continue;
+      this.rest.set(name, flip.clone().multiply(node.getWorldQuaternion(new THREE.Quaternion())));
+      const matrix = new THREE.Matrix4().makeRotationFromQuaternion(flip).multiply(node.parent?.matrixWorld ?? new THREE.Matrix4());
+      // Stored meters → FBX centimeters → avatar meters.
+      this.parent.set(name, new THREE.Matrix3().setFromMatrix4(matrix).multiplyScalar(100 * scale));
+    }
+  }
+  rotationToAvatar(bone: string, angles: number[]) {
+    const r = this.rest.get(bone); const q = offsetQuaternion(angles);
+    return r ? r.clone().multiply(q).multiply(r.clone().invert()) : q;
+  }
+  rotationFromAvatar(bone: string, q: THREE.Quaternion) {
+    const r = this.rest.get(bone);
+    return quaternionAngles(r ? r.clone().invert().multiply(q).multiply(r) : q);
+  }
+  positionToAvatar(bone: string, offset: number[]) {
+    const v = new THREE.Vector3(...offset); const m = this.parent.get(bone);
+    return m ? v.applyMatrix3(m) : v;
+  }
+  positionFromAvatar(bone: string, v: THREE.Vector3) {
+    const m = this.parent.get(bone);
+    return roundPosition(m ? v.clone().applyMatrix3(m.clone().invert()) : v);
+  }
+  /** Avatar-space edits with full precision; only for posing the preview, never saved. */
+  toAvatar(edits: Edits): Edits {
+    const offsets: Edits['offsets'] = {}; const positions: NonNullable<Edits['positions']> = {};
+    for (const [bone, angles] of Object.entries(edits.offsets)) {
+      const e = new THREE.Euler().setFromQuaternion(this.rotationToAvatar(bone, angles), 'XYZ');
+      offsets[bone] = [e.x, e.y, e.z].map(THREE.MathUtils.radToDeg) as [number, number, number];
+    }
+    for (const [bone, offset] of Object.entries(edits.positions ?? {})) positions[bone] = this.positionToAvatar(bone, offset).toArray();
+    return { ...edits, offsets, positions };
+  }
 }
 
 /** three-vrm forwards normalized rotations and hip translation, but not other joint translations. */

@@ -18,6 +18,15 @@
         "preview"
       ],
       "port": 4173
+    },
+    {
+      "name": "motion-workbench",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "motion"
+      ],
+      "port": 5680
     }
   ]
 }

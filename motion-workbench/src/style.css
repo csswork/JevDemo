@@ -422,6 +422,11 @@ main {
   font-size:11px}
 .full {
   width:100%}
+.bone-actions {
+  display:flex;
+  justify-content:space-between}
+.text-button:disabled {
+  opacity:.4}
 .text-button {
   border:0;
   background:transparent;

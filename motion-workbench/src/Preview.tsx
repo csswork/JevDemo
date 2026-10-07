@@ -4,7 +4,8 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { exportMotion } from './exportMotion';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { beginPositionDrag, applyAvatarPositions, applyBoneEdits, avatarBoneName, BONE_LABELS, offsetQuaternion, rotationOffset } from './boneEditing';
+import { AvatarEditSpace, beginPositionDrag, applyAvatarPositions, applyBoneEdits, avatarBoneName, BONE_LABELS, offsetQuaternion, quaternionAngles } from './boneEditing';
+import { DRAG_RULES, setWorldQuaternion, solveCcd, solveTwoBone } from './ikDrag';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VRMUtils, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
 import { avatarLoader } from './avatarLoader';
@@ -15,9 +16,10 @@ import type { Edits } from '../shared';
 export interface PreviewHandle { exportGlb: () => Promise<ArrayBuffer>; }
 interface Props {
   url?: string; edits: Edits; target: string; playing: boolean; time: number; skeleton: boolean;
-  boneEditing: boolean; bone: string; boneMode: 'rotate' | 'translate';
+  boneEditing: boolean; bone: string; boneMode: 'rotate' | 'drag';
   onSelectBone: (bone: string) => void; onBones: (bones: string[]) => void;
-  onBoneEdit: (bone: string, mode: 'rotate' | 'translate', values: [number, number, number]) => void;
+  /** Bone values to merge into edits, in the source FBX axes regardless of preview avatar. */
+  onBoneEdits: (patch: Pick<Edits, 'offsets' | 'positions'>) => void;
   onLoadState: (status: 'loading' | 'ready' | 'error') => void;
   onTime: (time: number) => void; onDuration: (duration: number, edited: number) => void;
   handle: { current: PreviewHandle | null };
@@ -56,7 +58,7 @@ export function Preview(props: Props) {
     let source: THREE.Group | undefined; let exportSnapshot: THREE.Group | undefined; let sourceClip: THREE.AnimationClip | undefined;
     let clip: THREE.AnimationClip | undefined;
     let bindings: Array<{ binding: THREE.PropertyBinding & { setValue(buffer: ArrayLike<number>, offset: number): void }; interpolant: THREE.Interpolant }> = [];
-    let avatar: VRM | undefined; let helper: THREE.SkeletonHelper | undefined;
+    let avatar: VRM | undefined; let space: AvatarEditSpace | undefined; let helper: THREE.SkeletonHelper | undefined;
     let editKey = ''; let playTime = 0; let lastTime = performance.now(); let lastSent = -1;
     let initialRoot = new THREE.Vector3(); let ground = 0;
     const root = new THREE.Group(); scene.add(root);
@@ -66,7 +68,7 @@ export function Preview(props: Props) {
     const markers = new THREE.Group(); scene.add(markers); markers.visible = false;
     const joints = new Map<string, THREE.Object3D>(); const dots = new Map<string, THREE.Mesh>();
     const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
-    let loaded = false; let attached = ''; let dragBone = ''; let dragMode: 'rotate' | 'translate' = 'rotate';
+    let loaded = false; let attached = ''; let dragBone = '';
     const panKeys: Record<string, [number, number]> = { ArrowUp: [0, 1], KeyW: [0, 1], ArrowDown: [0, -1], KeyS: [0, -1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
     const heldKeys = new Set<string>();
     function panView(x: number, y: number, amount: number) {
@@ -88,21 +90,82 @@ export function Preview(props: Props) {
     el.addEventListener('keydown', keyDown); el.addEventListener('keyup', keyUp); el.addEventListener('blur', clearKeys);
     window.addEventListener('blur', clearKeys);
 
-    const dragBaseQ = new THREE.Quaternion(); const dragBaseP = new THREE.Vector3();
+    const dragBaseQ = new THREE.Quaternion();
     const resolveBone = (name: string) => avatar ? avatar.humanoid.getNormalizedBoneNode(avatarBoneName(name) as VRMHumanBoneName) : source?.getObjectByName(name);
+    /** Offset as applied to the preview node: VRM normalized axes differ from the stored FBX axes. */
+    const nodeOffset = (bone: string, angles: number[] | undefined) => space ? space.rotationToAvatar(bone, angles ?? [0, 0, 0]) : offsetQuaternion(angles ?? [0, 0, 0]);
+    const storedOffset = (bone: string, q: THREE.Quaternion) => space ? space.rotationFromAvatar(bone, q) : quaternionAngles(q);
     transform.addEventListener('dragging-changed', e => { controls.enabled = loaded && !e.value; });
     transform.addEventListener('mouseDown', () => {
-      const p = current.current; dragBone = attached; dragMode = p.boneMode;
-      dragBaseQ.copy(proxy.quaternion).multiply(offsetQuaternion(p.edits.offsets[dragBone] ?? [0, 0, 0]).invert());
-      dragBaseP.copy(proxy.position).sub(new THREE.Vector3(...(p.edits.positions?.[dragBone] ?? [0, 0, 0])).multiplyScalar(avatar ? 1 : 100));
+      const p = current.current; dragBone = attached;
+      dragBaseQ.copy(proxy.quaternion).multiply(nodeOffset(dragBone, p.edits.offsets[dragBone]).invert());
     });
     transform.addEventListener('objectChange', () => {
       if (!transform.dragging || !dragBone) return;
-      const values = dragMode === 'rotate' ? rotationOffset(dragBaseQ, proxy.quaternion) : proxy.position.clone().sub(dragBaseP).multiplyScalar(avatar ? 1 : .01).toArray().map(v => Math.max(-2, Math.min(2, Math.round(v * 10000) / 10000))) as [number, number, number];
-      current.current.onBoneEdit(dragBone, dragMode, values);
+      current.current.onBoneEdits({ offsets: { [dragBone]: storedOffset(dragBone, dragBaseQ.clone().invert().multiply(proxy.quaternion)) } });
     });
     let pointerStart: [number, number] | undefined;
-    let directDrag: { pointerId: number; bone: string; move: (ray: THREE.Ray) => [number, number, number] | null } | undefined;
+    let directDrag: { pointerId: number; bones: Set<string>; move: (ray: THREE.Ray) => void } | undefined;
+    /**
+     * IK drag. Every move re-poses from the pose at grab time and solves again, so the result never drifts
+     * and the bend direction stays the one the motion already had.
+     */
+    function beginIkDrag(id: string, ray: THREE.Ray) {
+      const rule = DRAG_RULES[id]; if (!rule || !clip) return;
+      const start = structuredClone(current.current.edits); const time = playTime;
+      pose(time, start);
+      const normal = camera.getWorldDirection(new THREE.Vector3());
+      const node = (n: string) => joints.get(n);
+      const lHip = node('L_Hip'); const rHip = node('R_Hip');
+      const forward = lHip && rHip ? lHip.getWorldPosition(new THREE.Vector3()).sub(rHip.getWorldPosition(new THREE.Vector3())).cross(new THREE.Vector3(0, 1, 0)).normalize() : normal.clone().negate();
+      type Limb = { root: THREE.Object3D; mid: THREE.Object3D; end: THREE.Object3D; names: string[]; target?: THREE.Vector3; rotation?: THREE.Quaternion; pole: THREE.Vector3 };
+      const limb = (end: string, chain: string[]): Limb | undefined => {
+        const nodes = [end, ...chain].map(node);
+        if (nodes.some(n => !n)) return undefined;
+        return { end: nodes[0]!, mid: nodes[1]!, root: nodes[2]!, names: [end, ...chain], pole: chain[1].endsWith('Hip') ? forward : forward.clone().negate() };
+      };
+      // Snapshot the animated pose (without this gesture's offsets) for each bone the gesture may write.
+      const bases = new Map<string, THREE.Quaternion>();
+      const captureBases = (names: string[]) => { for (const n of names) { const o = node(n); if (o) bases.set(n, o.quaternion.clone().multiply(nodeOffset(n, start.offsets[n]).invert())); } };
+      const collect = (names: string[]) => Object.fromEntries(names.filter(n => node(n)).map(n => [n, storedOffset(n, bases.get(n)!.clone().invert().multiply(node(n)!.quaternion))]));
+      let move: (ray: THREE.Ray) => void; let bones: string[];
+      if (rule === 'body') {
+        const pelvisNode = node('Pelvis'); if (!pelvisNode) return;
+        const startOffset = space ? space.positionToAvatar('Pelvis', start.positions?.Pelvis ?? [0, 0, 0]).toArray() : start.positions?.Pelvis ?? [0, 0, 0];
+        const drag = beginPositionDrag(pelvisNode, ray, normal, startOffset, avatar ? 1 : 100); if (!drag) return;
+        const legs = (['L', 'R'] as const).map(s => limb(`${s}_Ankle`, [`${s}_Knee`, `${s}_Hip`])).filter((l): l is Limb => !!l);
+        for (const leg of legs) { leg.target = leg.end.getWorldPosition(new THREE.Vector3()); leg.rotation = leg.end.getWorldQuaternion(new THREE.Quaternion()); }
+        bones = ['Pelvis', ...legs.flatMap(l => l.names)];
+        move = next => {
+          const local = drag(next); if (!local) return;
+          const pelvis = space ? space.positionFromAvatar('Pelvis', new THREE.Vector3(...local)) : local;
+          const edits = { ...start, positions: { ...start.positions, Pelvis: pelvis } };
+          pose(time, edits); captureBases(legs.flatMap(l => l.names));
+          for (const leg of legs) { solveTwoBone(leg.root, leg.mid, leg.end, leg.target!, leg.pole); setWorldQuaternion(leg.end, leg.rotation!); }
+          current.current.onBoneEdits({ offsets: collect(legs.flatMap(l => l.names)), positions: { Pelvis: pelvis } });
+        };
+      } else {
+        const effector = node(id)!; const chain = rule.chain.map(node).filter((n): n is THREE.Object3D => !!n);
+        if (!chain.length) return;
+        const world = effector.getWorldPosition(new THREE.Vector3());
+        const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, world);
+        const first = ray.intersectPlane(plane, new THREE.Vector3()); if (!first) return;
+        const grab = world.sub(first);
+        const twoBone = rule.limb ? limb(id, rule.chain) : undefined;
+        bones = [...rule.chain, ...(rule.keep ? [id] : [])].filter(n => node(n));
+        move = next => {
+          const point = next.intersectPlane(plane, new THREE.Vector3()); if (!point) return;
+          pose(time, start); captureBases(bones);
+          const keep = effector.getWorldQuaternion(new THREE.Quaternion());
+          const target = point.add(grab);
+          if (twoBone) solveTwoBone(twoBone.root, twoBone.mid, twoBone.end, target, twoBone.pole);
+          else solveCcd(chain, effector, target);
+          if (rule.keep) setWorldQuaternion(effector, keep);
+          current.current.onBoneEdits({ offsets: collect(bones) });
+        };
+      }
+      return { bones: new Set([id, ...bones]), move };
+    }
     const pointerRay = (e: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect(); pointer.set((e.clientX - rect.left) / rect.width * 2 - 1, -(e.clientY - rect.top) / rect.height * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
@@ -112,19 +175,17 @@ export function Preview(props: Props) {
       if (loaded) el.focus({ preventScroll: true });
       pointerStart = [e.clientX, e.clientY];
       const p = current.current;
-      if (!loaded || !p.boneEditing || p.boneMode !== 'translate' || e.button !== 0) return;
+      if (!loaded || !p.boneEditing || p.boneMode !== 'drag' || e.button !== 0) return;
       const hit = pointerRay(e).intersectObjects([...dots.values()], false)[0]; if (!hit) return;
-      const id = hit.object.userData.bone as string; const node = joints.get(id)!;
-      const move = beginPositionDrag(node, raycaster.ray, camera.getWorldDirection(new THREE.Vector3()), p.edits.positions?.[id] ?? [0, 0, 0], avatar ? 1 : 100);
-      if (!move) return;
-      directDrag = { pointerId: e.pointerId, bone: id, move }; controls.enabled = false;
+      const id = hit.object.userData.bone as string;
+      const drag = beginIkDrag(id, raycaster.ray); if (!drag) return;
+      directDrag = { pointerId: e.pointerId, ...drag }; controls.enabled = false;
       renderer.domElement.setPointerCapture(e.pointerId); current.current.onSelectBone(id);
       e.preventDefault(); e.stopImmediatePropagation();
     };
     const pointerMove = (e: PointerEvent) => {
       if (!directDrag || e.pointerId !== directDrag.pointerId) return;
-      const values = directDrag.move(pointerRay(e).ray);
-      if (values) current.current.onBoneEdit(directDrag.bone, 'translate', values);
+      directDrag.move(pointerRay(e).ray);
       e.preventDefault(); e.stopImmediatePropagation();
     };
     const endDirectDrag = (e: PointerEvent) => {
@@ -146,7 +207,7 @@ export function Preview(props: Props) {
       const p = current.current; markers.visible = loaded && p.boneEditing;
       if (!loaded || !p.boneEditing || !joints.has(p.bone)) { transform.detach(); transform.enabled = false; attached = ''; return; }
       const node = joints.get(p.bone)!;
-      if (p.boneMode === 'translate') { transform.detach(); transform.enabled = false; attached = ''; }
+      if (p.boneMode === 'drag') { transform.detach(); transform.enabled = false; attached = ''; }
       else if (!transform.dragging) {
         if (proxy.parent !== node.parent) node.parent!.add(proxy);
         proxy.position.copy(node.position); proxy.quaternion.copy(node.quaternion); proxy.scale.set(1, 1, 1); proxy.updateMatrixWorld(true);
@@ -155,8 +216,9 @@ export function Preview(props: Props) {
       for (const [id, dot] of dots) {
         dot.position.copy(joints.get(id)!.getWorldPosition(new THREE.Vector3()));
         const finger = /Thumb|Index|Middle|Ring|Pinky/.test(id);
-        dot.scale.setScalar(camera.position.distanceTo(dot.position) * (id === p.bone ? .009 : finger ? .0035 : .006));
-        (dot.material as THREE.MeshBasicMaterial).color.set(id === p.bone ? 0xf5a623 : finger ? 0x537cc7 : 0x66824f);
+        const linked = !!directDrag?.bones.has(id) && id !== p.bone;
+        dot.scale.setScalar(camera.position.distanceTo(dot.position) * (id === p.bone ? .009 : linked ? .007 : finger ? .0035 : .006));
+        (dot.material as THREE.MeshBasicMaterial).color.set(id === p.bone ? 0xf5a623 : linked ? 0xe0c27a : finger ? 0x537cc7 : 0x66824f);
       }
     }
     const disposeTree = (object: THREE.Object3D) => object.traverse(o => {
@@ -178,8 +240,9 @@ export function Preview(props: Props) {
       for (const r of rest) { r.node.position.copy(r.position); r.node.quaternion.copy(r.quaternion); }
       root.position.set(0, 0, 0);
       for (const { binding, interpolant } of bindings) binding.setValue(interpolant.evaluate(THREE.MathUtils.clamp(t, 0, clip.duration)), 0);
-      applyBoneEdits(edits, resolveBone, avatar ? 1 : 100);
-      avatar?.humanoid.update(); if (avatar) applyAvatarPositions(avatar, edits); root.updateMatrixWorld(true);
+      const applied = space ? space.toAvatar(edits) : edits;
+      applyBoneEdits(applied, resolveBone, avatar ? 1 : 100);
+      avatar?.humanoid.update(); if (avatar) applyAvatarPositions(avatar, applied); root.updateMatrixWorld(true);
       const pos = pelvis()?.getWorldPosition(new THREE.Vector3());
       if (edits.inPlace && pos) { root.position.x = initialRoot.x - pos.x; root.position.z = initialRoot.z - pos.z; }
       if (edits.ground) root.position.y = -ground;
@@ -226,6 +289,7 @@ export function Preview(props: Props) {
           if (!avatar) { disposeTree(gltf.scene); throw new Error('请选择有效的 VRM 角色'); }
           if (avatar.meta.metaVersion === '0') VRMUtils.rotateVRM0(avatar);
           const tracks = retargetSmpl(source, avatar);
+          space = new AvatarEditSpace(source, avatar.meta.metaVersion === '0', tracks.scale);
           const remapped: THREE.KeyframeTrack[] = [];
           for (const [bone, track] of tracks.rotation) {
             const node = avatar.humanoid.getNormalizedBoneNode(bone); if (!node) continue;
@@ -283,7 +347,7 @@ export function Preview(props: Props) {
         if (p.playing && !p.boneEditing) { lastSent = playTime; p.onTime(playTime); }
       }
       if (helper) helper.visible = p.skeleton || (loaded && p.boneEditing);
-      avatar?.update(dt); syncEditor(); renderer.domElement.style.cursor = p.boneEditing && p.boneMode === 'translate' ? directDrag ? 'grabbing' : 'grab' : '';  if (!directDrag && !transform.dragging) {
+      avatar?.update(dt); syncEditor(); renderer.domElement.style.cursor = p.boneEditing && p.boneMode === 'drag' ? directDrag ? 'grabbing' : 'grab' : '';  if (!directDrag && !transform.dragging) {
         if (loaded && document.activeElement === el && heldKeys.size) {
           const directions = [...heldKeys].map(code => panKeys[code]);
           const x = Math.sign(directions.reduce((sum, value) => sum + value[0], 0)); const y = Math.sign(directions.reduce((sum, value) => sum + value[1], 0));
@@ -304,6 +368,6 @@ export function Preview(props: Props) {
     {!props.url && <div className="stage-message"><span className="stage-icon">↗</span><strong>让动作有自己的迭代空间</strong><span>添加一个动作，生成或导入 FBX 开始预览</span></div>}
     {loading && <div className="stage-message loading-message" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/><strong>Loading…</strong><span>正在加载模型与动作，请稍候</span></div>}
     {error && <div className="preview-error">{error}</div>}
-    <div className="stage-caption">{props.boneEditing ? `${BONE_LABELS[props.bone]} · 点击关节选择 · 拖动${props.boneMode === 'rotate' ? '圆环旋转' : '关节点直接移动'}` : '鼠标拖动旋转 · 滚轮缩放 · 点击预览聚焦后，方向键 / WASD 上下左右平移'}</div>
+    <div className="stage-caption">{props.boneEditing ? `${BONE_LABELS[props.bone]} · 点击关节选择 · 拖动${props.boneMode === 'rotate' ? '圆环旋转' : '关节点，上游骨骼随之弯曲'}` : '鼠标拖动旋转 · 滚轮缩放 · 点击预览聚焦后，方向键 / WASD 上下左右平移'}</div>
   </div>;
 }

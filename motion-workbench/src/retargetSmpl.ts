@@ -65,6 +65,8 @@ export interface HumanoidTracks {
   duration: number;
   rotation: Map<VRMHumanBoneName, THREE.QuaternionKeyframeTrack>;
   translation: Map<'hips', THREE.VectorKeyframeTrack>;
+  /** FBX units → VRM meters, from the standing hip height. */
+  scale: number;
 }
 
 /**
@@ -75,7 +77,7 @@ export function retargetSmpl(fbx: THREE.Group, vrm: VRM): HumanoidTracks {
   const clip = fbx.animations[0];
   const rotation = new Map<VRMHumanBoneName, THREE.QuaternionKeyframeTrack>();
   const translation = new Map<'hips', THREE.VectorKeyframeTrack>();
-  if (!clip) return { duration: 0, rotation, translation };
+  if (!clip) return { duration: 0, rotation, translation, scale: 1 };
 
   fbx.updateMatrixWorld(true);
   const vrm0 = (vrm.meta as { metaVersion?: string }).metaVersion === '0';
@@ -137,7 +139,7 @@ export function retargetSmpl(fbx: THREE.Group, vrm: VRM): HumanoidTracks {
       translation.set('hips', new THREE.VectorKeyframeTrack('hips', track.times.slice(), values));
     }
   }
-  return { duration: clip.duration, rotation, translation };
+  return { duration: clip.duration, rotation, translation, scale };
 }
 
 /**
