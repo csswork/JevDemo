@@ -1,0 +1,37 @@
+{
+  "blender": "5.2.2 LTS",
+  "bytes": 1571512,
+  "sha256": "63e131f98ddd34ea569625b036f370451980daa501b3236dfd42c91978cf4fdb",
+  "meshes": {
+    "branch_path_boards": {
+      "triangles": 5624,
+      "primitives": 1
+    },
+    "deck_boards": {
+      "triangles": 4928,
+      "primitives": 1
+    },
+    "front_path_boards": {
+      "triangles": 5616,
+      "primitives": 1
+    },
+    "garden_bench": {
+      "triangles": 1736,
+      "primitives": 2
+    },
+    "low_table": {
+      "triangles": 1296,
+      "primitives": 1
+    },
+    "main_path_boards": {
+      "triangles": 7720,
+      "primitives": 1
+    },
+    "round_stool": {
+      "triangles": 976,
+      "primitives": 1
+    }
+  },
+  "textures": "Existing weathered_brown_planks, unchanged source bytes",
+  "validation": "Finite vertex attributes; position, normal, UV, color on every primitive; 7 meshes; <45000 asset triangles"
+}

@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { canvasTexture, pbrTextures, rng, type Backdrop } from './common';
 import { AMBIENCE_VOLUME } from '../../speech/ambience';
 import { createCirrus } from './clouds';
+import { loadParkTimber } from './parkTimber';
 import { createDust, createLightShafts, type Shaft } from './sunlight';
 import { createBatcher, createTreeMaker, windDepth, windShader, type TreeVariant } from './foliage';
 
@@ -176,7 +177,7 @@ function fallenLeaf() {
   });
 }
 
-export function createPark(): Backdrop {
+export function createPark({ timber = true }: { timber?: boolean } = {}): Backdrop {
   const group = new THREE.Group();
   group.name = 'park';
   const disposables: Array<{ dispose(): void }> = [];
@@ -199,6 +200,10 @@ export function createPark(): Backdrop {
     return o;
   };
   const colliders: THREE.Object3D[] = [];
+  let deckSurface!: THREE.Mesh;
+  const pathSurfaces: Array<{ mesh: THREE.Mesh; length: number }> = [];
+  const oldFurniture: THREE.Object3D[] = [];
+  const benchPlacements: Array<{ x: number; y: number; z: number; angle: number }> = [];
   /** 不加进场景、只给防穿墙用的简化形状 */
   const collider = (geo: THREE.BufferGeometry, x: number, y: number, z: number) => {
     const m = new THREE.Mesh(keep(geo));
@@ -385,7 +390,7 @@ export function createPark(): Backdrop {
     const uv = top.attributes.uv;
     const pos = top.attributes.position;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / TILE, pos.getZ(i) / TILE);
-    add(new THREE.Mesh(top, deckMat), false);
+    deckSurface = add(new THREE.Mesh(top, deckMat), false);
     const edge = (sx: number, sz: number, x: number, z: number) => add(new THREE.Mesh(keep(new THREE.BoxGeometry(sx, 0.18, sz)), sideMat)).position.set(x, -0.093, z);
     edge(w + 0.08, 0.08, cx, DECK.z1);
     edge(w + 0.08, 0.08, cx, DECK.z0);
@@ -446,6 +451,7 @@ export function createPark(): Backdrop {
     skirtMat.side = THREE.DoubleSide;
     add(new THREE.Mesh(sg, skirtMat), false);
     colliders.push(top);
+    pathSurfaces.push({ mesh: top, length: len });
   };
   boardwalk(main);
   boardwalk(branch);
@@ -625,6 +631,7 @@ export function createPark(): Backdrop {
       const m = add(new THREE.Mesh(keep(geo), mat));
       m.position.set(x, y, z);
       m.rotation.y = ry;
+      oldFurniture.push(m);
       m.updateMatrixWorld();
       colliders.push(m);
     };
@@ -667,11 +674,15 @@ export function createPark(): Backdrop {
       g.position.set(x, groundY(x, z), z);
       // 局部 +Z（座位正面）朝着最近的路
       g.rotation.y = Math.atan2(np.x - x, np.z - z);
+      oldFurniture.push(g);
+      benchPlacements.push({ x, y: g.position.y, z, angle: g.rotation.y });
       add(g);
     };
     parkBench(2.8, 11.6);
     parkBench(-2.7, 18.4);
   }
+
+  if (timber) loadParkTimber({ group, keep, disposed: () => disposed, wood: deckMat, deck: deckSurface, paths: pathSurfaces, furniture: oldFurniture, benches: benchPlacements });
 
   // ---- 落叶（平台和栈道上）----
   {
