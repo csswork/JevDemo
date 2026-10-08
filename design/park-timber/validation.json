@@ -33,5 +33,18 @@
     }
   },
   "textures": "Existing weathered_brown_planks, unchanged source bytes",
-  "validation": "Finite vertex attributes; position, normal, UV, color on every primitive; 7 meshes; <45000 asset triangles"
+  "validation": "Finite vertex attributes; position, normal, UV, color on every primitive; 7 meshes; <45000 asset triangles",
+  "runtimeComparison": {
+    "view": "preview deck default, same camera after tree loading",
+    "original": {
+      "drawCalls": 140,
+      "triangles": 2539302
+    },
+    "candidate": {
+      "drawCalls": 137,
+      "triangles": 2570668
+    },
+    "triangleIncreasePercent": 1.24,
+    "limitation": "Single-frame draw/triangle counts, not FPS or GPU timings"
+  }
 }
