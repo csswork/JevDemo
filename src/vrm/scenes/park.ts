@@ -178,7 +178,7 @@ function fallenLeaf() {
   });
 }
 
-export function createPark({ timber = true }: { timber?: boolean } = {}): Backdrop & { lightShafts: LightShaftSystem } {
+export function createPark({ timber = true, volumetricShadows = false }: { timber?: boolean; volumetricShadows?: boolean } = {}): Backdrop & { lightShafts: LightShaftSystem } {
   const group = new THREE.Group();
   group.name = 'park';
   const disposables: Array<{ dispose(): void }> = [];
@@ -873,7 +873,7 @@ export function createPark({ timber = true }: { timber?: boolean } = {}): Backdr
   }
 
   // ---- 合批（树、灌木、路灯）：每次渲染前按视锥逐个剔除，见 foliage.ts ----
-  const { batch, cull } = createBatcher(group, keep, SUN_DIR, -0.3);
+  const { batch, cull } = createBatcher(group, keep, SUN_DIR, -0.3, !volumetricShadows);
 
   // ---- 树、灌木（ez-tree，动态加载）----
   void import('@dgreenheck/ez-tree').then(({ Tree }) => {

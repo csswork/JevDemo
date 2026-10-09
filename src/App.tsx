@@ -1,4 +1,4 @@
-import {LIGHT_SHAFT_SETTING_RANGES,type LightShaftSettings} from './vrm/scenes/lightShaftSettings';
+import {GODRAY_RANGES,type ParkGodraySettings} from './vrm/godrays/settings';
 import {loadSceneDefaults,saveSceneDefaults} from './vrm/sky/sceneDefaults';
 import {DEFAULT_SCENE_SETTINGS as DEFAULT_SKY_SETTINGS,type SceneSettings as SkySettings} from './vrm/sky/sceneSettings';
 import type {OceanSettings} from './vrm/ocean/oceanSettings';
@@ -330,7 +330,7 @@ export default function App() {
     setSkySettings(previous=>({...previous,...values}));runtimeRef.current?.setSkySettings(values);setSkySaveStatus('未保存');
   };
   const changeOcean=(values:Partial<OceanSettings>)=>{setSkySettings(previous=>({...previous,ocean:{...previous.ocean,...values}}));runtimeRef.current?.setOceanSettings(values);setSkySaveStatus('未保存');};
-  const changeLightShafts=(values:Partial<LightShaftSettings>)=>{setSkySettings(previous=>({...previous,lightShafts:{...previous.lightShafts,...values}}));runtimeRef.current?.setLightShaftSettings(values);setSkySaveStatus('未保存');};
+  const changeGodrays=(values:Partial<ParkGodraySettings>)=>{setSkySettings(previous=>({...previous,godrays:{...previous.godrays,...values}}));runtimeRef.current?.setGodraySettings(values);setSkySaveStatus('未保存');};
   const saveSky=async()=>{
     const scene=backdrop;setSkySaving(true);setSkySaveStatus('');
     try{
@@ -1584,16 +1584,17 @@ export default function App() {
                 <summary>丁达尔光束 <span className="count">公园</span></summary>
                 <fieldset className="sky-fields" disabled={skyLoading||skySaving}>
                   <div className="sky-options">
-                    <label className="live-chip"><input type="checkbox" checked={skySettings.lightShafts.enabled} onChange={e=>changeLightShafts({enabled:e.target.checked})}/><i className="dot"/>显示光束</label>
-                    <label>光色 <input type="color" aria-label="光束颜色" value={skySettings.lightShafts.color} onChange={e=>changeLightShafts({color:e.target.value})}/></label>
+                    <label className="live-chip"><input type="checkbox" checked={skySettings.godrays.enabled} onChange={e=>changeGodrays({enabled:e.target.checked})}/><i className="dot"/>显示光束</label>
+                    <label>光色 <input type="color" aria-label="光束颜色" value={skySettings.godrays.color} onChange={e=>changeGodrays({color:e.target.value})}/></label>
                   </div>
                   <div className="sliders sky-sliders">
                     {([
-                      ['count','数量'],['area','覆盖范围'],['intensity','亮度'],['width','宽度'],['softness','边缘柔和'],['breakup','细束层次'],['haze','柔雾比例'],['speed','流动速度'],['spread','下方扩散'],['nearFade','近处淡出'],['farFade','远处淡出'],
+                      ['density','雾密度'],['maxDensity','散射上限'],['distanceAttenuation','距离衰减'],['raymarchSteps','采样步数'],['sunElevation','太阳高度'],
                     ] as const).map(([key,label])=>(
-                      <label className="on" key={key}><span className="n">{label}</span><input type="range" aria-label={'光束'+label} min={LIGHT_SHAFT_SETTING_RANGES[key][0]} max={LIGHT_SHAFT_SETTING_RANGES[key][1]} step={key==='farFade'||key==='count'?1:.01} value={skySettings.lightShafts[key]} onChange={e=>changeLightShafts({[key]:Number(e.target.value)})}/><span className="w">{key==='count'?skySettings.lightShafts[key]:skySettings.lightShafts[key].toFixed(2)}{key==='area'?'×':''}</span></label>
+                      <label className="on" key={key}><span className="n">{label}</span><input type="range" aria-label={'光束'+label} min={GODRAY_RANGES[key][0]} max={GODRAY_RANGES[key][1]} step={key==='sunElevation'||key==='raymarchSteps'?1:key==='density'?.0005:.05} value={skySettings.godrays[key]} onChange={e=>changeGodrays({[key]:Number(e.target.value)})}/><span className="w">{key==='density'?skySettings.godrays[key].toFixed(4):skySettings.godrays[key]}{key==='sunElevation'?'°':''}</span></label>
                     ))}
                   </div>
+                  <div className="sky-options"><label>分辨率 <select aria-label="体积光分辨率" value={skySettings.godrays.resolutionScale} onChange={e=>changeGodrays({resolutionScale:Number(e.target.value)})}><option value="0.25">1/4 · 节能</option><option value="0.5">1/2 · 均衡</option><option value="1">完整 · 精细</option></select></label></div>
                   <div className="sky-save">
                     <button className="sky-save-button" onClick={saveSky} disabled={skyLoading||skySaving}>{skySaving?'保存中…':'Save'}</button>
                     <span role="status">{skyLoading?'读取默认参数…':skySaveStatus}</span>

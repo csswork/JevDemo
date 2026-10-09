@@ -1,3 +1,4 @@
+import {DEFAULT_PARK_GODRAYS,GODRAY_RANGES} from '../src/vrm/godrays/settings.ts';
 import {DEFAULT_LIGHT_SHAFT_SETTINGS,LIGHT_SHAFT_SETTING_RANGES} from '../src/vrm/scenes/lightShaftSettings.ts';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,7 +11,7 @@ const ranges={coverage:[0,1],cirrus:[0,1],windDirection:[0,360],windSpeed:[0,12]
 function validate(value:unknown):SceneSettings{
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('参数格式不正确');
  const data=value as Record<string,unknown>;
- if(![6,7,8].includes(Object.keys(data).length)||Object.keys(data).some(key=>!(key in DEFAULT_SCENE_SETTINGS)))throw new Error('参数字段不正确');
+ if(![6,7,8,9].includes(Object.keys(data).length)||Object.keys(data).some(key=>!(key in DEFAULT_SCENE_SETTINGS)))throw new Error('参数字段不正确');
  for(const [key,[min,max]] of Object.entries(ranges)){
   const v=data[key];if(typeof v!=='number'||!Number.isFinite(v)||v<min||v>max)throw new Error(key+' 超出范围');
  }
@@ -37,6 +38,14 @@ function validate(value:unknown):SceneSettings{
   }
   if(shafts.count!==undefined&&!Number.isInteger(shafts.count))throw new Error('光束数量必须是整数');
   if(typeof shafts.enabled!=='boolean'||typeof shafts.color!=='string'||!/^#[0-9a-f]{6}$/i.test(shafts.color))throw new Error('光束开关或颜色格式不正确');
+ }
+ if(data.godrays!==undefined){
+  if(!data.godrays||typeof data.godrays!=='object'||Array.isArray(data.godrays))throw new Error('体积光参数格式不正确');
+  const g=data.godrays as Record<string,unknown>;
+  if(Object.keys(g).length!==Object.keys(DEFAULT_PARK_GODRAYS).length||Object.keys(g).some(key=>!(key in DEFAULT_PARK_GODRAYS)))throw new Error('体积光参数字段不正确');
+  for(const [key,[min,max]] of Object.entries(GODRAY_RANGES)){const v=g[key];if(typeof v!=='number'||!Number.isFinite(v)||v<min||v>max)throw new Error(key+' 超出范围');}
+  if(!Number.isInteger(g.raymarchSteps)||![.25,.5,1].includes(Number(g.resolutionScale))||typeof g.resolutionScale!=='number')throw new Error('体积光质量不正确');
+  if(typeof g.enabled!=='boolean'||typeof g.color!=='string'||!/^#[0-9a-f]{6}$/i.test(g.color))throw new Error('体积光开关或颜色不正确');
  }
  return normalizeSceneSettings(data as unknown as SceneSettings);
 }

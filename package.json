@@ -19,7 +19,9 @@
     "@pixiv/three-vrm-animation": "^3.5.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "three": "^0.186.0"
+    "three": "^0.186.0",
+    "postprocessing": "^6.38.2",
+    "three-good-godrays": "0.12.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
@@ -30,5 +32,13 @@
     "oxlint": "^1.81.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
+  },
+  "overrides": {
+    "three-good-godrays": {
+      "three": "$three"
+    },
+    "postprocessing": {
+      "three": "$three"
+    }
   }
 }

@@ -63,7 +63,7 @@ export function windDepth(uniforms: Wind, height?: number, amp?: number) {
  *
  * floor = 影子最低落到哪（地面最低处再留点余量）。cull 在 Backdrop.beforeRender 里调
  */
-export function createBatcher(group: THREE.Group, keep: Keep, sunDir: THREE.Vector3, floor = -0.4) {
+export function createBatcher(group: THREE.Group, keep: Keep, sunDir: THREE.Vector3, floor = -0.4, shadowViewCull = true) {
   const batches: Array<(view: THREE.Frustum, shadow: THREE.Frustum | null) => void> = [];
   const batch = (geo: THREE.BufferGeometry, mat: THREE.Material, matrices: THREE.Matrix4[], shadow: { depth?: THREE.Material } | null) => {
     if (!matrices.length) return;
@@ -134,7 +134,7 @@ export function createBatcher(group: THREE.Group, keep: Keep, sunDir: THREE.Vect
       view.cull(v);
       if (cast) {
         updateEnds();
-        cast.cull(s, v);
+        cast.cull(s, shadowViewCull ? v : undefined);
       }
     });
   };

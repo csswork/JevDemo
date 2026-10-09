@@ -1,3 +1,6 @@
+import {createParkGodrays} from './godrays/parkGodrays';
+import {setPreviewSunElevation} from './godrays/sun';
+import {DEFAULT_PARK_GODRAYS,updateGodraySettings,type ParkGodraySettings} from './godrays/settings';
 import {DEFAULT_LIGHT_SHAFT_SETTINGS,updateLightShaftSettings,type LightShaftSettings} from './scenes/lightShaftSettings';
 import {createStreetOcean} from './ocean/streetOcean';
 import {DEFAULT_OCEAN_SETTINGS,updateOceanSettings,type OceanSettings} from './ocean/oceanSettings';
@@ -25,7 +28,7 @@ export interface CameraView {
   polar: number;
   distance: number;
 }
-const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, animeCafe: createAnimeCafe, park: createPark, street: () => createStreet({legacySky:false}) };
+const BACKDROPS: Record<Exclude<BackdropId, 'none'>, () => Backdrop> = { cafe: createCafe, animeCafe: createAnimeCafe, park: () => createPark({volumetricShadows:true}), street: () => createStreet({legacySky:false}) };
 /** 相机默认看多远（室内够了；室外场景自己给，见 Backdrop.far） */
 const FAR = 20;
 /** 像素比的上限：再高肉眼分不出，GPU 白干活 */
@@ -162,11 +165,19 @@ export function createStage(canvas: HTMLCanvasElement) {
   /** 一天里的时间（只有街景用：太阳、月亮、灯，见 timeOfDay.ts） */
   const time = new TimeOfDay();
   let skySettings={...DEFAULT_SKY_SETTINGS};
+  let parkGodrays:ReturnType<typeof createParkGodrays>|null=null;
+  let godraySettings={...DEFAULT_PARK_GODRAYS};
+  function applyGodraySettings(){
+    if(backdropId!=='park')return;
+    if(backdrop?.lightShafts)backdrop.lightShafts.mesh.visible=false;
+    setPreviewSunElevation(key,godraySettings.sunElevation);
+    parkGodrays?.configure(godraySettings);parkGodrays?.setEnabled(godraySettings.enabled);
+  }
   let lightShaftSettings={...DEFAULT_LIGHT_SHAFT_SETTINGS};
   function applyLightShaftSettings(){
     const shafts=backdrop?.lightShafts;if(!shafts)return;
     backdrop?.setLightShaftLayout?.(lightShaftSettings.count,lightShaftSettings.area);
-    shafts.setParameters(lightShaftSettings);shafts.setColor(lightShaftSettings.color);shafts.mesh.visible=lightShaftSettings.enabled;
+    shafts.setParameters(lightShaftSettings);shafts.setColor(lightShaftSettings.color);shafts.mesh.visible=backdropId==='park'?false:lightShaftSettings.enabled;
   }
   let oceanSettings={...DEFAULT_OCEAN_SETTINGS};
   let streetOcean:ReturnType<typeof createStreetOcean>|null=null;
@@ -179,6 +190,7 @@ export function createStage(canvas: HTMLCanvasElement) {
    */
   function setBackdrop(id: BackdropId) {
     if (id === backdropId) return;
+    parkGodrays?.dispose();parkGodrays=null;
     streetOcean?.dispose();streetOcean=null;
     streetSky?.dispose();streetSky=null;
     if (backdrop) {
@@ -231,6 +243,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     if (sun?.position) key.position.set(...sun.position);
     else key.position.copy(keyDefault.position);
     key.shadow.intensity = 1;
+    key.shadow.bias = -0.0004;
     fill.color.setHex(fillDefault.color);
     fill.intensity = sun?.fill ?? fillDefault.intensity;
     rim.color.setHex(rimDefault.color);
@@ -245,9 +258,15 @@ export function createStage(canvas: HTMLCanvasElement) {
       key.shadow.normalBias = sun ? 0.04 : 0.02;
       key.shadow.radius = sun ? 3 : 4;
     }
+    if(id==='park'){
+      Object.assign(key.shadow.camera,{left:-18,right:18,top:18,bottom:-18,near:1,far:90});
+      key.shadow.camera.updateProjectionMatrix();key.shadow.bias=-.0002;key.shadow.normalBias=.025;
+      parkGodrays=createParkGodrays(renderer,scene,camera,key,{toneMapping:false,multisampling:2});
+      applyGodraySettings();
+    }
     // 像素预算是场景给的（公园有、咖啡店和纯色没有）：换背景时按当前画布大小重算一次像素比
     const size = renderer.getSize(_size);
-    if (size.x > 0 && size.y > 0) applyPixelRatio(size.x, size.y);
+    if (size.x > 0 && size.y > 0) {applyPixelRatio(size.x, size.y);parkGodrays?.resize(size.x,size.y);}
   }
 
   /**
@@ -291,6 +310,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     // 每次都按当前的 dpr 和预算重算（审计工具截图时临时把像素比改成 1，截完调 resize 就复原了）
     applyPixelRatio(w, h);
     renderer.setSize(w, h, false);
+    parkGodrays?.resize(w,h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     updateZoomRange();
@@ -387,10 +407,12 @@ export function createStage(canvas: HTMLCanvasElement) {
       const auto=renderer.autoClear;
       try{streetSky.render(renderer,cam);renderer.autoClear=false;renderer.clearDepth();renderer.render(scene,cam);}
       finally{renderer.autoClear=auto;}
-    }else renderer.render(scene,cam);
+    }else if(parkGodrays && godraySettings.enabled && cam instanceof THREE.PerspectiveCamera)parkGodrays.render(dt,cam);
+    else renderer.render(scene,cam);
   }
 
   function dispose() {
+    parkGodrays?.dispose();
     fx.dispose();
     streetOcean?.dispose();
     streetSky?.dispose();
@@ -418,6 +440,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     dispose,
     setBackdrop,
     setSkySettings(values:Partial<SkySettings>){skySettings=updateSkySettings(skySettings,values);streetSky?.configure(skySettings);streetOcean?.setWind(skySettings.windDirection,skySettings.windSpeed);},
+    setGodraySettings(values:Partial<ParkGodraySettings>){godraySettings=updateGodraySettings(godraySettings,values);applyGodraySettings();},
     setLightShaftSettings(values:Partial<LightShaftSettings>){lightShaftSettings=updateLightShaftSettings(lightShaftSettings,values);applyLightShaftSettings();},
     setOceanSettings(values:Partial<OceanSettings>){oceanSettings=updateOceanSettings(oceanSettings,values);streetOcean?.configure(oceanSettings);},
     get skySettings(){return {...skySettings};},
