@@ -13,5 +13,20 @@
     "glitter": 0.6,
     "resolution": 128,
     "quality": "balanced"
+  },
+  "lightShafts": {
+    "intensity": 1.13,
+    "width": 0.63,
+    "softness": 0.52,
+    "breakup": 0.66,
+    "haze": 0.42,
+    "speed": 1.05,
+    "spread": 0.34,
+    "nearFade": 7,
+    "farFade": 72,
+    "enabled": true,
+    "color": "#fff6e3",
+    "count": 38,
+    "area": 1.03
   }
 }

@@ -1,3 +1,4 @@
+import type {LightShaftSystem} from './lightShafts';
 import * as THREE from 'three';
 import type { TimeState } from '../timeOfDay';
 
@@ -22,6 +23,8 @@ export interface LiveLighting {
 }
 
 export interface Backdrop {
+  lightShafts?: LightShaftSystem;
+  setLightShaftLayout?(count:number,area:number):void;
   group: THREE.Group;
   /** 场景里额外的灯（会被加进舞台） */
   lights: THREE.Light[];

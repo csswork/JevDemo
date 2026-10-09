@@ -1,3 +1,4 @@
+import {DEFAULT_LIGHT_SHAFT_SETTINGS,LIGHT_SHAFT_SETTING_RANGES} from '../src/vrm/scenes/lightShaftSettings.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import type {Connect,Plugin} from 'vite';
@@ -9,7 +10,7 @@ const ranges={coverage:[0,1],cirrus:[0,1],windDirection:[0,360],windSpeed:[0,12]
 function validate(value:unknown):SceneSettings{
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('参数格式不正确');
  const data=value as Record<string,unknown>;
- if(![6,7].includes(Object.keys(data).length)||Object.keys(data).some(key=>!(key in DEFAULT_SCENE_SETTINGS)))throw new Error('参数字段不正确');
+ if(![6,7,8].includes(Object.keys(data).length)||Object.keys(data).some(key=>!(key in DEFAULT_SCENE_SETTINGS)))throw new Error('参数字段不正确');
  for(const [key,[min,max]] of Object.entries(ranges)){
   const v=data[key];if(typeof v!=='number'||!Number.isFinite(v)||v<min||v>max)throw new Error(key+' 超出范围');
  }
@@ -25,6 +26,17 @@ function validate(value:unknown):SceneSettings{
   }
   if(ocean.resolution!==128&&ocean.resolution!==256)throw new Error('波场分辨率不正确');
   if(!['low','balanced','high'].includes(String(ocean.quality)))throw new Error('海洋质量档位不正确');
+ }
+ if(data.lightShafts!==undefined){
+  if(!data.lightShafts||typeof data.lightShafts!=='object'||Array.isArray(data.lightShafts))throw new Error('光束参数格式不正确');
+  const shafts=data.lightShafts as Record<string,unknown>;
+  if(Object.keys(shafts).some(key=>!(key in DEFAULT_LIGHT_SHAFT_SETTINGS)))throw new Error('光束参数字段不正确');
+  for(const [key,[min,max]] of Object.entries(LIGHT_SHAFT_SETTING_RANGES)){
+   if((key==='count'||key==='area')&&shafts[key]===undefined)continue;
+   const v=shafts[key];if(typeof v!=='number'||!Number.isFinite(v)||v<min||v>max)throw new Error(key+' 超出范围');
+  }
+  if(shafts.count!==undefined&&!Number.isInteger(shafts.count))throw new Error('光束数量必须是整数');
+  if(typeof shafts.enabled!=='boolean'||typeof shafts.color!=='string'||!/^#[0-9a-f]{6}$/i.test(shafts.color))throw new Error('光束开关或颜色格式不正确');
  }
  return normalizeSceneSettings(data as unknown as SceneSettings);
 }

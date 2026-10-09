@@ -1,3 +1,4 @@
+import {makeLightShaftLayout} from './lightShaftLayout';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -5,7 +6,7 @@ import { canvasTexture, pbrTextures, rng, type Backdrop } from './common';
 import { AMBIENCE_VOLUME } from '../../speech/ambience';
 import { createCirrus } from './clouds';
 import { loadParkTimber } from './parkTimber';
-import { createDust, createLightShafts, type Shaft } from './sunlight';
+import { createDust, createLightShafts, type LightShaftSystem } from './sunlight';
 import { createBatcher, createTreeMaker, windDepth, windShader, type TreeVariant } from './foliage';
 
 /**
@@ -177,7 +178,7 @@ function fallenLeaf() {
   });
 }
 
-export function createPark({ timber = true }: { timber?: boolean } = {}): Backdrop {
+export function createPark({ timber = true }: { timber?: boolean } = {}): Backdrop & { lightShafts: LightShaftSystem } {
   const group = new THREE.Group();
   group.name = 'park';
   const disposables: Array<{ dispose(): void }> = [];
@@ -326,18 +327,12 @@ export function createPark({ timber = true }: { timber?: boolean } = {}): Backdr
   // ---- 阳光：光柱 + 光里的尘埃（见 sunlight.ts）----
   const shafts = keep(
     createLightShafts(
-      SHAFTS.map(([x, z, width, intensity], i): Shaft => ({
-        ground: [x, groundY(x, z), z],
-        // 顶端埋进树冠（离地 12~15m）
-        length: (12 + (i % 4)) / SUN_DIR.y,
-        width,
-        // 滤色混合比加色暗（亮的底色上加得少），整体提一点
-        intensity: intensity * 1.35,
-      })),
+      makeLightShaftLayout(SHAFTS,15,1,SUN_DIR.y,groundY),
       SUN_DIR,
     ),
   );
   group.add(shafts.mesh);
+  let shaftCount=15,shaftArea=1;
   const dust = (() => {
     // 单独的随机数：和树、花共用一个的话，后面所有东西的位置都会变
     const rd = rng(77);
@@ -348,9 +343,10 @@ export function createPark({ timber = true }: { timber?: boolean } = {}): Backdr
     const side = new THREE.Vector3();
     const up = new THREE.Vector3();
     // 光柱里：沿光柱轴（地面往上 0.3~4.5m）撒，横向不出光柱
-    for (const [x, z, width] of SHAFTS) {
-      if (z < -14) continue;
-      const g = new THREE.Vector3(x, groundY(x, z), z);
+    for (const {ground,width} of makeLightShaftLayout(SHAFTS,15,1,SUN_DIR.y,groundY)) {
+      const [x,y,z]=ground;
+      if (Math.hypot(x,z)>14) continue;
+      const g = new THREE.Vector3(x,y,z);
       side.crossVectors(SUN_DIR, new THREE.Vector3(0, 0, 1)).normalize();
       up.crossVectors(side, SUN_DIR).normalize();
       const n = Math.round(70 * width);
@@ -990,6 +986,12 @@ export function createPark({ timber = true }: { timber?: boolean } = {}): Backdr
   let time = 0;
   return {
     group,
+    lightShafts: shafts,
+    setLightShaftLayout(count,area){
+      if(count===shaftCount&&area===shaftArea)return;
+      shaftCount=count;shaftArea=area;
+      shafts.setShafts(makeLightShaftLayout(SHAFTS,count,area,SUN_DIR.y,groundY));
+    },
     lights: [],
     colliders,
     // 环境光（半球光 + IBL）压低、太阳调亮：户外阳光比天光亮好几倍。

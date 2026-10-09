@@ -1,3 +1,4 @@
+import {DEFAULT_LIGHT_SHAFT_SETTINGS,updateLightShaftSettings,type LightShaftSettings} from './scenes/lightShaftSettings';
 import {createStreetOcean} from './ocean/streetOcean';
 import {DEFAULT_OCEAN_SETTINGS,updateOceanSettings,type OceanSettings} from './ocean/oceanSettings';
 import * as THREE from 'three';
@@ -161,6 +162,12 @@ export function createStage(canvas: HTMLCanvasElement) {
   /** 一天里的时间（只有街景用：太阳、月亮、灯，见 timeOfDay.ts） */
   const time = new TimeOfDay();
   let skySettings={...DEFAULT_SKY_SETTINGS};
+  let lightShaftSettings={...DEFAULT_LIGHT_SHAFT_SETTINGS};
+  function applyLightShaftSettings(){
+    const shafts=backdrop?.lightShafts;if(!shafts)return;
+    backdrop?.setLightShaftLayout?.(lightShaftSettings.count,lightShaftSettings.area);
+    shafts.setParameters(lightShaftSettings);shafts.setColor(lightShaftSettings.color);shafts.mesh.visible=lightShaftSettings.enabled;
+  }
   let oceanSettings={...DEFAULT_OCEAN_SETTINGS};
   let streetOcean:ReturnType<typeof createStreetOcean>|null=null;
   let streetSky:ReturnType<typeof createStreetSky>|null=null;
@@ -189,6 +196,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     if (id !== 'none') {
       const b = BACKDROPS[id]();
       backdrop = b;
+      applyLightShaftSettings();
       scene.add(b.group, ...b.lights);
       if(id==='street'){streetSky=createStreetSky(scene,skySettings);streetOcean=createStreetOcean(renderer,scene,b.group,oceanSettings);streetOcean.setWind(skySettings.windDirection,skySettings.windSpeed);}
       const env = b.environment;
@@ -410,6 +418,7 @@ export function createStage(canvas: HTMLCanvasElement) {
     dispose,
     setBackdrop,
     setSkySettings(values:Partial<SkySettings>){skySettings=updateSkySettings(skySettings,values);streetSky?.configure(skySettings);streetOcean?.setWind(skySettings.windDirection,skySettings.windSpeed);},
+    setLightShaftSettings(values:Partial<LightShaftSettings>){lightShaftSettings=updateLightShaftSettings(lightShaftSettings,values);applyLightShaftSettings();},
     setOceanSettings(values:Partial<OceanSettings>){oceanSettings=updateOceanSettings(oceanSettings,values);streetOcean?.configure(oceanSettings);},
     get skySettings(){return {...skySettings};},
     get backdrop() {
