@@ -316,6 +316,15 @@ PR 部署预览版（链接写在 Actions 运行页的 Summary 里）。每次�
 npm run build && npm run build:vercel && npm run preview:vercel
 ```
 
+构建时会生成优化资源：VRM/GLB 的贴图转为 WebP，几何用无损 meshopt，环境音转为 64kbps Opus；
+`ez-tree` 内嵌图片拆成独立资源。骨骼、表情、材质和 VRM 扩展原样保留，`.vrmx` 仍以加密形式输出。
+原始素材保留在 `public/`；仅 Git 已跟踪的素材会进入优化清单，候选模型不会被优化或部署。
+结果和逐文件体积报告保存在 `.asset-cache/`（不提交），第二次构建复用缓存；CI 也缓存这些结果，
+代码更新时未改变的加密资源沿用已有密文和 URL。
+生产资源通过内容哈希 URL 加载，缓存一年；旧路径保留七天缓存用于兼容。
+改素材后重新构建会自动生成新的 URL，无需手动清理用户浏览器缓存。
+本地对照原始资源可运行 `OPTIMIZE_ASSETS=0 npm run dev`，压缩器的结构和解码检查可运行 `npm run test:assets`。
+
 ### 第一次配置
 
 1. Vercel 项目 `shoujo` 已经建好、绑了域名（`vercel project add`，没连 Git）。本机的 `.vercel/project.json`（gitignore）
@@ -333,7 +342,7 @@ npm run build && npm run build:vercel && npm run preview:vercel
 - **key 会被别人用掉**：页面是公开的，谁打开都能通过这些接口消耗 Jev / DeepSeek / MiniMax 的额度。
   预览版默认要登录 Vercel 才能看（Deployment Protection）；正式版要限制访问的话，
   在 Settings → Deployment Protection 把 Vercel Authentication 扩大到 Production
-- **上传大小**：静态文件约 300MB。Vercel 文档写着 Hobby 用 CLI 上传上限 100MB，但 2026-06 的更新日志说取消了 CLI 的部署限制，
+- **上传大小**：静态文件包含原始兼容素材和优化素材，本次约 401MB。Vercel 文档写着 Hobby 用 CLI 上传上限 100MB，但 2026-06 的更新日志说取消了 CLI 的部署限制，
   以第一次部署的结果为准。万一被拒，退路是改用 Vercel 的 Git 集成（Vercel 自己 clone 仓库，没有这个上传限制），
   构建命令填 `npm run build && npm run build:vercel`
 - 函数放在香港（`hkg1`）：DeepSeek、MiniMax 用的是国内接口，放在默认的美东每段语音都要多跨一次太平洋

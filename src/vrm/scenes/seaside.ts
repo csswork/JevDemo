@@ -1,6 +1,6 @@
 import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION, FAR_WINDOW_HASH } from './farFacade';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader } from '../gltfLoader';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { canvasTexture, rng } from './common';
 

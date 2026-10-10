@@ -42,17 +42,32 @@ jobs:
 
       - run: npm ci
 
+      - name: Cache optimized resources
+        uses: actions/cache@v4
+        with:
+          path: |
+            .asset-cache/files
+            .asset-cache/records
+            .asset-cache/index.json
+          key: optimized-assets-${{ runner.os }}-${{ hashFiles('package-lock.json', 'scripts/asset-codecs.mjs') }}-${{ hashFiles('public/**') }}
+          restore-keys: |
+            optimized-assets-${{ runner.os }}-
+
       - name: Lint
         run: npm run lint
 
       - name: Test
         run: |
           npm test
+          npm run test:assets
           npm run motion:check
 
       # tsc -b + vite build
       - name: Build
         run: npm run build
+
+      - name: Verify compressed assets
+        run: npm run verify:assets
 
       # dist/ + 打包好的 Function → .vercel/output
       - name: Build Vercel output

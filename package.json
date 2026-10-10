@@ -11,6 +11,8 @@
     "build:vercel": "node scripts/build-vercel.mjs",
     "preview:vercel": "node scripts/serve-vercel.mjs",
     "test": "node --experimental-strip-types --test server/*.test.ts",
+    "test:assets": "node --test scripts/asset-codecs.test.mjs scripts/motion-loading.test.mjs",
+    "verify:assets": "node --experimental-strip-types scripts/verify-assets.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "assets": "node scripts/fetch-scene-assets.mjs"
@@ -19,6 +21,7 @@
     "@dgreenheck/ez-tree": "^1.1.0",
     "@pixiv/three-vrm": "^3.5.5",
     "@pixiv/three-vrm-animation": "^3.5.5",
+    "meshoptimizer": "^1.1.1",
     "postprocessing": "^6.38.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -26,6 +29,7 @@
     "three-good-godrays": "0.12.1"
   },
   "devDependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
@@ -33,6 +37,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
     "rolldown": "^1.2.9",
+    "sharp": "0.35.5",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   },

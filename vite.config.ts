@@ -11,12 +11,16 @@ import react from '@vitejs/plugin-react';
 import { apiServer } from './server/viteApi.ts';
 import {sceneDefaults} from './server/sceneDefaults.ts';
 import { devSave } from './server/devSave.ts';
+import { prepareAssets, optimizedAssetsPlugin } from './scripts/optimized-assets.mjs';
 
-export default defineConfig({
-  plugins: [react(), apiServer(), devSave(), sceneDefaults()],
+export default defineConfig(async () => ({
+  plugins: [optimizedAssetsPlugin(process.env.OPTIMIZE_ASSETS === '0'
+    ? { manifest: {}, report: [], treeImages: new Map() }
+    : await prepareAssets()), react(), apiServer(), devSave(), sceneDefaults()],
+  optimizeDeps: { exclude: ['@dgreenheck/ez-tree'] },
   server: {
     port: process.env.PORT ? Number(process.env.PORT) : 5678,
     strictPort: true,
-    watch: {ignored: ['**/public/scene-defaults/**']},
+    watch: {ignored: ['**/public/scene-defaults/**', '**/.asset-cache/**']},
   },
-});
+}));

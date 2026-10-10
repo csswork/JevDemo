@@ -14,6 +14,7 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const out = path.join(root, '.vercel/output');
 const staticDir = path.join(out, 'static');
+const routes = JSON.parse(fs.readFileSync(path.join(out, 'config.json'), 'utf8')).routes;
 if (!fs.existsSync(staticDir)) {
   console.error('没有 .vercel/output：先跑 npm run build && npm run build:vercel');
   process.exit(1);
@@ -33,6 +34,7 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.ogg': 'audio/ogg',
   '.hdr': 'application/octet-stream',
   '.ico': 'image/x-icon',
@@ -52,7 +54,8 @@ const server = http.createServer((req, res) => {
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
   if (!fs.existsSync(file)) return void res.writeHead(404, { 'content-type': 'text/plain' }).end('404');
   // content-length：模型下载的进度条靠它（Vercel 上也会带）
-  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'content-length': fs.statSync(file).size });
+  const headers = Object.assign({}, ...routes.filter(r => r.headers && new RegExp(r.src).test(url.pathname)).map(r => r.headers));
+  res.writeHead(200, { ...headers, 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'content-length': fs.statSync(file).size });
   fs.createReadStream(file).pipe(res);
 });
 

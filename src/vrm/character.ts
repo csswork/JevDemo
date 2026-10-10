@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader } from './gltfLoader';
 import { VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import type { TimelineEvent } from '../act/timeline';
 import { PoseAccumulator, vrmMetaVersion } from './pose';
@@ -373,6 +373,7 @@ export class Character {
   }
 
   dispose() {
+    this.motion.unbind();
     this.manpu.dispose();
     if (this.vrm) VRMUtils.deepDispose(this.vrm.scene);
     this.vrm = null;

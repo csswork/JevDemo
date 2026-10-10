@@ -157,7 +157,8 @@ export interface TreeVariant {
 }
 
 /**
- * ez-tree 生成一个变体（树或灌木）。只在动态 import 了 ez-tree 之后用（模块 4MB，选了这个场景才加载）。
+ * ez-tree 生成一个变体（树或灌木）。只在动态 import 了 ez-tree 之后用。
+ * 构建时内嵌图片拆成独立哈希资源，只有用到的树种才加载贴图。
  * leafTint = 叶子的颜色再乘多少（Phong 的颜色可以超过 1）；染过色（tint）的叶子不乘
  */
 export function createTreeMaker(

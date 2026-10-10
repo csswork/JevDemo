@@ -2,7 +2,7 @@ import { streetContactShadows, type ContactBuilding } from './streetContactShado
 import { glassPaneUv } from './glassPaneUv';
 import { FAR_FACADE_COLOR, FAR_FACADE_EMISSION, FAR_WINDOW_HASH } from './farFacade';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader } from '../gltfLoader';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { canvasTexture, rng, type Backdrop, type LiveLighting } from './common';
 import { createCirrus } from './clouds';

@@ -1,3 +1,4 @@
+import { assetUrl } from '../assets';
 /**
  * 场景背景音（环境音）。
  *
@@ -203,7 +204,7 @@ export class AmbiencePlayer {
     const hit = this.buffers.get(url);
     if (hit) return hit;
     try {
-      const res = await fetch(url);
+      const res = await fetch(assetUrl(url));
       // Vite 对不存在的路径会回退成 index.html（状态码还是 200），所以光看 res.ok 不够 ——
       // 和 models.ts 的 probeModels 一样看类型
       if (!res.ok || (res.headers.get('content-type') ?? '').includes('text/html')) return null;

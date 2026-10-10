@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader } from '../gltfLoader';
 
 /** Blender-authored, fitted near surfaces. Original geometry stays available as load fallback. */
 export function loadParkTimber({ group, keep, disposed, wood, deck, paths, furniture, benches }: {

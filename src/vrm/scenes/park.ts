@@ -1,6 +1,6 @@
 import {makeLightShaftLayout} from './lightShaftLayout';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader } from '../gltfLoader';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { canvasTexture, pbrTextures, rng, type Backdrop } from './common';
 import { AMBIENCE_VOLUME } from '../../speech/ambience';

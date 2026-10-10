@@ -1,3 +1,4 @@
+import { assetUrl } from './assets';
 /**
  * 可选的角色模型（都是女性、授权允许这样用的样例模型）。
  *
@@ -5,7 +6,7 @@
  * desc 是「性格 · 装扮」，都写短。
  *
  * 下拉框里的模型都入库（public/models/ 和 quappa/）。浏览器只下载当前选中的那一个，
- * 其余只在启动时发一个 HEAD 探测文件在不在（不下载内容）；隐藏的连探测都不发。
+ * 构建清单确认其余文件存在；未优化的开发模式用 HEAD 探测。隐藏的模型不探测。
  * 隐藏的 VRoid 素体、爱丽西亚在 public/models/candidates/（gitignored，对比用下载下来的）。
  *
  * quappa/ 是从 QUAPPA-EL 的 MMD 模型（PMX）转出来的 VRM，加密成 .vrmx 入库（规约要求防再利用，
@@ -169,7 +170,7 @@ export const DEFAULT_BACKDROP = 'street' as const;
 /** 下拉框里列出来的 */
 export const VISIBLE_MODELS = MODELS.filter((m) => !m.hidden);
 
-export const modelUrl = (m: ModelMeta) => `${import.meta.env.BASE_URL}models/${m.file}`;
+export const modelUrl = (m: ModelMeta) => assetUrl(`${import.meta.env.BASE_URL}models/${m.file}`);
 
 /**
  * 下拉框里的模型文件在不在（HEAD，不下载内容；隐藏的模型不探测）。
@@ -179,7 +180,11 @@ export async function probeModels(models: readonly ModelMeta[] = VISIBLE_MODELS)
   const entries = await Promise.all(
     models.map(async (m) => {
       try {
-        const r = await fetch(modelUrl(m), { method: 'HEAD', signal: AbortSignal.timeout(8000) });
+        const original = `${import.meta.env.BASE_URL}models/${m.file}`;
+        const url = modelUrl(m);
+        // 构建清单已经确认文件存在，不必再跨境发 HEAD。
+        if (url !== original) return [m.id, true] as const;
+        const r = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(8000) });
         return [m.id, r.ok && !(r.headers.get('content-type') ?? '').includes('text/html')] as const;
       } catch {
         return [m.id, false] as const;

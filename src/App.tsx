@@ -4,6 +4,7 @@ import {DEFAULT_SCENE_SETTINGS as DEFAULT_SKY_SETTINGS,type SceneSettings as Sky
 import type {OceanSettings} from './vrm/ocean/oceanSettings';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Runtime, type LiveState } from './runtime';
+import { assetUrl } from './assets';
 import { MockDecider } from './jev/mockDecider';
 import { HttpDecider, probeJev, type JevMeta, type JevStatus } from './jev/httpDecider';
 import type { ActDecider } from './jev/decider';
@@ -47,6 +48,7 @@ import './App.css';
 
 /** 选过的模型存在这个 key 下（只是本机浏览器的偏好） */
 const MODEL_KEY = 'jev.model';
+const avatarUrl = (id: string | null) => assetUrl(`${import.meta.env.BASE_URL}avatars/${id}.png`);
 /** 旧版的背景偏好（所有角色共用一个）：只在第一次迁移到按角色保存时读一次 */
 const BACKDROP_KEY = 'jev.backdrop';
 
@@ -1644,7 +1646,7 @@ export default function App() {
           done={switching.done}
           progress={switching.progress}
           name={MODELS.find((m) => m.id === switching.id)?.name}
-          avatar={`${import.meta.env.BASE_URL}avatars/${switching.id}.png`}
+          avatar={avatarUrl(switching.id)}
         />
       )}
 
@@ -1653,7 +1655,7 @@ export default function App() {
         done={BOOT_PREVIEW == null && !loading}
         progress={BOOT_PREVIEW ?? progress}
         name={currentModel?.name}
-        avatar={modelId ? `${import.meta.env.BASE_URL}avatars/${modelId}.png` : undefined}
+        avatar={modelId ? avatarUrl(modelId) : undefined}
       />
     </div>
   );
@@ -1717,7 +1719,7 @@ function Avatar({ id, name, size }: { id: string; name: string; size: number }) 
       {missing ? (
         name.slice(0, 1)
       ) : (
-        <img src={`${import.meta.env.BASE_URL}avatars/${id}.png`} alt="" draggable={false} onError={() => setMissingId(id)} />
+        <img src={avatarUrl(id)} alt="" draggable={false} onError={() => setMissingId(id)} />
       )}
     </span>
   );

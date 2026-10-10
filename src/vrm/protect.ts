@@ -1,3 +1,4 @@
+import { DefaultLoadingManager } from 'three';
 /**
  * 受保护的模型文件（.vrmx）和动作文件（.vrmax）。
  *
@@ -54,7 +55,7 @@ export async function decryptModel(data: ArrayBuffer): Promise<ArrayBuffer> {
 
 /** 带进度的整文件下载（loadAsync 自带进度，parse 前得自己拉） */
 export async function fetchBytes(url: string, onProgress?: (ratio: number) => void): Promise<ArrayBuffer> {
-  const res = await fetch(url);
+  const res = await fetch(DefaultLoadingManager.resolveURL(url));
   if (!res.ok) throw new Error(`下载失败：${res.status} ${url}`);
   const total = Number(res.headers.get('content-length')) || 0;
   if (!res.body || !total || !onProgress) return res.arrayBuffer();

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFLoader } from './gltfLoader';
 import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
 import {
   VRMAnimationLoaderPlugin,
@@ -128,7 +128,10 @@ function loadSource(id: MotionId): Promise<VRMAnimation | null> {
       : loader.loadAsync(url);
     p = gltf
       .then((gltf) => (gltf.userData.vrmAnimations as VRMAnimation[] | undefined)?.[0] ?? null)
-      .catch(() => null);
+      .catch(() => {
+        sourceCache.delete(id);
+        return null;
+      });
     sourceCache.set(id, p);
   }
   return p;
@@ -194,6 +197,7 @@ export class MotionLayer {
   /** VRM 0.x 的骨骼局部轴和 1.0 差 180°，offset 的 x / z 要取反 */
   private flip = 1;
   private loading = 0;
+  private playRequest = 0;
   /** 待机时上臂额外外展多少度（按模型的裙子蓬不蓬定，见 models.ts 的 armOut），只作用于底层 */
   private armClearance = 0;
 
@@ -236,6 +240,7 @@ export class MotionLayer {
 
   /** 绑定到一个模型；只准备底层待机，其余动作第一次播放时下载。 */
   bind(vrm: VRM) {
+    this.playRequest++;
     this.vrm = vrm;
     this.flip = (vrm.meta as { metaVersion?: string }).metaVersion === '0' ? -1 : 1;
     this.clips.clear();
@@ -285,19 +290,17 @@ export class MotionLayer {
   }
 
   /** 准备好就当帧开始（不等 Promise），没准备好的等下载完 */
-  private withClip(id: MotionId, run: (clip: Clip) => void): Promise<boolean> {
+  private withClip(id: MotionId, run: (clip: Clip) => boolean | void): Promise<boolean> {
     const ready = this.clips.get(id);
     if (ready) {
-      run(ready);
-      return Promise.resolve(true);
+      return Promise.resolve(run(ready) !== false);
     }
     this.loading++;
     return this.prepare(id)
       .finally(() => this.loading--)
       .then((clip) => {
         if (!clip) return false;
-        run(clip);
-        return true;
+        return run(clip) !== false;
       });
   }
 
@@ -323,7 +326,9 @@ export class MotionLayer {
    * 返回 false = 动作文件不在（没下载 / 加载失败）
    */
   play(id: MotionId, opts: PlayOpts = {}): Promise<boolean> {
+    const request = ++this.playRequest;
     return this.withClip(id, (clip) => {
+      if (request !== this.playRequest) return false;
       for (const p of this.playing) p.leaving = true;
       this.playing.push(this.entry(id, clip, opts));
     });
@@ -354,7 +359,18 @@ export class MotionLayer {
 
   /** 停下上层动作（淡出，回到底层待机） */
   stop() {
+    this.playRequest++;
     for (const p of this.playing) p.leaving = true;
+  }
+
+  /** 换角色 / 卸载后，迟到的下载不能再给旧模型安装轨道。 */
+  unbind() {
+    this.stop();
+    this.vrm = null;
+    this.baseId = null;
+    this.clips.clear();
+    this.playing = [];
+    this.base = [];
   }
 
   /** 改当前动作的播放速度（预览面板慢放；0 = 暂停在当前帧） */
