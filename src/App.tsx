@@ -443,32 +443,24 @@ export default function App() {
     };
   }, []);
 
-  // 本地语音（Vivian）。模型加载要 20 秒左右，没就绪时每 3 秒探一次
+  // 合成语音（MiniMax）。服务端配了 key 就可用，探一次就够
   const [voice, setVoice] = useState<VoiceStatus>({ ready: false });
   const ttsTouched = useRef(false);
   useEffect(() => {
     let alive = true;
-    let timer = 0;
-    const poll = async () => {
-      const s = await probeVoice();
+    void probeVoice().then((s) => {
       if (!alive) return;
       setVoice(s);
-      if (s.ready && !ttsTouched.current) {
-        // 本地语音就绪就默认开口说话（用户手动关过就不再替他打开）
-        setTts(true);
-      }
-      // 本地后端的设计音色模型比预设音色晚十几秒：都好了才停止探测
-      if (!s.disabled && !s.error && (!s.ready || s.pending)) timer = window.setTimeout(poll, 3000);
-    };
-    void poll();
+      // 合成语音可用就默认开口说话（用户手动关过就不再替他打开）
+      if (s.ready && !ttsTouched.current) setTts(true);
+    });
     return () => {
       alive = false;
-      clearTimeout(timer);
     };
   }, []);
 
   useEffect(() => {
-    // 系统语音只在本地语音不可用时兜底
+    // 系统语音只在合成语音不可用时兜底
     if (runtimeRef.current) runtimeRef.current.ttsEnabled = tts && !voice.ready;
   }, [tts, voice.ready]);
 
@@ -516,16 +508,11 @@ export default function App() {
   const useVoice = tts && voice.ready;
 
   const voices = voice.voices ?? [];
-  // 不区分大小写：本地后端的音色 id 是小写（serena），千问的是首字母大写（Serena），
-  // 换后端之后存下来的选择还能对上。暂时不能选的（加载中）不算，但不改用户存的选择
-  const usable = voices.filter((v) => !v.disabled);
-  const match = (id?: string | null) => usable.find((v) => id && v.id.toLowerCase() === id.toLowerCase());
-  // 存下来的选择不在列表里（比如以前选的千问音色，现在只列 MiniMax）：退回这个角色自己的默认音色；
-  // 没配 MiniMax 时列表里只有千问 / 本地，退回她以前的千问音色
+  const match = (id?: string | null) => voices.find((v) => id && v.id.toLowerCase() === id.toLowerCase());
+  // 存下来的选择不在列表里（比如以前选的千问音色，已经删了）：退回这个角色自己的默认音色
   const model = MODELS.find((m) => m.id === modelId);
-  const activeVoice =
-    match(speaker) ?? match(model?.voice) ?? match(model?.qwenVoice) ?? match(voice.speaker) ?? usable[0];
-  const activeSpeaker = activeVoice?.id ?? voice.speaker ?? 'Vivian';
+  const activeVoice = match(speaker) ?? match(model?.voice) ?? match(voice.speaker) ?? voices[0];
+  const activeSpeaker = activeVoice?.id ?? voice.speaker ?? 'minimax:female-shaonv';
   const activeName = activeVoice?.name ?? activeSpeaker;
   const groups = [...new Set(voices.map((v) => v.group))];
   useEffect(() => {
@@ -653,7 +640,7 @@ export default function App() {
     setSpeaker(sp);
     // 状态更新是异步的，新角色马上就要打招呼：直接把音色交给 runtime
     const rt = runtimeRef.current;
-    if (rt) rt.voiceSpeaker = (match(sp) ?? match(voice.speaker) ?? usable[0])?.id ?? voice.speaker ?? 'Vivian';
+    if (rt) rt.voiceSpeaker = (match(sp) ?? match(voice.speaker) ?? voices[0])?.id ?? voice.speaker ?? 'minimax:female-shaonv';
     return p;
   };
 
@@ -881,7 +868,7 @@ export default function App() {
     //   发出消息 → 角色"想"（视线移开、抿嘴）
     //            ↘ 同时 Jev 判断第一反应（只看用户那句话），到了就先上脸
     //   台词到了 → 带着第一反应开口
-    //              （有本地语音时：先合成第一段，语气用第一反应；合成要 0.5~1.5s，角色还在"想"）
+    //              （有合成语音时：先合成第一段，语气用第一反应；合成要 0.5~1.5s，角色还在"想"）
     //   整句判断到了 → 每一段换成 Jev 判断的情绪（一句话里情绪可以变），
     //                  还没合成的段也换成这一段的语气
     //   说完 → 表情慢慢淡成余韵，不是一下子回到面无表情
@@ -971,9 +958,9 @@ export default function App() {
   const voiceItems: PickerItem[] = groups.flatMap((g) =>
     voices
       .filter((v) => v.group === g)
-      .map((v) => ({ id: v.id, label: v.name, desc: v.desc, group: g, disabled: v.disabled })),
+      .map((v) => ({ id: v.id, label: v.name, desc: v.desc, group: g })),
   );
-  const voiceBackend = activeSpeaker.startsWith('minimax:') ? 'MiniMax Turbo' : voice.backend === 'qwen' ? '千问' : '本地 Qwen3-TTS';
+  const voiceBackend = 'MiniMax Turbo';
 
   return (
     <div className={`app ui-${uiPhase}${backdrop === 'street' ? ' has-time' : ''}`}>
@@ -1059,7 +1046,7 @@ export default function App() {
                 setTts(v);
               }}
               label={tts ? '开口' : '静音'}
-              title={voice.ready ? `语音合成：${voiceBackend}` : '本地语音没就绪时用系统内置语音'}
+              title={voice.ready ? `语音合成：${voiceBackend}` : '合成语音不可用时用系统内置语音'}
             />
           </div>
           {voice.ready && voices.length > 0 ? (
@@ -1079,7 +1066,7 @@ export default function App() {
                 '系统内置语音'
               ) : (
                 <>
-                  <span className="spinner" /> 本地语音加载中…
+                  <span className="spinner" /> 语音连接中…
                 </>
               )}
             </div>

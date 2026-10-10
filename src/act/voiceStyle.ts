@@ -1,13 +1,14 @@
 import type { Emotion } from './schema';
 
 /**
- * Jev 的情绪分布 → 语音合成的语气指令（Qwen3-TTS 的 instruct）。
+ * Jev 的情绪分布 → 语音的语气。两种形式：
+ *
+ *   toneFor   中文语气描述（「用开心、轻快的语气说」）：日志里看得懂；没有结构化判断时
+ *             MiniMax 从它里面认情绪（server/minimaxTts.ts 的 emotionFor）
+ *   styleFor  结构化的判断（VoiceStyle）：MiniMax 主要用它换算 emotion / 语速 / 音高 / 音量
  *
  * 声音的语气和脸上的表情来自**同一个**判断：每一段台词的表情用 Jev 对这一段的情绪分布，
  * 这一段的声音也用它。不会出现脸在笑、声音却是平的。
- *
- * 写法是在本机实测过的（tts/bench.py 的 styles 组）：「用开心、轻快的语气说」这类短句
- * 对音高、语速、音量都有明显而稳定的影响；太长太文学化的描述反而不稳定。
  */
 
 const WORDS: Record<Emotion, string> = {
@@ -76,7 +77,7 @@ export function toneFor(probs: Record<string, number>, intensity = 0.5): string 
 /**
  * 同一个判断的结构化版本，给 MiniMax 用（server/minimaxTts.ts）。
  *
- * MiniMax 不认千问那种自然语言语气指令，只有一个 emotion 枚举 + 语速 / 音量 / 音高，
+ * MiniMax 不认自然语言语气指令，只有一个 emotion 枚举 + 语速 / 音量 / 音高，
  * 外加 (sighs) (gasps) 这类语气词标签。以前是服务端从中文语气描述里用正则猜一个情绪，
  * 强度和混合都丢了；现在直接把 Jev 的分布和强度传过去，由服务端换算。
  */

@@ -4,5 +4,4 @@ public/models/quappa/*.vrm
 public/models/candidates/
 dev-out/
 data/
-tts/
 scripts/pmx2vrm/

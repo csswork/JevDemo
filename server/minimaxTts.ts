@@ -1,5 +1,11 @@
-import type { VoiceMeta } from './qwenTts.ts';
 import type { VoiceStyle } from '../src/act/voiceStyle.ts';
+
+export interface VoiceMeta {
+  id: string;
+  name: string;
+  desc: string;
+  group: string;
+}
 
 /** 官方系统音色：https://platform.minimax.cn/docs/faq/system-voice-id */
 export const MINIMAX_VOICES: VoiceMeta[] = [
@@ -209,7 +215,7 @@ export function deliveryFor(style?: VoiceStyle | null, instructions?: string | n
   return d;
 }
 
-/** MiniMax 不接收千问的自然语言指令；取描述中最先出现的基本情绪。混合情绪近似处理。 */
+/** MiniMax 不接收自然语言语气指令；取中文语气描述中最先出现的基本情绪。混合情绪近似处理。 */
 export function emotionFor(instructions?: string | null): string | undefined {
   if (!instructions) return undefined;
   const words: Array<[RegExp, string]> = [

@@ -1,5 +1,5 @@
 /**
- * Web Speech API 封装 —— 本地语音（voice.ts，Qwen3-TTS · Vivian）不可用时的兜底。
+ * Web Speech API 封装 —— 合成语音（voice.ts，MiniMax）不可用时的兜底。
  *
  * 零配置：不用 key、不用后端，macOS/Windows 自带中文嗓音。
  * 局限也要说清楚 —— 拿不到音频流，所以口型只能靠估算时长驱动，也没有语气可言。

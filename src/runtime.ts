@@ -53,7 +53,7 @@ export class Runtime {
   /** 当前在演的脚本（基线，或者升级之后的）。真实语音的时长到了要用它重新编译 */
   private act: ActScript | null = null;
   private audio: AudioContext | null = null;
-  /** 本地语音（Vivian）的这一次说话；没有就是 null（无声或系统语音） */
+  /** 合成语音（MiniMax）的这一次说话；没有就是 null（无声或系统语音） */
   private session: VoiceSession | null = null;
   /** 场景背景音。AudioContext 在 unlockAudio 里才建，见那里的注释 */
   private ambience: AmbiencePlayer | null = null;
@@ -81,7 +81,7 @@ export class Runtime {
   private moodTimer = 0;
   private moodShown: MoodState = { joy: 0, anger: 0, gloom: 0 };
 
-  /** 系统语音（Web Speech）。本地语音可用时不用它 */
+  /** 系统语音（Web Speech）。合成语音可用时不用它 */
   ttsEnabled = false;
   /**
    * dispose() 可能在 mount() 的 await 返回之前就被调用（React StrictMode 会挂两次，
@@ -239,7 +239,7 @@ export class Runtime {
     return true;
   }
 
-  // ---- 本地语音 ----
+  // ---- 合成语音 ----
 
   /**
    * 浏览器要求音频必须在用户操作里启动。发送消息时调一次（点击 / 回车都算用户操作），
@@ -343,10 +343,10 @@ export class Runtime {
     }, 400);
   }
 
-  /** 本地语音的音色（预设音色 id）；null = 用服务端默认音色 */
+  /** 合成语音的音色（minimax: 开头的 id）；null = 用服务端默认音色 */
   voiceSpeaker: string | null = null;
 
-  /** 为一句台词准备本地语音。之后 prepare() 合成第一段，再交给 play({ voice }) */
+  /** 为一句台词准备合成语音。之后 prepare() 合成第一段，再交给 play({ voice }) */
   createVoice(text: string): VoiceSession | null {
     if (!this.audio) return null;
     return new VoiceSession(this.audio, text.replace(/<b:[a-z0-9_]+>/gi, ''), this.voiceSpeaker);

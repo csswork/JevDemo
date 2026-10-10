@@ -2,17 +2,17 @@ import { splitSegments, type Segment } from '../act/segments';
 import { DEFAULT_TONE, type VoiceStyle } from '../act/voiceStyle';
 
 /**
- * 本地语音（Qwen3-TTS · Vivian）的一次说话。
+ * 合成语音（MiniMax，经 server/ttsProxy.ts）的一次说话。
  *
  * 一句话按段合成（和 Jev 按段判断情绪是同一套切分，act/segments.ts），每段一个语气：
  *
- *   第 1 段  台词一到就**流式**合成，攒够 0.3s 就开口（首包约 0.25s），不等整段合成完；
+ *   第 1 段  台词一到就**流式**合成，攒够 0.3s 就开口（首包约 0.3s），不等整段合成完；
  *             语气用 Jev 的倾听反应（那时整句判断还没回来）
  *   第 2 段起 按需合成：尽量等 Jev 的整句判断，拿到这一段的语气再合成；
  *             等到"再不合成就接不上了"的那一刻还没回来，就先用倾听反应的语气
  *
- * 合成速度约为实时的 2 倍（M2 Max 实测 RTF 0.42~0.59），所以后面的段总能在前一段
- * 播完之前备好，一般不会有卡顿。万一晚了，时间轴的时钟是跟着音频走的，表情会一起等。
+ * 合成比实时快得多，所以后面的段总能在前一段播完之前备好，一般不会有卡顿。
+ * 万一晚了，时间轴的时钟是跟着音频走的，表情会一起等。
  *
  * 对外暴露三样东西给 Runtime：
  *   time     以音频为准的时钟（秒，相对播放起点）
@@ -24,22 +24,16 @@ export interface VoiceMeta {
   id: string;
   name: string;
   desc: string;
-  /** 下拉框里的分组（"千问系统音色"、"预设音色"、"设计音色"） */
+  /** 下拉框里的分组（"MiniMax 女声"） */
   group: string;
-  /** 暂时不能选（比如本地的设计音色模型还在加载） */
-  disabled?: boolean;
 }
 
 export interface VoiceStatus {
   ready: boolean;
-  /** qwen = 远程千问；local = 本机 tts/server.py */
-  backend?: 'qwen' | 'local';
   /** 服务端的默认音色（TTS_SPEAKER） */
   speaker?: string;
-  /** 可选的音色。由服务端给，前端不用知道是哪个后端 */
+  /** 可选的音色。由服务端给 */
   voices?: VoiceMeta[];
-  /** 还有东西在加载（本地设计音色），前端继续探测 */
-  pending?: boolean;
   error?: string | null;
   disabled?: boolean;
 }
@@ -49,7 +43,8 @@ export async function probeVoice(): Promise<VoiceStatus> {
     const r = await fetch('/api/tts/health');
     return (await r.json()) as VoiceStatus;
   } catch {
-    return { ready: false };
+    // 没有语音服务（比如纯静态部署）
+    return { ready: false, error: '语音服务不可用' };
   }
 }
 
@@ -93,7 +88,7 @@ export class VoiceSession {
   private buf = new Float32Array(1024);
   private tones: Array<string | null>;
   private fallback = DEFAULT_TONE;
-  /** 同一个判断的结构化版本（MiniMax 用；千问只看 tones 的中文指令） */
+  /** 同一个判断的结构化版本（MiniMax 主要看它；tones 的中文语气描述在没有它时兜底） */
   private styles: Array<VoiceStyle | null>;
   private fallbackStyle: VoiceStyle | null = null;
   /** 第一段（流式）合成请求的 id：收完之后拿它取逐字时间戳 */
