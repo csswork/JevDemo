@@ -10,8 +10,11 @@ import { VRMUtils } from '@pixiv/three-vrm';
 import { BONE_NAMES } from '../src/editClip.ts';
 import { retargetSmpl } from '../src/retargetSmpl.ts';
 
-test('local VRoid female mannequin loads as humanoid and FBX motion deforms the skinned body', async () => {
-  const model = fs.readFileSync(new URL('../../public/models/candidates/VRoid_V110_Female.vrm', import.meta.url));
+// 候选模型不进 git（public/models/candidates/ 在 .gitignore 里）：本机有就测，CI 的干净检出里跳过
+const MANNEQUIN = new URL('../../public/models/candidates/VRoid_V110_Female.vrm', import.meta.url);
+
+test('local VRoid female mannequin loads as humanoid and FBX motion deforms the skinned body', { skip: !fs.existsSync(MANNEQUIN) && '本机没有 public/models/candidates/VRoid_V110_Female.vrm（不入库）' }, async () => {
+  const model = fs.readFileSync(MANNEQUIN);
   // This test measures skin deformation; texture decoding is verified in the browser.
   const loader = avatarLoader().register(() => ({ name: 'headless-textures', loadTexture: async () => new THREE.Texture() }));
   const gltf = await loader.parseAsync(model.buffer.slice(model.byteOffset, model.byteOffset + model.byteLength), '');
