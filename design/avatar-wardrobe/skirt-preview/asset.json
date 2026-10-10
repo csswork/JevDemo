@@ -1,0 +1,16 @@
+{
+  "name": "Rose floral lace skirt",
+  "columns": 80,
+  "rows": 13,
+  "lengthMeters": 0.29,
+  "source": "create_lace.py",
+  "license": "Original geometry and procedural textures created for this project",
+  "physics": "PBD, 60 Hz, waist anchors, calibrated pelvis and leg capsules, ground",
+  "sha256": {
+    "skirt.glb": "9aff9a8e75724037a9d1c5c052c360bc044507c88fd60c488122f85e2ba32c59",
+    "lace-skirt.blend": "30e00cc86d4945a1f8255e18df6ce3e9c27ed36f1e3ee09b616bc9af9ef0227c",
+    "create_lace.py": "236796efba805b5c2e0855307fdbf306872ab0ddfd9c321bdea93687193ee3b2",
+    "rose-lace-color.png": "1c38912f41e6caf8ffb428423b827f59ee3a1bfb56ca2a87b7c0c2d3bfd882b8",
+    "rose-lace-normal.png": "f52b80d29d40b001e9485ffe992d8d1dc87bdaea8d0c76dba24528426bb1ee07"
+  }
+}
