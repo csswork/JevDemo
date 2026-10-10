@@ -30,13 +30,13 @@
     "area": 1.03
   },
   "godrays": {
-    "density": 0.01,
-    "maxDensity": 0.2,
-    "distanceAttenuation": 0.65,
-    "raymarchSteps": 68,
+    "density": 0.015,
+    "maxDensity": 0.1,
+    "distanceAttenuation": 1.55,
+    "raymarchSteps": 45,
     "resolutionScale": 0.5,
-    "color": "#fff1dc",
+    "color": "#fff9f0",
     "enabled": true,
-    "sunElevation": 36
+    "sunElevation": 42
   }
 }
