@@ -8,12 +8,11 @@ import {
 } from '@pixiv/three-vrm-animation';
 import { GESTURES } from './gestures';
 import { decryptModel, fetchBytes, isProtected } from './protect';
-import { MOTIONS, isProceduralMotion, type MotionId as AnyMotionId, type ProceduralMotionId } from '../act/schema';
+import { isProceduralMotion, type MotionId as AnyMotionId, type ProceduralMotionId } from '../act/schema';
 
 /** 动捕 .vrma 的动作 id（程序生成的在 gestures.ts） */
 export type ClipMotionId = Exclude<AnyMotionId, ProceduralMotionId>;
 type MotionId = ClipMotionId;
-const CLIP_MOTIONS = MOTIONS.filter((id): id is ClipMotionId => !isProceduralMotion(id));
 
 /**
  * 动作层：播放动捕的 .vrma（VRM Animation）。
@@ -235,14 +234,13 @@ export class MotionLayer {
     return this.loading > 0 || this.current != null;
   }
 
-  /** 绑定到一个模型，并在后台把所有动作准备好（第一次播放就不用等） */
+  /** 绑定到一个模型；只准备底层待机，其余动作第一次播放时下载。 */
   bind(vrm: VRM) {
     this.vrm = vrm;
     this.flip = (vrm.meta as { metaVersion?: string }).metaVersion === '0' ? -1 : 1;
     this.clips.clear();
     this.playing = [];
     this.base = [];
-    for (const id of CLIP_MOTIONS) void this.prepare(id);
     if (this.baseId) void this.setBase(this.baseId);
   }
 

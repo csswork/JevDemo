@@ -81,6 +81,9 @@ fs.writeFileSync(
       routes: [
         // Vite 打包出来的文件名带内容哈希，可以放心长缓存
         { src: '^/assets/(.*)$', headers: { 'cache-control': 'public, max-age=31536000, immutable' }, continue: true },
+        // 非哈希资源只缓存七天；过期可先用旧副本并在后台校验。
+        // 同路径替换文件时需要改资源 URL，避免已缓存的客户端继续用旧版本。
+        { src: '^/(models|motions|scene|audio)/(.*)$', headers: { 'cache-control': 'public, max-age=604800, stale-while-revalidate=86400' }, continue: true },
         // 所有接口进同一个函数，原路径放在 __path 里（server/vercel.ts 还原）
         { src: '^/api/(.*)$', dest: '/api?__path=$1' },
         { handle: 'filesystem' },

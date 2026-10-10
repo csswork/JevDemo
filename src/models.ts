@@ -175,11 +175,11 @@ export const modelUrl = (m: ModelMeta) => `${import.meta.env.BASE_URL}models/${m
  * 下拉框里的模型文件在不在（HEAD，不下载内容；隐藏的模型不探测）。
  * Vite 对不存在的路径会回退成 index.html（200），所以要看类型
  */
-export async function probeModels(): Promise<Record<string, boolean>> {
+export async function probeModels(models: readonly ModelMeta[] = VISIBLE_MODELS): Promise<Record<string, boolean>> {
   const entries = await Promise.all(
-    VISIBLE_MODELS.map(async (m) => {
+    models.map(async (m) => {
       try {
-        const r = await fetch(modelUrl(m), { method: 'HEAD' });
+        const r = await fetch(modelUrl(m), { method: 'HEAD', signal: AbortSignal.timeout(8000) });
         return [m.id, r.ok && !(r.headers.get('content-type') ?? '').includes('text/html')] as const;
       } catch {
         return [m.id, false] as const;

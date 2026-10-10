@@ -145,8 +145,10 @@ export class Runtime {
       void import('./dev/audit').then((m) => m.installAudit(this));
     }
 
-    if (ttsAvailable()) this.systemVoice = await pickChineseVoice();
-    if (this.disposed) return vrm;
+    // 系统语音只是兜底，异步等待 voiceschanged 不应推迟第一帧。
+    if (ttsAvailable()) void pickChineseVoice().then((voice) => {
+      if (!this.disposed) this.systemVoice = voice;
+    });
 
     this.lastTime = performance.now();
     const loop = () => {

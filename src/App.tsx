@@ -136,7 +136,7 @@ const speakerOf = (id: string | null, p: ModelPrefs) => p.speaker ?? MODELS.find
  * 开始时用哪个模型。开发时可以用 ?model=Vita.vrm 直接指定文件（路径相对
  * public/models/，对比截图用）；否则用上次选的，文件不在（或已隐藏）就用默认模型
  */
-function initialModel(avail: Record<string, boolean>): { id: string | null; url: string } {
+function initialModel(avail?: Record<string, boolean>): { id: string | null; url: string } {
   const param = import.meta.env.DEV ? new URLSearchParams(location.search).get('model') : null;
   if (param && /^[\w/.-]+\.vrmx?$/.test(param) && !param.includes('..')) {
     return { id: MODELS.find((m) => m.file === param)?.id ?? null, url: `${import.meta.env.BASE_URL}models/${param}` };
@@ -147,7 +147,7 @@ function initialModel(avail: Record<string, boolean>): { id: string | null; url:
   } catch {
     // 存不了就用默认
   }
-  const m = VISIBLE_MODELS.find((x) => x.id === saved && avail[x.id]) ?? DEFAULT_MODEL;
+  const m = VISIBLE_MODELS.find((x) => x.id === saved && (!avail || avail[x.id])) ?? DEFAULT_MODEL;
   return { id: m.id, url: modelUrl(m) };
 }
 
@@ -396,8 +396,12 @@ export default function App() {
 
     let disposed = false;
     let sessionId = 'default';
-    probeModels()
+    // 首屏只等上次选中的角色；其余角色的探测放到画面出来之后。
+    const preferred = initialModel();
+    const preferredMeta = VISIBLE_MODELS.find((m) => m.id === preferred.id);
+    probeModels(preferredMeta ? [preferredMeta] : [])
       .then((avail) => {
+        if (disposed) return;
         setModelAvail(avail);
         const init = initialModel(avail);
         setModelId(init.id);
@@ -422,6 +426,9 @@ export default function App() {
         if (disposed) return;
         setLoading(false);
         revealUi();
+        void probeModels().then((avail) => {
+          if (!disposed) setModelAvail(avail);
+        });
         // 先试着把音频建起来：浏览器允许自动播放（常来的站点）时刷新完背景音就出来；
         // 不允许的话上下文是挂起的，第一次点击 / 按键时再放行（见上面的 unlock）
         rt.unlockAudio();
