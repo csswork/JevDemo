@@ -1,0 +1,74 @@
+# 检查 + 部署到 Vercel（说明见 README 的"部署"一节）
+#
+#   push 到 main      → 检查 → 部署正式版
+#   pull request      → 检查 → 部署预览版（来自 fork 的 PR 拿不到 secret，只检查）
+#   手动运行          → 同 push
+#
+# 需要的 secret：VERCEL_TOKEN、VERCEL_ORG_ID、VERCEL_PROJECT_ID。没配时只检查、不部署。
+# 接口要的 key（JEV_KEY、DEEPSEEK_API_KEY、MINIMAX_API_KEY）配在 Vercel 项目的环境变量里，不在这里。
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一个分支新的推上来就取消旧的；main 上的部署不取消，免得半路停在一个不完整的状态
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      PROD: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: |
+          npm test
+          npm run motion:check
+
+      # tsc -b + vite build
+      - name: Build
+        run: npm run build
+
+      # dist/ + 打包好的 Function → .vercel/output
+      - name: Build Vercel output
+        run: npm run build:vercel
+
+      - name: Deploy
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        run: |
+          url=$(npx --yes vercel@latest deploy --prebuilt $([ "$PROD" = true ] && echo --prod) --token="$VERCEL_TOKEN")
+          echo "部署完成：$url"
+          {
+            echo "### $([ "$PROD" = true ] && echo 正式版 || echo 预览版)"
+            echo
+            echo "$url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Skip deploy
+        if: env.VERCEL_TOKEN == '' || env.VERCEL_ORG_ID == '' || env.VERCEL_PROJECT_ID == ''
+        run: echo "没配 VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID，只做检查，不部署" >> "$GITHUB_STEP_SUMMARY"

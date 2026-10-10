@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 dist-motion/
+# Vercel 的构建产物（scripts/build-vercel.mjs）和 CLI 的项目绑定
+.vercel/
 *.local
 
 # Editor directories and files

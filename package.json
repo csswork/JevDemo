@@ -8,6 +8,9 @@
     "motion:check": "tsc -p motion-workbench/tsconfig.json && node --experimental-strip-types --test motion-workbench/server/*.test.ts",
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:vercel": "node scripts/build-vercel.mjs",
+    "preview:vercel": "node scripts/serve-vercel.mjs",
+    "test": "node --experimental-strip-types --test server/*.test.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "assets": "node scripts/fetch-scene-assets.mjs"
@@ -16,10 +19,10 @@
     "@dgreenheck/ez-tree": "^1.1.0",
     "@pixiv/three-vrm": "^3.5.5",
     "@pixiv/three-vrm-animation": "^3.5.5",
+    "postprocessing": "^6.38.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.186.0",
-    "postprocessing": "^6.38.2",
     "three-good-godrays": "0.12.1"
   },
   "devDependencies": {
@@ -29,6 +32,7 @@
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
+    "rolldown": "^1.2.9",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   },

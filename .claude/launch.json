@@ -27,6 +27,15 @@
         "motion"
       ],
       "port": 5680
+    },
+    {
+      "name": "jev-vercel",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "preview:vercel"
+      ],
+      "port": 4180
     }
   ]
 }

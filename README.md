@@ -296,13 +296,57 @@ npm install && npm run dev
 所以最远时正好是一张全身照，而不是只看见一颗越来越小的头。不能平移。
 角色的视线不跟着镜头走 —— 她一直在和正前方的你说话。
 
+## 部署（Vercel）
+
+线上：**https://shoujo.app**（Vercel 项目 `shoujo`；`www.shoujo.app` 308 跳转到根域名）。
+
+GitHub Actions 构建并部署到 Vercel（`.github/workflows/deploy.yml`）：push 到 `main` 部署正式版，
+PR 部署预览版（链接写在 Actions 运行页的 Summary 里）。每次都先跑类型检查、lint、测试和构建。
+
+部署的是 Vercel 的 [Build Output](https://vercel.com/docs/build-output-api/v3)，不靠 Vercel 自动识别（`scripts/build-vercel.mjs`）：
+
+- **静态**：`vite build` 的 `dist/`。`public/` 里没进 git 的文件（本地候选模型这类）会被跳过
+- **接口**：`server/vercel.ts` 打包成一个 Function，`/api/*` 全进它。和本机共用 `server/api.ts`，
+  区别只有两点：没有可写的磁盘，聊天记录存浏览器（见"聊天记录"）；`server/persona.md` 放在函数旁边，部署后改它要重新部署
+
+在本机按部署后的样子跑一遍（读 `.env.local`）：
+
+```bash
+npm run build && npm run build:vercel && npm run preview:vercel
+```
+
+### 第一次配置
+
+1. Vercel 项目 `shoujo` 已经建好、绑了域名（`vercel project add`，没连 Git）。本机的 `.vercel/project.json`（gitignore）
+   里有 `orgId` 和 `projectId`；换一台机器用 `npx vercel link --project shoujo` 重新链接。
+   **不要**在 Vercel 网页上给项目连 Git 仓库 —— 那样 Vercel 自己也会构建，和 Actions 重复（仓库根的
+   `vercel.json` 已经关掉了 Git 自动部署，防万一）
+2. Vercel 项目的 Settings → Environment Variables，Production 和 Preview 都配上：`JEV_KEY`、`DEEPSEEK_API_KEY`、`MINIMAX_API_KEY`
+   （其余可选项和 `.env.example` 一样）。没配的那条链路会自动降级：没有 DeepSeek 用规则模板台词，没有 MiniMax 用浏览器语音
+3. 在 [vercel.com/account/tokens](https://vercel.com/account/tokens) 建一个 token
+4. GitHub 仓库的 Settings → Secrets and variables → Actions 加三个 secret：`VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`。
+   没配 secret 时 workflow 只做检查不部署
+
+### 注意
+
+- **key 会被别人用掉**：页面是公开的，谁打开都能通过这些接口消耗 Jev / DeepSeek / MiniMax 的额度。
+  预览版默认要登录 Vercel 才能看（Deployment Protection）；正式版要限制访问的话，
+  在 Settings → Deployment Protection 把 Vercel Authentication 扩大到 Production
+- **上传大小**：静态文件约 300MB。Vercel 文档写着 Hobby 用 CLI 上传上限 100MB，但 2026-06 的更新日志说取消了 CLI 的部署限制，
+  以第一次部署的结果为准。万一被拒，退路是改用 Vercel 的 Git 集成（Vercel 自己 clone 仓库，没有这个上传限制），
+  构建命令填 `npm run build && npm run build:vercel`
+- 函数放在香港（`hkg1`）：DeepSeek、MiniMax 用的是国内接口，放在默认的美东每段语音都要多跨一次太平洋
+- 场景参数的「保存」只在本机能用（写 `public/scene-defaults/`），部署后读的是打包进去的 JSON
+- 授权：QUAPPA 模型是「个人非商用」、VRoid 动作包禁止可提取的再分发 —— 两者都只以加密形式入库、部署（见"动作""模型"两节）。
+  这个项目是个人、非商业的开源项目，在授权范围内
+
 ## 目录
 
 | 路径 | 职责 | 换渲染引擎时 |
 |---|---|---|
 | `src/act/` | Act IR 定义、锚点解析、时间轴编译 | **保留** |
 | `src/jev/` | 表演决策器（接口 + 规则模板 + HTTP） | **保留** |
-| `server/` | 服务端代理 + DeepSeek 输入层 + JevStation 适配层（key 只在这里）、人设、聊天记录 | 视情况 |
+| `server/` | 服务端接口（key 只在这里）：DeepSeek 输入层、Jev 适配层、MiniMax 语音、聊天记录。本机挂在 Vite 上，部署时是 Vercel Function | 视情况 |
 | `data/chats/` | 聊天记录，每个模型一个 session（gitignored） | 保留 |
 | `src/vrm/` | three-vrm 渲染与分层动画 | 重写 |
 | `src/speech/` | 语音播放：MiniMax 按段合成、系统语音兜底 | 视情况 |
@@ -471,11 +515,10 @@ JEV_API_KEY=...                  # 可选，默认发 Authorization: Bearer
 
 Vite 只把 `VITE_` 前缀的变量注入客户端 bundle —— 反过来说，**任何带 `VITE_` 前缀的
 key 都等于公开**，开 DevTools 就能看到。所以这里的变量一律不加前缀，由
-`server/jevProxy.ts`（一个 Vite dev-server 中间件）在 Node 侧读取，浏览器只打同源的
-`/api/act`，不持有任何凭据。
+服务端在 Node 侧读取，浏览器只打同源的 `/api/*`，不持有任何凭据。
 
-上线时这个中间件要换成真正的服务端路由——它只在 `vite dev` 下生效，`vite build`
-产物里没有它。
+服务端接口是一份代码两个宿主（`server/api.ts`）：本机由 `server/viteApi.ts` 挂在 Vite 的 dev server 上，
+部署时 `server/vercel.ts` 打包成一个 Vercel Function（见"部署"一节）。
 
 不管走哪条路，代理返回前都会过一遍 `sanitizeAct()`：越界值就近夹紧、非法枚举丢弃。
 决策层再怎么抽风，角色也不会卡死。
@@ -486,7 +529,7 @@ key 都等于公开**，开 DevTools 就能看到。所以这里的变量一律�
 
 ### 人设：照着外形写
 
-`server/personas.ts`，每个模型一套结构化的参数：名字、外形、身份、性格、说话方式、
+`src/personas.ts`（前后端共用：服务端拼 prompt，聊天记录存浏览器时前端要用开场白），每个模型一套结构化的参数：名字、外形、身份、性格、说话方式、
 喜欢 / 不喜欢、和用户的关系、开场白、语气示例。拼成 prompt 放在通用规则
 （`server/persona.md`：中文、口语、1~3 句、不跳出角色）前面。
 
@@ -521,12 +564,15 @@ key 都等于公开**，开 DevTools 就能看到。所以这里的变量一律�
 
 ### 聊天记录
 
-- 存在服务端 `data/chats/<session>.json`（gitignored）。输入层的历史**从这里读**，
+- 本机存在服务端 `data/chats/<session>.json`（gitignored）。输入层的历史**从这里读**，
   前端不用每次把整段记录传上来；刷新页面、换浏览器都接得上
-- 每次带最近 40 条、合计不超过 6000 字（`chatStore.recentForModel`）。聊得再久，
+- 部署到 Vercel 时函数没有可写的磁盘，`/api/chat/*` 回 404，前端自动改存浏览器（localStorage，`src/chat.ts`），
+  每轮把截好的历史作为 `memory` 带给输入层；刷新接得上，换浏览器 / 清缓存就忘了。
+  以后要服务端存储，实现一个 `ChatStore`（`server/chatStore.ts`，数据库 / KV）传给 `createApi` 就行
+- 每次带最近 40 条、合计不超过 6000 字（`src/chatMemory.ts` 的 `recentForModel`）。聊得再久，
   每次请求的长度也有上限。更早的暂时不带 —— 要"长期记忆"就在这里加一段摘要
 - 谁写的台词谁记：渐进式管线里台词是服务端写的，`/api/speech` 写完顺手记下这一轮；
-  规则模板 / passthrough 模式下由前端 `POST /api/chat/append`
+  规则模板 / passthrough 模式、或者记录存浏览器时由前端记
 - 测试指令（`测试: …`）和出错时的兜底台词不进记录
 - 第一次打开某个角色（或刚重置）时她先打招呼：开场白是固定的，不花钱；
   有 Jev 时照常判断怎么演（1 次评估）
@@ -1036,7 +1082,7 @@ idle_loop 只有手腕、没有手指轨道，VRM 的静止姿势又是 T-pose �
 ## 语音
 
 [MiniMax](https://platform.minimax.cn) 的 `speech-2.8-turbo`，经服务端代理（`server/ttsProxy.ts` → `server/minimaxTts.ts`），
-浏览器只打同源的 `/api/tts/*`：流式 PCM + `X-Sample-Rate`，非流式 WAV；音色列表也由服务端给（`/api/tts/health` 的 `voices`）。
+浏览器只打同源的 `/api/tts/*`：流式是分帧的 PCM（格式见 `src/speech/frames.ts`），非流式 WAV；音色列表也由服务端给（`/api/tts/health` 的 `voices`）。
 没配 `MINIMAX_API_KEY`（或 `TTS=off`）时回落到浏览器的 Web Speech。
 
 以前接过千问 Qwen3-TTS（远程 DashScope 和本机 mlx-audio 两种后端），实测 MiniMax 效果好很多，已经删掉了。
@@ -1086,8 +1132,9 @@ idle_loop 只有手腕、没有手指轨道，VRM 的静止姿势又是 T-pose �
 试听对比：`dev-out/minimax/` 下同一句话原样 / 加了语气的版本（本地生成，不进 git）。
 **气泡和声音逐字对齐（字幕时间戳）**：MiniMax 请求打开 `subtitle_enable`（`word` 粒度），每个字在音频里的起止毫秒都有。
 服务端把发送文本（带标签）里的位置换回原台词（`prepareMiniMaxText` 的位置映射：开口前加的那一声不对应任何字，
-"唉"换成的 `(sighs)` 对应原文的"唉"），存起来；流式响应的头在第一块音频时就发出去了、那时还没有字幕，
-所以前端收完这一段的音频之后再用响应头里的 `x-tts-id` 取：`GET /api/tts/times?id=…`。
+"唉"换成的 `(sighs)` 对应原文的"唉"），和音频走同一个响应：非流式放在响应头 `x-tts-times`；
+流式的头在第一块音频时就发出去了、那时还没有字幕，所以流是分帧的，音频帧之后最后一帧是时间戳（`src/speech/frames.ts`）。
+以前是服务端存在内存里、前端收完再用 id 来取，部署成 Vercel Function 后两次请求可能落到不同实例上，取不到。
 前端（`speech/voice.ts`）拿到后，这一段不再按首尾两点线性插值，而是每个字一个"字 ↔ 时刻"的点：
 开口前抽鼻子 / 叹气的那零点几秒气泡不亮字，拖长的字、句中的停顿也对得上；表情锚点用的是同一组点，也跟着对齐。
 实测开了字幕首包没有变慢（0.32s）。取不到时间戳时照旧按首尾两点插值。

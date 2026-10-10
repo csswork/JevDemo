@@ -73,7 +73,7 @@ export class HttpDecider implements ActDecider {
     const res = await fetch(this.endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, scene: ctx.scene, mood: ctx.mood, draft }),
+      body: JSON.stringify({ input, history: ctx.history, memory: ctx.memory, session: ctx.session, scene: ctx.scene, mood: ctx.mood, draft }),
     });
 
     if (!res.ok) {
@@ -101,7 +101,7 @@ export class HttpDecider implements ActDecider {
     const res = await fetch(JEV_SPEECH_API, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ input, history: ctx.history, session: ctx.session, scene: ctx.scene, mood: ctx.mood, draft }),
+      body: JSON.stringify({ input, history: ctx.history, memory: ctx.memory, session: ctx.session, scene: ctx.scene, mood: ctx.mood, draft }),
     });
     if (!res.ok) throw new Error((await this.errorOf(res)) ?? `${res.status} ${res.statusText}`);
     const json = (await res.json()) as { speech: string; scene?: string | null };

@@ -9,7 +9,7 @@
  * 标点是两边都有的东西。
  *
  * 服务端（出题）和前端（放锚点）都调用这一个函数，保证两边切出来的段一致。
- * 在配置链上（jevProxy → jev.ts → fromJev.ts → 这里），所以 import 要写 .ts 扩展名。
+ * 在配置链上（viteApi → api → jevProxy → jev.ts → fromJev.ts → 这里），所以 import 要写 .ts 扩展名。
  */
 
 export interface Segment {

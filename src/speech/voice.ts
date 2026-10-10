@@ -1,5 +1,6 @@
 import { splitSegments, type Segment } from '../act/segments';
 import { DEFAULT_TONE, type VoiceStyle } from '../act/voiceStyle';
+import { AUDIO_FRAME, FrameReader } from './frames';
 
 /**
  * 合成语音（MiniMax，经 server/ttsProxy.ts）的一次说话。
@@ -61,7 +62,7 @@ interface Placed {
   times?: Array<{ c: number; t: number }>;
 }
 
-/** 段与段之间的停顿：句末标点长一点，省略号更长（和 tts/bench.py 的试听版本一致） */
+/** 段与段之间的停顿：句末标点长一点，省略号更长 */
 function pauseAfter(text: string): number {
   const end = text.trim().slice(-1);
   if (end === '…') return 0.32;
@@ -91,8 +92,8 @@ export class VoiceSession {
   /** 同一个判断的结构化版本（MiniMax 主要看它；tones 的中文语气描述在没有它时兜底） */
   private styles: Array<VoiceStyle | null>;
   private fallbackStyle: VoiceStyle | null = null;
-  /** 第一段（流式）合成请求的 id：收完之后拿它取逐字时间戳 */
-  private firstId: string | null = null;
+  /** 第一段的逐字时间戳（流的最后一帧） */
+  private firstTimes: Array<{ c: number; t: number }> | null = null;
   private judged: Promise<void>;
   private resolveJudged: () => void = () => {};
   private placed: Placed[] = [];
@@ -106,7 +107,7 @@ export class VoiceSession {
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private pending: Float32Array[] = [];
   private pendingSeconds = 0;
-  private leftover: number | null = null;
+  private frames = new FrameReader();
   private streamDone = false;
   /** 第一段下一块该排在什么时刻（AudioContext 时间） */
   private cursor = 0;
@@ -170,7 +171,6 @@ export class VoiceSession {
       });
       if (!r.ok || !r.body) throw new Error(`tts ${r.status}`);
       this.streamSr = Number(r.headers.get('x-sample-rate')) || 24000;
-      this.firstId = r.headers.get('x-tts-id');
       this.reader = r.body.getReader();
       while (this.pendingSeconds < 0.3 && !this.streamDone) await this.readChunk();
       clearTimeout(timer);
@@ -263,31 +263,33 @@ export class VoiceSession {
 
   // ---- 内部 ----
 
-  /** 收一块 PCM（16bit 小端）。网络分块不按采样对齐，奇数字节留到下一块 */
+  /**
+   * 收一块。流是分帧的（格式见 frames.ts）：音频帧是 16bit 小端 PCM，每帧整数个采样；
+   * 最后一帧是逐字时间戳。网络分块不按帧对齐，FrameReader 负责拼回来
+   */
   private async readChunk() {
     const { value, done } = await this.reader!.read();
     if (done || !value) {
       this.streamDone = true;
       return;
     }
-    let bytes = value;
-    if (this.leftover != null) {
-      const merged = new Uint8Array(bytes.length + 1);
-      merged[0] = this.leftover;
-      merged.set(bytes, 1);
-      bytes = merged;
-      this.leftover = null;
-    }
-    if (bytes.length % 2) {
-      this.leftover = bytes[bytes.length - 1];
-      bytes = bytes.subarray(0, bytes.length - 1);
-    }
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
-    const f32 = new Float32Array(bytes.length / 2);
-    for (let i = 0; i < f32.length; i++) f32[i] = view.getInt16(i * 2, true) / 32768;
-    if (f32.length) {
-      this.pending.push(f32);
-      this.pendingSeconds += f32.length / this.streamSr;
+    for (const { type, payload } of this.frames.push(value)) {
+      if (type === AUDIO_FRAME.times) {
+        try {
+          this.firstTimes = JSON.parse(new TextDecoder().decode(payload));
+        } catch {
+          // 时间戳只是锦上添花
+        }
+        continue;
+      }
+      if (type !== AUDIO_FRAME.pcm) continue;
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.length);
+      const f32 = new Float32Array(payload.length >> 1);
+      for (let i = 0; i < f32.length; i++) f32[i] = view.getInt16(i * 2, true) / 32768;
+      if (f32.length) {
+        this.pending.push(f32);
+        this.pendingSeconds += f32.length / this.streamSr;
+      }
     }
     if (this.started) this.flushPending();
   }
@@ -327,9 +329,9 @@ export class VoiceSession {
     if (this.firstDone || this.stopped) return;
     this.firstDone = true;
     const source = this.sources[this.sources.length - 1];
-    this.placed.push({ index: 0, start: this.t0, duration: this.cursor - this.t0, source });
+    // 时间戳是流的最后一帧，流收完时已经到了
+    this.placed.push({ index: 0, start: this.t0, duration: this.cursor - this.t0, source, times: this.firstTimes ?? undefined });
     this.onUpdate?.();
-    if (this.firstId) void this.fetchTimes(0, this.firstId);
     void this.pump();
   }
 
@@ -345,7 +347,7 @@ export class VoiceSession {
         await Promise.race([this.judged, new Promise((r) => setTimeout(r, wait))]);
       }
       if (this.stopped) return;
-      let got: { buffer: AudioBuffer; id: string | null };
+      let got: { buffer: AudioBuffer; times: Array<{ c: number; t: number }> | null };
       try {
         got = await this.fetchSegment(i);
       } catch {
@@ -353,20 +355,19 @@ export class VoiceSession {
         break;
       }
       if (this.stopped) return;
-      this.place(i, got.buffer, Math.max(startAt, this.ctx.currentTime + 0.02));
-      if (got.id) void this.fetchTimes(i, got.id);
+      this.place(i, got.buffer, Math.max(startAt, this.ctx.currentTime + 0.02), got.times);
     }
     this.finished = true;
     this.onUpdate?.();
   }
 
-  private place(index: number, buffer: AudioBuffer, at: number) {
+  private place(index: number, buffer: AudioBuffer, at: number, times: Array<{ c: number; t: number }> | null) {
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(this.out);
     source.start(at);
     this.sources.push(source);
-    this.placed.push({ index, start: at, duration: buffer.duration, source });
+    this.placed.push({ index, start: at, duration: buffer.duration, source, times: times ?? undefined });
     this.onUpdate?.();
   }
 
@@ -377,21 +378,11 @@ export class VoiceSession {
     return this.fallbackStyle ? { ...this.fallbackStyle, onset: this.fallbackStyle.onset && i === 0 } : null;
   }
 
-  /** 取这一段的逐字时间戳（音频收完之后服务端才有）。取不到就算了，照旧按首尾插值 */
-  private async fetchTimes(index: number, id: string) {
-    try {
-      const r = await fetch(`/api/tts/times?id=${encodeURIComponent(id)}`);
-      const { times } = (await r.json()) as { times: Array<{ c: number; t: number }> | null };
-      const p = this.placed.find((x) => x.index === index);
-      if (!times?.length || !p || this.stopped) return;
-      p.times = times;
-      this.onUpdate?.();
-    } catch {
-      // 时间戳只是锦上添花
-    }
-  }
-
-  private async fetchSegment(i: number, timeoutMs = 10000): Promise<{ buffer: AudioBuffer; id: string | null }> {
+  /** 合成第 i 段（非流式 WAV）。逐字时间戳在响应头里，取不到就照旧按首尾插值 */
+  private async fetchSegment(
+    i: number,
+    timeoutMs = 10000,
+  ): Promise<{ buffer: AudioBuffer; times: Array<{ c: number; t: number }> | null }> {
     const seg = this.segments[i];
     const r = await fetch('/api/tts/synth', {
       method: 'POST',
@@ -400,6 +391,13 @@ export class VoiceSession {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!r.ok) throw new Error(`tts ${r.status}`);
-    return { buffer: await this.ctx.decodeAudioData(await r.arrayBuffer()), id: r.headers.get('x-tts-id') };
+    let times: Array<{ c: number; t: number }> | null = null;
+    try {
+      const raw = r.headers.get('x-tts-times');
+      if (raw) times = JSON.parse(decodeURIComponent(raw));
+    } catch {
+      // 时间戳只是锦上添花
+    }
+    return { buffer: await this.ctx.decodeAudioData(await r.arrayBuffer()), times };
   }
 }

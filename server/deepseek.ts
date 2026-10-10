@@ -1,5 +1,3 @@
-import { readFileSync, existsSync } from 'node:fs';
-
 /**
  * 输入层 —— 一期用来替代实时语音交互的对话来源。
  *
@@ -26,9 +24,9 @@ export interface DeepSeekOptions {
   model?: string;
   /** 省略则完全不发 reasoning 相关参数，走最朴素的兼容形状 */
   reasoningEffort?: string;
-  /** 通用规则（server/persona.md） */
-  personaPath?: string;
-  /** 角色段：这个模型的人设（server/personas.ts 拼好的），放在通用规则前面 */
+  /** 通用规则（server/persona.md 的原文）。没有就用内置的兜底规则 */
+  personaRules?: string | null;
+  /** 角色段：这个模型的人设（src/personas.ts 拼好的），放在通用规则前面 */
   character?: string;
 }
 
@@ -50,10 +48,9 @@ const FALLBACK_PERSONA = `你正在和对方面对面聊天。
 - 不确定就说不确定，不要硬编。
 - 不要提到自己是 AI、模型或程序，除非用户直接问。`;
 
-function readPersona(path?: string): string {
+function readPersona(rules?: string | null): string {
   // 文件开头的 <!-- --> 是写给人看的说明，不发给模型
-  if (path && existsSync(path)) return readFileSync(path, 'utf8').replace(/<!--[\s\S]*?-->/g, '').trim();
-  return FALLBACK_PERSONA;
+  return rules ? rules.replace(/<!--[\s\S]*?-->/g, '').trim() : FALLBACK_PERSONA;
 }
 
 async function postWithRetry(url: string, init: RequestInit, tries = 3): Promise<Response> {
@@ -71,7 +68,7 @@ export async function writeSpeech(
   opts: DeepSeekOptions,
   params: {
     input: string;
-    /** 调用方已经按长度截好（见 chatStore.recentForModel），这里原样全带上 */
+    /** 调用方已经按长度截好（见 src/chatMemory.ts 的 recentForModel），这里原样全带上 */
     history?: Array<{ role: 'user' | 'character'; text: string }>;
     /** 此刻在哪、几点了（server/scene.ts 写好的一段）。没有就不加 */
     scene?: string | null;
@@ -79,7 +76,7 @@ export async function writeSpeech(
 ): Promise<string> {
   const url = `${(opts.baseUrl || DEFAULT_BASE).replace(/\/+$/, '')}/chat/completions`;
 
-  const persona = [opts.character, readPersona(opts.personaPath)].filter(Boolean).join('\n\n');
+  const persona = [opts.character, readPersona(opts.personaRules)].filter(Boolean).join('\n\n');
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: persona },
     // 场景每一轮都按当前的写（换了背景、拖了时间，这一句就知道）

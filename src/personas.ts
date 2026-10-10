@@ -10,7 +10,9 @@
  * 通用规则（口语、短句、只输出台词）在 server/persona.md。
  *
  * id 和 src/models.ts 的模型 id 一一对应，也是聊天记录的 session id。
- * 这个文件在 vite.config 的引用链上，改完 dev server 会自动重启。
+ * 放在 src/ 是因为前后端都用：服务端拼输入层的 prompt，前端在聊天记录存浏览器时
+ * （Vercel 上没有服务端存储）要知道每个角色的名字和开场白。
+ * 这个文件在 vite.config 的引用链上，改完 dev server 会自动重启；不 import 任何东西，前后端都能直接用。
  */
 
 export interface Persona {

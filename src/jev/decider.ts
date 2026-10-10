@@ -10,6 +10,11 @@ export interface DecideContext {
    * 说完自己记下这一轮（见 src/chat.ts）
    */
   session?: string;
+  /**
+   * 聊天记录存浏览器时（部署在 Vercel，见 src/chat.ts）给输入层的更长的历史。
+   * 服务端自己存记录时不用带，服务端从 data/chats/ 取
+   */
+  memory?: Array<{ role: 'user' | 'character'; text: string }>;
   /** 此刻在哪、几点了：输入层据此知道周围的环境（见 src/jev/scene.ts、server/scene.ts） */
   scene?: SceneContext;
   /**

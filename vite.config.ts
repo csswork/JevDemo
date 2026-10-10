@@ -8,13 +8,12 @@
  */
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { jevProxy } from './server/jevProxy.ts';
-import { ttsProxy } from './server/ttsProxy.ts';
+import { apiServer } from './server/viteApi.ts';
 import {sceneDefaults} from './server/sceneDefaults.ts';
 import { devSave } from './server/devSave.ts';
 
 export default defineConfig({
-  plugins: [react(), jevProxy(), ttsProxy(), devSave(), sceneDefaults()],
+  plugins: [react(), apiServer(), devSave(), sceneDefaults()],
   server: {
     port: process.env.PORT ? Number(process.env.PORT) : 5678,
     strictPort: true,

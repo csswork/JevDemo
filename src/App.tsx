@@ -16,7 +16,8 @@ import { MOTION_CREDIT, motionLabel, motionSource } from './vrm/motion';
 import { isGreeting } from './act/motionRules';
 import { EMOTIONS, MOTIONS, type Emotion, type MotionId } from './act/schema';
 import { DEFAULT_BACKDROP, DEFAULT_MODEL, MODELS, VISIBLE_MODELS, modelUrl, probeModels } from './models';
-import { appendChat, openChat, resetChat, type ChatSession } from './chat';
+import { appendChat, chatStorage, openChat, resetChat, type ChatSession } from './chat';
+import { recentForModel } from './chatMemory';
 import type { BackdropId, CameraView } from './vrm/stage';
 import type { SceneContext } from './jev/scene';
 import { presetHours, TIME_MODES } from './vrm/timeOfDay';
@@ -589,7 +590,8 @@ export default function App() {
     const rt = runtimeRef.current;
     if (!rt || busy) return;
     const who = persona?.name ?? '她';
-    if (!window.confirm(`清空和${who}的聊天记录？\n她会忘掉之前聊过的内容（旧记录会归档在 data/chats/archive/，不会删除）。`)) return;
+    const where = chatStorage() === 'browser' ? '浏览器里留一份' : '会归档在 data/chats/archive/';
+    if (!window.confirm(`清空和${who}的聊天记录？\n她会忘掉之前聊过的内容（旧记录${where}，不会删除）。`)) return;
     if (useVoice) rt.unlockAudio();
     rt.stop();
     setJevMeta(null);
@@ -810,8 +812,11 @@ export default function App() {
     // 背景音和语音共用同一个 AudioContext，所以不开语音时也要解锁
     if (useVoice || ambient) rt.unlockAudio();
     const history = turns.slice(-6).map(({ role, text }) => ({ role, text }));
-    const ctx = { history, session, scene: sceneNow(), mood: rt.moodState };
-    // 台词不是服务端写的（规则模板、passthrough）时，由前端把这一轮记进聊天记录
+    // 记录存浏览器时服务端不记得之前聊过什么：把截好的历史带给输入层
+    const browserChat = chatStorage() === 'browser';
+    const memory = browserChat ? recentForModel(turns).map(({ role, text }) => ({ role, text })) : undefined;
+    const ctx = { history, memory, session, scene: sceneNow(), mood: rt.moodState };
+    // 台词不是服务端写的（规则模板、passthrough），或者记录存浏览器时，由前端把这一轮记进聊天记录
     const record = (reply: string) => {
       if (!chatError) void appendChat(session, [{ role: 'user', text }, { role: 'character', text: reply }]).catch(() => {});
     };
@@ -907,6 +912,7 @@ export default function App() {
         }
         const compiled = rt.play(baselineAct(speech, reaction), { voice: session });
         setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
+        if (browserChat) record(compiled.text);
         setBusy(false);
 
         // 不 await：让它在角色说话的同时跑
@@ -938,8 +944,8 @@ export default function App() {
       if (decider instanceof HttpDecider) setSceneNote(decider.lastScene);
       const compiled = rt.play(act);
       setTurns((t) => [...t, { role: 'character', text: compiled.text }]);
-      // Jev 模式下这条路的台词也是服务端写的（已经记了），其余情况前端记
-      if (!(decider instanceof HttpDecider && jev.mode === 'jev')) record(compiled.text);
+      // Jev 模式下这条路的台词也是服务端写的（服务端存记录时已经记了），其余情况前端记
+      if (browserChat || !(decider instanceof HttpDecider && jev.mode === 'jev')) record(compiled.text);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const act = fallbackAct(`决策层出错了：${msg}`);
