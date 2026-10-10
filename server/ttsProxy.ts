@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MINIMAX_SAMPLE_RATE, MINIMAX_VOICES, synthesizeMiniMax, type MiniMaxConfig } from './minimaxTts.ts';
 import type { VoiceStyle } from '../src/act/voiceStyle.ts';
 import { AUDIO_FRAME, AUDIO_FRAMES_TYPE } from '../src/speech/frames.ts';
-import { readBody, sendJson, type ApiContext } from './http.ts';
+import { errorText, readBody, sendJson, type ApiContext } from './http.ts';
 
 /**
  * 语音合成的接口：MiniMax Turbo（server/minimaxTts.ts）。浏览器只打同源的 /api/tts/*，key 不进浏览器。
@@ -16,7 +16,9 @@ import { readBody, sendJson, type ApiContext } from './http.ts';
  * 部署成 Vercel Function 后两次请求可能落到不同实例上，就取不到了。
  *
  *   MINIMAX_API_KEY   没配时 health 回 ready: false，前端退回浏览器的系统语音
- *   MINIMAX_BASE_URL  默认国内 https://api.minimax.cn；海外开放平台的 key 用 https://api.minimax.io
+ *   MINIMAX_BASE_URL  默认国内官方域名 https://api.minimaxi.com；海外开放平台的 key 用 https://api.minimax.io。
+ *                     别用 api.minimax.cn：从 Vercel 香港节点连它的上海 IP 一律连接超时（2026-10 实测），
+ *                     api.minimaxi.com 同样是国内站、同一个 key，从香港 0.2~0.5 秒连上
  *   TTS_SPEAKER       默认音色（minimax: 开头的 id，界面下拉框没选过、角色也没配音色时用）
  *   TTS=off           完全不用这里的语音（UI 回落到系统语音）
  */
@@ -59,7 +61,7 @@ export function createTtsApi(env: Record<string, string | undefined>, { log }: A
   const enabled = !/^(off|false|0|no)$/i.test((env.TTS || '').trim());
   const key = (env.MINIMAX_API_KEY || '').trim();
   const minimax: MiniMaxConfig | null = key
-    ? { apiKey: key, baseUrl: (env.MINIMAX_BASE_URL || 'https://api.minimax.cn').trim() }
+    ? { apiKey: key, baseUrl: (env.MINIMAX_BASE_URL || 'https://api.minimaxi.com').trim() }
     : null;
   const sp = (env.TTS_SPEAKER || '').trim();
   const defaultVoice = MINIMAX_VOICES.some((v) => v.id === sp) ? sp : 'minimax:female-shaonv';
@@ -141,7 +143,7 @@ export function createTtsApi(env: Record<string, string | undefined>, { log }: A
         return false;
       } catch (e) {
         // 合成失败：告诉前端"不可用"，前端退回无声模式
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = errorText(e);
         if (req.method !== 'GET') log.warn(`[tts] ${msg}`);
         if (res.headersSent) res.end();
         else sendJson(res, req.method === 'GET' ? 200 : 503, { ready: false, error: msg });

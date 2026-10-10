@@ -8,7 +8,7 @@ import { personaOf, personaPrompt } from '../src/personas.ts';
 import { scenePrompt } from './scene.ts';
 import { moodPrompt } from './mood.ts';
 import type { SceneContext } from '../src/jev/scene.ts';
-import { readBody, sendJson, type ApiContext } from './http.ts';
+import { errorText, readBody, sendJson, type ApiContext } from './http.ts';
 
 /**
  * Jev 决策层的服务端代理。
@@ -208,7 +208,7 @@ async function runJudge(
     );
     return { ...sanitizeAct(act, speech), _jev: meta };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = errorText(e);
     deps.log.error(`[jev] ${msg}`);
     return { ...sanitizeAct(baselineAct(speech), speech), _jevError: msg };
   }
@@ -235,7 +235,7 @@ async function runReaction(
       { userInput: payload.input, history: payload.history },
     );
   } catch (e) {
-    deps.log.error(`[jev] 倾听反应：${e instanceof Error ? e.message : String(e)}`);
+    deps.log.error(`[jev] 倾听反应：${errorText(e)}`);
     return null;
   }
 }
@@ -289,7 +289,7 @@ export function createJevApi(env: Record<string, string | undefined>, deps: JevD
 
   /** 输入层 / 判断层失败：502 带上原因 */
   const failed = (res: ServerResponse, e: unknown) => {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = errorText(e);
     log.error(`[jev] ${msg}`);
     sendJson(res, 502, { error: msg });
   };
@@ -380,7 +380,7 @@ export function createJevApi(env: Record<string, string | undefined>, deps: JevD
           }
           sendJson(res, 200, { turns: store.append(body.session, body.turns ?? []) });
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
+          const msg = errorText(e);
           log.error(`[chat] ${msg}`);
           sendJson(res, 500, { error: msg });
         }

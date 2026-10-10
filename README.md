@@ -1111,7 +1111,7 @@ idle_loop 只有手腕、没有手指轨道，VRM 的静止姿势又是 T-pose �
 挑选依据是[官方系统音色列表](https://platform.minimax.cn/docs/faq/system-voice-id)。
 没有指定时的默认音色是「少女」（`TTS_SPEAKER` 填一个 `minimax:` 开头的 id 可以改）。
 
-默认接口为国内 `https://api.minimax.cn`；海外开放平台 key 需另外设置
+默认接口为国内官方域名 `https://api.minimaxi.com`（别用 `api.minimax.cn`：从 Vercel 香港节点连不上）；海外开放平台 key 需另外设置
 `MINIMAX_BASE_URL=https://api.minimax.io`。key 仅由服务端读取，不进入浏览器。
 合成走 HTTP SSE，将 hex 音频转换成现有播放接口的 24kHz 单声道 PCM16；非流式请求包装为 WAV。
 **语气怎么传（`server/minimaxTts.ts` 的 `deliveryFor` / `textForMiniMax`）**：MiniMax 不认自然语言语气指令，

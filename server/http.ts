@@ -9,6 +9,17 @@ export interface ApiContext {
   };
 }
 
+/**
+ * 错误的可读描述。Node 的 fetch 连不上时只说 "fetch failed"，真正的原因（连接超时、DNS、被重置）
+ * 在 cause 里 —— 一并带上，日志里一眼看出是哪种
+ */
+export function errorText(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const cause = e.cause as { code?: string; message?: string } | undefined;
+  const detail = cause ? [cause.code, cause.message].filter(Boolean).join(' ') : '';
+  return detail ? `${e.message}（${detail}）` : e.message;
+}
+
 export function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json; charset=utf-8');
