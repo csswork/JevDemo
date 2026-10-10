@@ -35,6 +35,8 @@ const TYPES = {
   '.jpg': 'image/jpeg',
   '.ogg': 'audio/ogg',
   '.hdr': 'application/octet-stream',
+  '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
 };
 
 const server = http.createServer((req, res) => {
@@ -49,7 +51,8 @@ const server = http.createServer((req, res) => {
   if (!file.startsWith(staticDir)) return void res.writeHead(403).end();
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
   if (!fs.existsSync(file)) return void res.writeHead(404, { 'content-type': 'text/plain' }).end('404');
-  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
+  // content-length：模型下载的进度条靠它（Vercel 上也会带）
+  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'content-length': fs.statSync(file).size });
   fs.createReadStream(file).pipe(res);
 });
 

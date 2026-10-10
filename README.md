@@ -27,7 +27,8 @@ npm install && npm run dev
 
 模型已放在 `public/models/`，无需额外下载。
 
-背景（面板"模型"下面的"背景"，跟着角色记在浏览器里，见"模型"一节）：**公园**（默认，`vrm/scenes/park.ts`）、**咖啡店**（`vrm/scenes/cafe.ts`）、**街景**（海边小镇，`vrm/scenes/street.ts`）或原来的纯色渐变。
+背景（面板"模型"下面的"背景"，跟着角色记在浏览器里，见"模型"一节）：**街景**（默认，海边小镇，`vrm/scenes/street.ts`）、**公园**（`vrm/scenes/park.ts`）、**咖啡店**（`vrm/scenes/cafe.ts`）或原来的纯色渐变。
+两个咖啡馆（咖啡店、潮汐咖啡馆）只在本地开发时能选，线上（生产构建）不列（`App.tsx` 的 `DEV_ONLY_BACKDROPS`）；存过它们的角色在线上退回默认的街景。
 另有 **潮汐咖啡馆**（`vrm/scenes/animeCafe.ts`）：按用户提供的二次元参考图在 Blender 中精细建模，包含木质吧台、甜点柜、双头咖啡机、落地窗、拱门座位区与垂挂植物。静态光影与纹理烘焙进 GLB，金属和玻璃保留实时材质；相机使用独立碰撞网格。源文件与渲染记录在 `design/rooms/anime-tide-cafe/`，导出脚本为 `scripts/blender/export_anime_cafe.py`。
 咖啡店的墙（灰泥墙、砖墙、墙裙）、天花板和梁、黑板菜单、窗外、店招、吧台、置物架是程序生成的（几何体 + canvas 画的贴图）；
 其余是 [Poly Pizza](https://poly.pizza) 上的低多边形模型（`public/scene/polypizza/`，32 个、共 1.3MB，进 git）：
@@ -1282,7 +1283,7 @@ __jev.playMotion('spin', 0.5, true)               // 直接播动作（慢放、
 换的时候旧模型留在画面里，新的加载好再一帧内换掉；正在说的话会停掉。
 
 **以角色为准保存偏好**（`localStorage['jev.modelPrefs']`，按模型 id 分开）：每个角色自己的**音色、背景、镜头视角**，
-换角色时一起换成她的；没设置过的角色用默认（模型自己的默认音色、**公园**、半身机位），不继承别的角色的。
+换角色时一起换成她的；没设置过的角色用默认（模型自己的默认音色、**街景**、半身机位），不继承别的角色的。
 
 - 视角存的是绕转轴的水平角、俯仰角和距离（`stage.getView()` / `setView()`）。转完 / 拉完镜头、停稳之后存一次，
   关页面 / 切到后台时再存一次（`pagehide` / `visibilitychange` 兜底）；换角色前先把旧角色的视角存下来。

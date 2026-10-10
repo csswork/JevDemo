@@ -163,8 +163,8 @@ export const MODELS: ModelMeta[] = [
 
 export const DEFAULT_MODEL = MODELS[0];
 
-/** 没设置过背景的角色用这个 */
-export const DEFAULT_BACKDROP = 'park' as const;
+/** 没设置过背景的角色用这个（存过的背景在线上被隐藏了也退回它，见 App.tsx 的 BACKDROPS） */
+export const DEFAULT_BACKDROP = 'street' as const;
 
 /** 下拉框里列出来的 */
 export const VISIBLE_MODELS = MODELS.filter((m) => !m.hidden);

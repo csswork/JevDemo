@@ -6,13 +6,15 @@ import { LoaderFx } from './LoaderFx';
  * 背景是两团很慢地漂着的柔光，上面一层粒子在头像周围打旋（LoaderFx，three.js），随着进度汇成头像外的光环。
  * 载完了不是一下消失：粒子往外炸开，整层淡出，头像放大、变虚，像镜头推进场景里。
  *
- * done 变成 true 之后自己再待 0.8 秒（退场动画），然后卸载
+ * done 变成 true 之后自己再待 0.8 秒（退场动画），然后卸载。
+ * 换角色时也用它盖住整个画面（fadeIn：淡入，不像开场那样一打开就在）；每次换角色用新的 key 重新挂载
  */
 export function Loader({
   done,
   progress,
   name,
   avatar,
+  fadeIn = false,
 }: {
   done: boolean;
   /** 0..1；还不知道是谁的时候（探测模型中）也是 0 */
@@ -20,6 +22,8 @@ export function Loader({
   name?: string;
   /** 头像图片地址；没有就只显示进度圈 */
   avatar?: string;
+  /** 淡入出现（换角色时）；开场的那次一打开就在，不淡入 */
+  fadeIn?: boolean;
 }) {
   const [gone, setGone] = useState(false);
   const [imgOk, setImgOk] = useState(true);
@@ -36,7 +40,7 @@ export function Loader({
   const status = !name ? '准备舞台' : pct < 100 ? '正在赶来' : '马上就好';
 
   return (
-    <div className={`boot ${done ? 'out' : ''}`} role="status" aria-live="polite">
+    <div className={`boot${fadeIn ? ' fade-in' : ''}${done ? ' out' : ''}`} role="status" aria-live="polite">
       <div className="boot-glow a" />
       <div className="boot-glow b" />
       {/* 粒子（three.js）：在头像周围打旋，随进度汇成光环，载完往外炸开 */}

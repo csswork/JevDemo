@@ -92,6 +92,10 @@ button { font: inherit; }
   transition: opacity 0.7s ease 0.12s;
 }
 .boot.out { opacity: 0; pointer-events: none; }
+/* 换角色时盖上来：很快地淡入（随后主线程会被模型解析、场景生成占住，动画要短） */
+.boot.fade-in { animation: boot-fade-in 0.18s ease-out both; }
+.boot.fade-in.out { animation: none; }
+@keyframes boot-fade-in { from { opacity: 0; } }
 
 /* 两团很慢地漂着的柔光：暖的在左上、冷的在右下 */
 .boot-glow {

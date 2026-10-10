@@ -52,7 +52,7 @@ const BACKDROP_KEY = 'jev.backdrop';
 
 /**
  * 每个角色自己的偏好：音色、背景、镜头视角。以选中的角色为准 —— 换角色时一起换，
- * 没设置过的角色用默认（模型自己的默认音色、公园、半身机位，见 models.ts），不继承别的角色的
+ * 没设置过的角色用默认（模型自己的默认音色、街景、半身机位，见 models.ts），不继承别的角色的
  */
 const PREFS_KEY = 'jev.modelPrefs';
 type TimeValue = 'now' | number;
@@ -102,13 +102,16 @@ function migratePrefs(id: string | null) {
   if (!speaker && !backdrop) return;
   savePrefs(id, { ...(backdrop ? { backdrop } : {}), ...(speaker ? { speaker } : {}) });
 }
-const BACKDROPS: Array<{ id: BackdropId; label: string; icon: React.ReactNode }> = [
+const ALL_BACKDROPS: Array<{ id: BackdropId; label: string; icon: React.ReactNode }> = [
   { id: 'cafe', label: '咖啡店', icon: <IconCoffee size={18} /> },
   { id: 'animeCafe', label: '潮汐咖啡馆', icon: <IconCoffee size={18} /> },
   { id: 'park', label: '公园', icon: <IconTree size={18} /> },
   { id: 'street', label: '街景', icon: <IconCity size={18} /> },
   { id: 'none', label: '纯色', icon: <IconBlank size={18} /> },
 ];
+/** 只在本地开发时能选的背景：两个咖啡馆线上不列。存过它们的角色在线上退回默认背景（backdropOf） */
+const DEV_ONLY_BACKDROPS: BackdropId[] = ['cafe', 'animeCafe'];
+const BACKDROPS = ALL_BACKDROPS.filter((b) => import.meta.env.DEV || !DEV_ONLY_BACKDROPS.includes(b.id));
 function savedBackdrop(): BackdropId | null {
   try {
     const v = localStorage.getItem(BACKDROP_KEY);
@@ -304,6 +307,11 @@ export default function App() {
   const [modelId, setModelId] = useState<string | null>(null);
   const [modelAvail, setModelAvail] = useState<Record<string, boolean>>({});
   const [modelLoading, setModelLoading] = useState<number | null>(null);
+  /**
+   * 换角色时盖住整个画面的载入层（和开场同一个 Loader）。key 每次换都不同，重新挂载；
+   * 模型载好就 done（淡出），不等她打招呼 —— 不然开场白会在载入层后面说
+   */
+  const [switching, setSwitching] = useState<{ key: number; id: string; progress: number; done: boolean } | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
   const modelPick = useRef(0);
   const [backdrop, setBackdropState] = useState<BackdropId>(DEFAULT_BACKDROP);
@@ -314,24 +322,28 @@ export default function App() {
   const [skyLoading,setSkyLoading]=useState(true);
   const [skySaving,setSkySaving]=useState(false);
   const [skySaveStatus,setSkySaveStatus]=useState('');
+  /** 能不能保存：只有本机的 dev / preview 服务能写 public/scene-defaults/；部署后只读 */
+  const [skyWritable,setSkyWritable]=useState(false);
   const skySceneRef=useRef(backdrop);skySceneRef.current=backdrop;
   useEffect(()=>{
     const controller=new AbortController();setSkyLoading(true);setSkySaveStatus('');
     const defaults={...DEFAULT_SKY_SETTINGS};
     setSkySettings(defaults);runtimeRef.current?.setSceneSettings(defaults);
-    loadSceneDefaults(backdrop,controller.signal).then(settings=>{
+    loadSceneDefaults(backdrop,controller.signal).then(({settings,writable})=>{
       if(controller.signal.aborted)return;
-      setSkySettings(settings);runtimeRef.current?.setSceneSettings(settings);
+      setSkySettings(settings);runtimeRef.current?.setSceneSettings(settings);setSkyWritable(writable);
     }).catch(error=>{
       if(!controller.signal.aborted)setSkySaveStatus(error instanceof Error?error.message:'读取失败');
     }).finally(()=>{if(!controller.signal.aborted)setSkyLoading(false);});
     return ()=>controller.abort();
   },[backdrop]);
+  // 部署后改了只是这一页里看效果，不提示"未保存"
+  const unsaved=()=>setSkySaveStatus(skyWritable?'未保存':'');
   const changeSky=(values:Partial<SkySettings>)=>{
-    setSkySettings(previous=>({...previous,...values}));runtimeRef.current?.setSkySettings(values);setSkySaveStatus('未保存');
+    setSkySettings(previous=>({...previous,...values}));runtimeRef.current?.setSkySettings(values);unsaved();
   };
-  const changeOcean=(values:Partial<OceanSettings>)=>{setSkySettings(previous=>({...previous,ocean:{...previous.ocean,...values}}));runtimeRef.current?.setOceanSettings(values);setSkySaveStatus('未保存');};
-  const changeGodrays=(values:Partial<ParkGodraySettings>)=>{setSkySettings(previous=>({...previous,godrays:{...previous.godrays,...values}}));runtimeRef.current?.setGodraySettings(values);setSkySaveStatus('未保存');};
+  const changeOcean=(values:Partial<OceanSettings>)=>{setSkySettings(previous=>({...previous,ocean:{...previous.ocean,...values}}));runtimeRef.current?.setOceanSettings(values);unsaved();};
+  const changeGodrays=(values:Partial<ParkGodraySettings>)=>{setSkySettings(previous=>({...previous,godrays:{...previous.godrays,...values}}));runtimeRef.current?.setGodraySettings(values);unsaved();};
   const saveSky=async()=>{
     const scene=backdrop;setSkySaving(true);setSkySaveStatus('');
     try{
@@ -341,6 +353,13 @@ export default function App() {
       if(skySceneRef.current===scene)setSkySaveStatus(error instanceof Error?error.message:'保存失败');
     }finally{setSkySaving(false);}
   };
+  /** 场景参数面板底部：本机能保存；部署后只读，改动只在这一页生效 */
+  const skySaveRow=(
+    <div className="sky-save">
+      {skyWritable&&<button className="sky-save-button" onClick={saveSky} disabled={skyLoading||skySaving}>{skySaving?'保存中…':'Save'}</button>}
+      <span role="status">{skyLoading?'读取默认参数…':skyWritable?skySaveStatus:skySaveStatus||'线上只读：默认参数在本地保存、提交推送后更新'}</span>
+    </div>
+  );
   // 音色：按角色记在浏览器里（见 ModelPrefs），角色加载时换成她的；没选过就用服务端的默认音色（TTS_SPEAKER）
   const [speaker, setSpeaker] = useState<string | null>(null);
   // 偏好按角色存：存的时候要用最新的角色 id（闭包里的可能是旧的）。换角色时在事件里直接改，这里兜底同步
@@ -675,13 +694,27 @@ export default function App() {
     if (v) savePrefs(prev, { view: v });
     setModelId(id);
     modelIdRef.current = id;
-    rt.pendingView = applyPrefs(id).view ?? null;
     setModelLoading(0);
     setModelError(null);
+    setSwitching({ key: pick, id, progress: 0, done: false });
+    // 先让载入层画出来：换背景（场景生成）和模型解析会把主线程占住好一阵，不等这两帧，载入层要到最后才露面。
+    // 页面在后台时浏览器会暂停 requestAnimationFrame，所以最多等 120ms，不然换角色会一直卡在 0%
+    await new Promise<void>((r) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => r()));
+      setTimeout(r, 120);
+    });
+    if (pick !== modelPick.current) return;
+    rt.pendingView = applyPrefs(id).view ?? null;
+    const progress = (p: number) => {
+      setModelLoading(p);
+      setSwitching((s) => (s?.key === pick ? { ...s, progress: p } : s));
+    };
+    const leave = () => setSwitching((s) => (s?.key === pick ? { ...s, progress: 1, done: true } : s));
     try {
       // 先定好外展量再换模型：setModel 会把它交给新角色
       rt.setIdleArmClearance(m.armOut ?? 0);
-      if (!(await rt.setModel(modelUrl(m), setModelLoading))) return;
+      if (!(await rt.setModel(modelUrl(m), progress))) return;
+      leave();
       try {
         localStorage.setItem(MODEL_KEY, id);
       } catch {
@@ -691,6 +724,7 @@ export default function App() {
       await showChat(id, () => openChat(id));
     } catch (e) {
       if (pick !== modelPick.current) return;
+      leave();
       setModelId(prev);
       modelIdRef.current = prev;
       rt.pendingView = null;
@@ -1564,10 +1598,7 @@ export default function App() {
                   <label>波场 <select aria-label="海洋波场分辨率" value={skySettings.ocean.resolution} onChange={e=>changeOcean({resolution:Number(e.target.value) as 128|256})}><option value="128">128²</option><option value="256">256²</option></select></label>
                   <label>反射质量 <select aria-label="海洋反射质量" value={skySettings.ocean.quality} onChange={e=>changeOcean({quality:e.target.value as OceanSettings['quality']})}><option value="low">节能</option><option value="balanced">均衡</option><option value="high">精细</option></select></label>
                 </div>
-                <div className="sky-save">
-                  <button className="sky-save-button" onClick={saveSky} disabled={skyLoading||skySaving}>{skySaving?'保存中…':'Save'}</button>
-                  <span role="status">{skyLoading?'读取默认参数…':skySaveStatus}</span>
-                </div>
+                {skySaveRow}
                 </fieldset>
               </details>
             )}
@@ -1588,10 +1619,7 @@ export default function App() {
                     ))}
                   </div>
                   <div className="sky-options"><label>分辨率 <select aria-label="体积光分辨率" value={skySettings.godrays.resolutionScale} onChange={e=>changeGodrays({resolutionScale:Number(e.target.value)})}><option value="0.25">1/4 · 节能</option><option value="0.5">1/2 · 均衡</option><option value="1">完整 · 精细</option></select></label></div>
-                  <div className="sky-save">
-                    <button className="sky-save-button" onClick={saveSky} disabled={skyLoading||skySaving}>{skySaving?'保存中…':'Save'}</button>
-                    <span role="status">{skyLoading?'读取默认参数…':skySaveStatus}</span>
-                  </div>
+                  {skySaveRow}
                 </fieldset>
               </details>
             )}
@@ -1599,6 +1627,18 @@ export default function App() {
             <div className="credits">动作：{MOTION_CREDIT}</div>
           </div>
         </aside>
+      )}
+
+      {/* 换角色的载入画面：和开场同一个，淡入盖住整个画面，模型载好就淡出 */}
+      {switching && (
+        <Loader
+          key={switching.key}
+          fadeIn
+          done={switching.done}
+          progress={switching.progress}
+          name={MODELS.find((m) => m.id === switching.id)?.name}
+          avatar={`${import.meta.env.BASE_URL}avatars/${switching.id}.png`}
+        />
       )}
 
       {/* 开场的载入画面：盖在最上面，载完了自己淡出 */}
